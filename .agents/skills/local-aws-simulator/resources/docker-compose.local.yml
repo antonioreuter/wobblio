@@ -1,0 +1,4 @@
+# DEPRECATED — use docker-compose.yml at the repository root.
+#
+# Run:  make start
+# Docs: docs/local-development.md

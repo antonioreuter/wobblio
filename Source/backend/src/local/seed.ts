@@ -1,0 +1,103 @@
+import { Client } from 'pg';
+import { merchantSeeds } from './seeds/merchant-aliases';
+import { categorySeed } from './seeds/product-taxonomy';
+import { seedSsmParameters } from './seeds/ssm-parameters';
+
+function buildDbClient(): Client {
+  return new Client({
+    connectionString:
+      process.env.DATABASE_URL ??
+      `postgres://${process.env.DB_USER ?? 'wobblio_dev'}:${process.env.DB_PASSWORD ?? 'wobblio_dev_secret'}@${process.env.DB_HOST ?? 'localhost'}:${process.env.DB_PORT ?? '5432'}/${process.env.DB_NAME ?? 'wobblio_local'}`,
+    ssl: false,
+  });
+}
+
+async function tableExists(client: Client, tableName: string): Promise<boolean> {
+  const result = await client.query(
+    `SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = $1
+    )`,
+    [tableName]
+  );
+  return result.rows[0].exists as boolean;
+}
+
+async function seedMerchants(client: Client): Promise<void> {
+  if (!(await tableExists(client, 'merchant'))) {
+    console.warn('  ⚠  Table "merchant" does not exist — skipping. Run migrations first.');
+    return;
+  }
+
+  console.log('  Seeding merchants...');
+  for (const m of merchantSeeds) {
+    await client.query(
+      `INSERT INTO merchant (id, brand_name, country_code, website, created_via, status)
+       VALUES ($1, $2, $3, $4, 'SEED', 'ACTIVE')
+       ON CONFLICT (id) DO NOTHING`,
+      [m.id, m.brand_name, m.country_code, m.website]
+    );
+  }
+  console.log(`  ✓ ${merchantSeeds.length} merchants`);
+
+  if (!(await tableExists(client, 'merchant_alias'))) {
+    console.warn('  ⚠  Table "merchant_alias" does not exist — skipping aliases.');
+    return;
+  }
+
+  let aliasCount = 0;
+  for (const m of merchantSeeds) {
+    for (const alias of m.aliases) {
+      await client.query(
+        `INSERT INTO merchant_alias (merchant_id, alias_raw, alias_normalized, country_code)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT DO NOTHING`,
+        [m.id, alias, alias.toUpperCase().trim(), m.country_code]
+      );
+      aliasCount++;
+    }
+  }
+  console.log(`  ✓ ${aliasCount} merchant aliases`);
+}
+
+async function seedTaxonomy(client: Client): Promise<void> {
+  if (!(await tableExists(client, 'product_category'))) {
+    console.warn('  ⚠  Table "product_category" does not exist — skipping. Run migrations first.');
+    return;
+  }
+
+  console.log('  Seeding product taxonomy...');
+  for (const cat of categorySeed) {
+    await client.query(
+      `INSERT INTO product_category (id, parent_id, name, name_nl, level)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (id) DO NOTHING`,
+      [cat.id, cat.parent_id, cat.name, cat.name_nl, cat.level]
+    );
+  }
+  console.log(`  ✓ ${categorySeed.length} product categories`);
+}
+
+async function seedPostgres(): Promise<void> {
+  const client = buildDbClient();
+  await client.connect();
+  try {
+    console.log('\nSeeding PostgreSQL...');
+    await seedMerchants(client);
+    await seedTaxonomy(client);
+    console.log('PostgreSQL seed complete.\n');
+  } finally {
+    await client.end();
+  }
+}
+
+async function main(): Promise<void> {
+  await seedSsmParameters();
+  await seedPostgres();
+  console.log('All seed operations complete.');
+}
+
+main().catch((err) => {
+  console.error('Seed failed:', err);
+  process.exit(1);
+});

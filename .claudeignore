@@ -1,0 +1,77 @@
+# Node.js / npm
+node_modules/
+package-lock.json
+npm-debug.log*
+*.tgz
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Flutter
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Python / venv
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# AWS CDK
+cdk.context.json
+cdk.out/
+.cdk.staging/
+*.snap
+
+# Git
+.git/
+.gitignore
+
+# Cache
+.cache/
+.eslintcache
+
+# Logs
+logs/
+*.log
+
+# Generated files
+coverage/
+*.lcov
+
+# Lock files (can be problematic in context but needed for reproducibility)
+# Uncomment if you want to ignore them:
+# yarn.lock
+# pnpm-lock.yaml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Test artifacts
+.nyc_output/
+
+# Internal documentation (generated/private)
+MCP_KB_DOCS.md
+
+# Diagnostics
+diagnostics/

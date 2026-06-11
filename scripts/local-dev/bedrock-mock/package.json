@@ -1,0 +1,21 @@
+{
+  "name": "bedrock-mock",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Bedrock Converse API mock for Wobblio development",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.0"
+  }
+}
