@@ -7,7 +7,7 @@ Based on the v2.4 engineering & product specification. Files are numbered by bui
 | Phase | Files | Description |
 |---|---|---|
 | **Phase 0** | `00-*` | Design system & wireframes — blocking everything else |
-| **Phase 1** | `01-*`, `02-*`, `03-*` | Infrastructure foundation: sandbox, DB/RLS, observability bootstrap |
+| **Phase 1** | `01-*`, `02-*`, `02b-*`, `03-*` | Infrastructure foundation: sandbox, DB/RLS, deployment/hosting, observability bootstrap |
 | **Phase 2** | `04-*`, `05-*` | Auth, waitlist, billing — users can't exist without this |
 | **Phase 3** | `06-*`, `07-*`, `08-*` | Core product: landing page, ingestion pipeline, data-intelligence layer |
 | **Phase 4** | `09-*`, `10-*`, `11-*` | Premium features: households, budgets/shopping, bill splitting/FX/reporting |
@@ -18,6 +18,7 @@ Based on the v2.4 engineering & product specification. Files are numbered by bui
 - [00 — Design System & Wireframes](./00-design-system-wireframes.md)
 - [01 — Local Development Sandbox](./01-local-development-sandbox.md)
 - [02 — Infrastructure, Database & RLS](./02-infrastructure-database-rls.md)
+- [02b — Deployment & Hosting](./02b-deployment-hosting.md)
 - [03 — Observability Foundation](./03-observability-foundation.md)
 - [04 — Authentication & Waitlist](./04-authentication-waitlist.md)
 - [05 — Billing & Stripe](./05-billing-stripe.md)
@@ -38,6 +39,7 @@ Based on the v2.4 engineering & product specification. Files are numbered by bui
 - **AI:** AWS Bedrock Converse API; vision model (Qwen-class), auxiliary (Haiku-class), insight (Sonnet-class), embedder (Titan Text V2 512-dim)
 - **DB extensions:** `pg_trgm` (fuzzy merchant/product matching) + `pgvector` (product embeddings)
 - **Tenancy:** PostgreSQL Row-Level Security via `SET LOCAL app.current_tenant_id`
+- **Hosting:** Next.js static export (`output: 'export'`) → S3 + CloudFront (`wobblio.com`); backend via Lambda + API Gateway with custom domain `api.wobblio.com`; no Amplify
 - **Billing:** Stripe Checkout + webhooks, web-only (no in-app purchase)
 - **Capacity envelope:** 10k registered users, ~4k MAU, ~3k invoice ingestions/day on db.t3.micro
 - **Launch market:** Netherlands, Eindhoven region
