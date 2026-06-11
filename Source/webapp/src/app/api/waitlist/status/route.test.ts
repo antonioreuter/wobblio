@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest'
 import { GET } from './route';
 import * as db from '@/lib/db';
 

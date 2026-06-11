@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest'
 import { POST } from './route';
 
 describe('POST /api/analytics/events', () => {
