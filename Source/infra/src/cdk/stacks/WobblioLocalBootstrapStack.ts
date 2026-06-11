@@ -100,7 +100,12 @@ export class WobblioLocalBootstrapStack extends Stack {
       '/wobblio/config/ops/email': 'antonioreuter@gmail.com',
     };
 
-    const allParams = { ...modelParams, ...quotaParams, ...routingParams, ...tagParams, ...observabilityParams };
+    const billingParams: Record<string, string> = {
+      '/wobblio/config/web_app_url': 'http://localhost:3000',
+      '/wobblio/config/billing/mock_premium_whitelist': 'antonioreuter@gmail.com',
+    };
+
+    const allParams = { ...modelParams, ...quotaParams, ...routingParams, ...tagParams, ...observabilityParams, ...billingParams };
 
     for (const [name, value] of Object.entries(allParams)) {
       new ssm.StringParameter(this, `Param${name.replace(/\//g, '-').replace(/^-/, '')}`, {

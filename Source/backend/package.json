@@ -10,7 +10,7 @@
     "build": "tsc",
     "test:unit": "vitest run --coverage",
     "test:unit:watch": "vitest",
-    "test:integration": "STAGE=local vitest run src/tests/integration",
+    "test:integration": "STAGE=local vitest run -c vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "skill:hexagonal-architecture-validator": "ts-node --skip-project --compiler-options '{\"module\":\"CommonJS\",\"esModuleInterop\":true}' ../../.claude/skills/hexagonal-architecture-validator/scripts/validate-hexagonal.ts",
     "validate:security": "ts-node --skip-project --compiler-options '{\"module\":\"CommonJS\",\"esModuleInterop\":true}' ../../.claude/skills/gdpr-security-auditor/scripts/audit-security.ts"

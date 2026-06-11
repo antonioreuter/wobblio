@@ -189,10 +189,14 @@ export class WobblioAppStack extends Stack {
         environment: { ...commonLambdaEnv, ...extraEnv },
       });
 
+    const webAppUrl = ssm.StringParameter.valueForStringParameter(this, '/wobblio/config/web_app_url');
+
     const apiHandlerFn = makeLambda('api-handler', 25, {
       UPLOADS_BUCKET:  uploadsBucket.bucketName,
       EXPORTS_BUCKET:  exportsBucket.bucketName,
       INGEST_QUEUE_URL: ingestionQueue.queueUrl,
+      BILLING_ARCHIVE_BUCKET: billingArchiveBucket.bucketName,
+      WEB_APP_URL: webAppUrl,
     });
 
     const ingestionWorkerFn = makeLambda('ingestion-worker', 5, {
@@ -253,6 +257,14 @@ export class WobblioAppStack extends Stack {
       ],
     });
     [apiHandlerFn, cronWaitlistReleaseFn].forEach(fn => fn.addToRolePolicy(waitlistCapSsmPolicy));
+
+    // SSM: mock premium whitelist — api-handler reads at checkout time
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/billing/mock_premium_whitelist`,
+      ],
+    }));
 
     // SES: cron-waitlist-release sends waitlist release notification emails
     cronWaitlistReleaseFn.addToRolePolicy(

@@ -82,4 +82,18 @@ describe('AppUserRepositoryAdapter', () => {
       );
     });
   });
+
+  describe('promoteToPremium', () => {
+    it('updates role to PREMIUM, sets the stripe customer id, and lifts WAITLIST status', async () => {
+      mockPool.query.mockResolvedValue({ rowCount: 1, rows: [] });
+
+      await adapter.promoteToPremium('uuid-abc', 'cus_mock_x');
+
+      const [sql, params] = mockPool.query.mock.calls[0];
+      expect(sql).toContain("role = 'PREMIUM'");
+      expect(sql).toContain('stripe_customer_id = $2');
+      expect(sql).toContain("status = CASE WHEN status = 'WAITLIST'");
+      expect(params).toEqual(['uuid-abc', 'cus_mock_x']);
+    });
+  });
 });

@@ -38,6 +38,8 @@ export async function seedSsmParameters(): Promise<void> {
     '/wobblio/config/tags/vocabulary': JSON.stringify(tagVocabulary),
     '/wobblio/config/ai/daily_spend_cap': '0.10',
     '/wobblio/config/ops/email': 'antonioreuter@gmail.com',
+    '/wobblio/config/web_app_url': 'http://localhost:3000',
+    '/wobblio/config/billing/mock_premium_whitelist': 'antonioreuter@gmail.com',
   };
 
   for (const [name, value] of Object.entries(params)) {

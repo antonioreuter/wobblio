@@ -3,13 +3,7 @@ import path from 'path';
 
 export default defineConfig({
   test: {
-    include: ['src/tests/unit/**/*.test.ts'],
-    coverage: {
-      provider: 'v8',
-      include: ['src/core/**'],
-      exclude: ['src/core/ports/**', 'src/core/domain/billing.ts'],
-      thresholds: { lines: 100, functions: 100, branches: 100, statements: 100 },
-    },
+    include: ['src/tests/integration/**/*.test.ts'],
   },
   resolve: {
     alias: {
