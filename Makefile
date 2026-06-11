@@ -18,7 +18,7 @@ AWS_LOCAL_OPTS := AWS_ENDPOINT_URL=http://localhost:4566 AWS_ACCESS_KEY_ID=test 
 start:
 	docker compose -f $(COMPOSE_FILE) up -d
 	@echo "Waiting for services to become healthy..."
-	@until docker compose -f $(COMPOSE_FILE) ps --format json 2>/dev/null | python3 -c "import sys,json; [print(s['Name'],s['Health']) for line in sys.stdin for s in [json.loads(line)]]" 2>/dev/null | grep -v healthy | grep -v ""; do sleep 2; done; true
+	@until docker compose -f $(COMPOSE_FILE) ps --format json 2>/dev/null | python3 -c "import sys, json; raw = sys.stdin.read().strip(); containers = json.loads(raw) if raw.startswith('[') else [json.loads(line) for line in raw.splitlines() if line.strip()]; sys.exit(0 if containers and all(c.get('Health') == 'healthy' for c in containers) else 1)" 2>/dev/null; do sleep 2; done
 	@$(MAKE) --no-print-directory _print-endpoints
 
 ## stop: Stop all local services
