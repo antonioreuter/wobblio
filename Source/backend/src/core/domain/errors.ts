@@ -46,3 +46,24 @@ export class WaitlistLockedError extends Error {
     this.name = 'WaitlistLockedError';
   }
 }
+
+export class InvalidBillingPlanError extends Error {
+  constructor(readonly plan: string) {
+    super(`Invalid billing plan: ${plan}`);
+    this.name = 'InvalidBillingPlanError';
+  }
+}
+
+export class BillingCustomerError extends Error {
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+    this.name = 'BillingCustomerError';
+  }
+}
+
+export class WebhookVerificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WebhookVerificationError';
+  }
+}

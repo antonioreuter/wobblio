@@ -38,4 +38,15 @@ export class AppUserRepositoryAdapter implements IAppUserRepository {
     if (!id) throw new UserNotFoundError(cognitoSub);
     return id;
   }
+
+  async promoteToPremium(userId: string, stripeCustomerId: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE app_user
+          SET role = 'PREMIUM',
+              stripe_customer_id = $2,
+              status = CASE WHEN status = 'WAITLIST' THEN 'ACTIVE'::user_status ELSE status END
+        WHERE id = $1`,
+      [userId, stripeCustomerId],
+    );
+  }
 }

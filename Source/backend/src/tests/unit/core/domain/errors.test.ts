@@ -6,6 +6,9 @@ import {
   UserNotFoundError,
   UserDeletedError,
   WaitlistLockedError,
+  InvalidBillingPlanError,
+  BillingCustomerError,
+  WebhookVerificationError,
 } from '@core/domain/errors';
 
 describe('EncryptionError', () => {
@@ -73,5 +76,36 @@ describe('WaitlistLockedError', () => {
     expect(err.total).toBe(20);
     expect(err.message).toContain('5');
     expect(err.message).toContain('20');
+  });
+});
+
+describe('InvalidBillingPlanError', () => {
+  it('sets name, plan, and message', () => {
+    const err = new InvalidBillingPlanError('WEEKLY');
+    expect(err.name).toBe('InvalidBillingPlanError');
+    expect(err.plan).toBe('WEEKLY');
+    expect(err.message).toContain('WEEKLY');
+  });
+});
+
+describe('BillingCustomerError', () => {
+  it('sets name and message', () => {
+    const err = new BillingCustomerError('customer lookup failed');
+    expect(err.name).toBe('BillingCustomerError');
+    expect(err.message).toBe('customer lookup failed');
+  });
+
+  it('preserves optional cause', () => {
+    const cause = new Error('stripe sdk error');
+    const err = new BillingCustomerError('wrapped', cause);
+    expect(err.cause).toBe(cause);
+  });
+});
+
+describe('WebhookVerificationError', () => {
+  it('sets name and message', () => {
+    const err = new WebhookVerificationError('signature mismatch');
+    expect(err.name).toBe('WebhookVerificationError');
+    expect(err.message).toBe('signature mismatch');
   });
 });
