@@ -1,0 +1,124 @@
+openapi: 3.0.3
+info:
+  title: Wobblio API
+  description: Public and authenticated REST API for the Wobblio application
+  version: 1.0.0
+servers:
+  - url: https://api.wobblio.com
+    description: Production
+
+components:
+  securitySchemes:
+    CognitoAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Cognito User Pool JWT — include in Authorization header
+
+  schemas:
+    WaitlistStatusResponse:
+      type: object
+      required: [waitlistActive]
+      properties:
+        waitlistActive:
+          type: boolean
+          description: True when the free-user cap has been reached and new sign-ups enter the waitlist
+
+    TrackEventRequest:
+      type: object
+      required: [event]
+      properties:
+        event:
+          type: string
+          enum:
+            - hero_cta_click
+            - pricing_view
+            - signup_start
+            - signup_complete
+            - waitlist_join
+          description: Funnel event name
+
+    TrackEventResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+paths:
+  /waitlist/status:
+    get:
+      summary: Check whether the waitlist is active
+      operationId: getWaitlistStatus
+      description: >
+        Returns whether the free-user cap has been reached. Called by unauthenticated
+        landing-page visitors to determine which CTA to show.
+      security: []
+      responses:
+        '200':
+          description: Waitlist status
+          headers:
+            Cache-Control:
+              description: Public cache directive (s-maxage=300, stale-while-revalidate=60)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WaitlistStatusResponse'
+
+  /analytics/events:
+    post:
+      summary: Track a landing-page funnel event
+      operationId: trackAnalyticsEvent
+      description: >
+        Accepts a funnel event emitted by the landing page and enqueues it to the
+        analytics SQS queue for downstream KPI aggregation (Epic 15).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackEventRequest'
+      responses:
+        '200':
+          description: Event accepted and enqueued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackEventResponse'
+        '400':
+          description: Unknown event name or malformed body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /{proxy+}:
+    x-amazon-apigateway-any-method:
+      summary: Protected API routes (Cognito JWT required)
+      description: >
+        All application API routes not listed above. Handled by the api-handler
+        Lambda. Requires a valid Cognito JWT in the Authorization header.
+      security:
+        - CognitoAuth: []
+      parameters:
+        - name: proxy
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Proxied path segment
+      responses:
+        '200':
+          description: Successful response from the api-handler Lambda
+        '401':
+          description: Missing or invalid Cognito JWT

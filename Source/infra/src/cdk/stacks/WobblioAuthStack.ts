@@ -96,46 +96,6 @@ export class WobblioAuthStack extends Stack {
       removalPolicy: config.stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     });
 
-    // Google OIDC federation
-    const googleIdp = new cognito.UserPoolIdentityProviderGoogle(this, 'GoogleIdp', {
-      clientId: ssm.StringParameter.valueForStringParameter(
-        this,
-        '/wobblio/config/auth/google_client_id',
-      ),
-      clientSecretValue: secretsmanager.Secret.fromSecretNameV2(
-        this,
-        'GoogleClientSecret',
-        'wobblio/auth/google',
-      ).secretValueFromJson('client_secret'),
-      userPool: this.userPool,
-      scopes: ['email', 'profile', 'openid'],
-      attributeMapping: {
-        email:      cognito.ProviderAttribute.GOOGLE_EMAIL,
-        givenName:  cognito.ProviderAttribute.GOOGLE_GIVEN_NAME,
-        familyName: cognito.ProviderAttribute.GOOGLE_FAMILY_NAME,
-      },
-    });
-
-    // Meta (Facebook) OAuth 2.0 federation
-    const metaIdp = new cognito.UserPoolIdentityProviderFacebook(this, 'MetaIdp', {
-      clientId: ssm.StringParameter.valueForStringParameter(
-        this,
-        '/wobblio/config/auth/facebook_app_id',
-      ),
-      clientSecret: secretsmanager.Secret.fromSecretNameV2(
-        this,
-        'FacebookClientSecret',
-        'wobblio/auth/facebook',
-      ).secretValueFromJson('app_secret').unsafeUnwrap(),
-      userPool: this.userPool,
-      scopes: ['email', 'public_profile'],
-      attributeMapping: {
-        email:      cognito.ProviderAttribute.FACEBOOK_EMAIL,
-        givenName:  cognito.ProviderAttribute.other('first_name'),
-        familyName: cognito.ProviderAttribute.other('last_name'),
-      },
-    });
-
     // Hosted UI domain — allows social sign-in redirect
     this.userPool.addDomain('CognitoDomain', {
       cognitoDomain: { domainPrefix: `wobblio-${config.stage}` },
@@ -143,16 +103,14 @@ export class WobblioAuthStack extends Stack {
 
     const callbackUrl =
       config.stage === 'prod'
-        ? 'https://app.wobblio.nl/auth/callback'
-        : `https://app.${config.stage}.wobblio.nl/auth/callback`;
+        ? 'https://app.wobblio.com/auth/callback'
+        : `https://app.${config.stage}.wobblio.com/auth/callback`;
 
     this.userPoolClientMobile = this.userPool.addClient('MobileClient', {
       userPoolClientName: config.resourceName('mobile-client'),
       generateSecret: false,
       authFlows: { userSrp: true },
       supportedIdentityProviders: [
-        cognito.UserPoolClientIdentityProvider.GOOGLE,
-        cognito.UserPoolClientIdentityProvider.FACEBOOK,
         cognito.UserPoolClientIdentityProvider.COGNITO,
       ],
       oAuth: {
@@ -170,8 +128,6 @@ export class WobblioAuthStack extends Stack {
       userPoolClientName: config.resourceName('web-client'),
       generateSecret: true,
       supportedIdentityProviders: [
-        cognito.UserPoolClientIdentityProvider.GOOGLE,
-        cognito.UserPoolClientIdentityProvider.FACEBOOK,
         cognito.UserPoolClientIdentityProvider.COGNITO,
       ],
       oAuth: {
@@ -184,10 +140,6 @@ export class WobblioAuthStack extends Stack {
       refreshTokenValidity: Duration.days(30),
       preventUserExistenceErrors: true,
     });
-
-    // Suppress idP dependency ordering warning — CDK handles this implicitly
-    this.userPoolClientMobile.node.addDependency(googleIdp, metaIdp);
-    this.userPoolClientWeb.node.addDependency(googleIdp, metaIdp);
 
     NagSuppressions.addResourceSuppressions(this.userPool, [
       {

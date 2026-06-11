@@ -11,6 +11,9 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as ses from 'aws-cdk-lib/aws-ses';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
@@ -73,8 +76,8 @@ export class WobblioAppStack extends Stack {
         {
           allowedMethods: [s3.HttpMethods.PUT],
           allowedOrigins: config.stage === 'prod'
-            ? ['https://app.wobblio.nl']
-            : ['https://app.dev.wobblio.nl', 'http://localhost:3000'],
+            ? ['https://app.wobblio.com']
+            : ['https://app.dev.wobblio.com', 'http://localhost:3000'],
           allowedHeaders: ['*'],
           maxAge: 300,
         },
@@ -160,6 +163,25 @@ export class WobblioAppStack extends Stack {
       },
     });
 
+    const analyticsEventsDlq = new sqs.Queue(this, 'AnalyticsEventsDlq', {
+      queueName: config.resourceName('analytics-events-dlq'),
+      retentionPeriod: Duration.days(14),
+      encryption: sqs.QueueEncryption.KMS,
+      encryptionMasterKey: dbStack.kmsKey,
+      enforceSSL: true,
+    });
+
+    const analyticsEventsQueue = new sqs.Queue(this, 'AnalyticsEventsQueue', {
+      queueName: config.resourceName('analytics-events'),
+      encryption: sqs.QueueEncryption.KMS,
+      encryptionMasterKey: dbStack.kmsKey,
+      enforceSSL: true,
+      deadLetterQueue: {
+        queue: analyticsEventsDlq,
+        maxReceiveCount: 3,
+      },
+    });
+
     // ── Lambda stubs ──────────────────────────────────────────────────────────
     // Lambdas run outside VPC — shared-infra DB SG allows off-VPC access (interim MVP posture).
     // VPC placement + custom SG is the target posture and will be added when traffic warrants it.
@@ -174,7 +196,7 @@ export class WobblioAppStack extends Stack {
       new NodejsFunction(this, handlerDir, {
         entry: path.join(backendRoot, `src/handlers/${handlerDir}/index.ts`),
         handler: 'handler',
-        runtime: lambda.Runtime.NODEJS_22_X,
+        runtime: lambda.Runtime.NODEJS_24_X,
         architecture: lambda.Architecture.ARM_64,
         memorySize: 512,
         timeout: Duration.seconds(30),
@@ -207,6 +229,16 @@ export class WobblioAppStack extends Stack {
     const cronFxRateFetchFn    = makeLambda('cron-fx-rate-fetch', 2);
     const cronWaitlistReleaseFn = makeLambda('cron-waitlist-release', 2);
 
+    // Public endpoints — no Cognito auth, called by unauthenticated landing-page visitors
+    const waitlistStatusFn = makeLambda('waitlist-status', 5, {
+      MAX_FREE_USERS: ssm.StringParameter.valueForStringParameter(
+        this, '/wobblio/config/quotas/max_free_waitlist_cap',
+      ),
+    });
+    const analyticsEventsFn = makeLambda('analytics-events', 5, {
+      ANALYTICS_QUEUE_URL: analyticsEventsQueue.queueUrl,
+    });
+
     // ── SQS event source on ingestion worker ─────────────────────────────────
     ingestionWorkerFn.addEventSource(
       new SqsEventSource(ingestionQueue, {
@@ -228,6 +260,10 @@ export class WobblioAppStack extends Stack {
 
     dbStack.kmsKey.grantEncryptDecrypt(apiHandlerFn);
     dbStack.kmsKey.grantEncryptDecrypt(ingestionWorkerFn);
+    dbStack.kmsKey.grantEncryptDecrypt(waitlistStatusFn);
+    dbStack.kmsKey.grantEncryptDecrypt(analyticsEventsFn);
+
+    analyticsEventsQueue.grantSendMessages(analyticsEventsFn);
 
     // Secrets Manager: read app DB credentials
     const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(
@@ -238,6 +274,7 @@ export class WobblioAppStack extends Stack {
     dbSecret.grantRead(apiHandlerFn);
     dbSecret.grantRead(ingestionWorkerFn);
     dbSecret.grantRead(cronWaitlistReleaseFn);
+    dbSecret.grantRead(waitlistStatusFn);
 
     // SSM: read shared DB connection parameters
     const ssmPolicy = new iam.PolicyStatement({
@@ -246,7 +283,7 @@ export class WobblioAppStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
       ],
     });
-    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn]
+    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, waitlistStatusFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
 
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
@@ -273,7 +310,7 @@ export class WobblioAppStack extends Stack {
         resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`],
       }),
     );
-    cronWaitlistReleaseFn.addEnvironment('SES_FROM_ADDRESS', 'noreply@wobblio.nl');
+    cronWaitlistReleaseFn.addEnvironment('SES_FROM_ADDRESS', 'noreply@wobblio.com');
 
     // Bedrock: ingestion worker calls foundation models (model IDs are runtime SSM values)
     ingestionWorkerFn.addToRolePolicy(
@@ -318,11 +355,58 @@ export class WobblioAppStack extends Stack {
       },
     });
 
-    // Stub proxy route — real routes added in later epics
+    // Public routes — no Cognito auth (called by unauthenticated landing-page visitors)
+    const waitlistResource = api.root.addResource('waitlist').addResource('status');
+    const waitlistStatusMethod = waitlistResource.addMethod('GET', new apigw.LambdaIntegration(waitlistStatusFn), {
+      authorizationType: apigw.AuthorizationType.NONE,
+      authorizer: undefined,
+    });
+
+    const analyticsResource = api.root.addResource('analytics').addResource('events');
+    const analyticsEventsMethod = analyticsResource.addMethod('POST', new apigw.LambdaIntegration(analyticsEventsFn), {
+      authorizationType: apigw.AuthorizationType.NONE,
+      authorizer: undefined,
+    });
+
+    // Catch-all proxy for authenticated API routes — real routes added in later epics
     const proxyResource = api.root.addProxy({
       defaultIntegration: new apigw.LambdaIntegration(apiHandlerFn),
       anyMethod: true,
     });
+
+    // ── API Custom Domain (api.wobblio.com) — skipped for local stage ────────
+    if (!config.isLocal) {
+      const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
+        domainName: 'wobblio.com',
+      });
+
+      const apiCert = new acm.Certificate(this, 'ApiCertificate', {
+        domainName: 'api.wobblio.com',
+        validation: acm.CertificateValidation.fromDns(hostedZone),
+      });
+
+      const apiCustomDomain = new apigw.DomainName(this, 'ApiCustomDomain', {
+        domainName: 'api.wobblio.com',
+        certificate: apiCert,
+        endpointType: apigw.EndpointType.REGIONAL,
+      });
+
+      new apigw.BasePathMapping(this, 'ApiBasePathMapping', {
+        domainName: apiCustomDomain,
+        restApi: api,
+        stage: api.deploymentStage,
+      });
+
+      new route53.ARecord(this, 'ApiAliasRecord', {
+        zone: hostedZone,
+        recordName: 'api',
+        target: route53.RecordTarget.fromAlias(
+          new route53Targets.ApiGatewayDomain(apiCustomDomain),
+        ),
+      });
+
+      new CfnOutput(this, 'ApiUrl', { value: 'https://api.wobblio.com' });
+    }
 
     // ── SNS Platform Applications ─────────────────────────────────────────────
     // SNS mobile push platform applications (FCM, APNs) cannot be created via
@@ -343,7 +427,7 @@ export class WobblioAppStack extends Stack {
 
     // ── SES Domain Identity ───────────────────────────────────────────────────
     new ses.EmailIdentity(this, 'SesIdentity', {
-      identity: ses.Identity.domain('wobblio.nl'),
+      identity: ses.Identity.domain('wobblio.com'),
       dkimSigning: true,
     });
 
@@ -381,6 +465,7 @@ export class WobblioAppStack extends Stack {
     const allLambdas = [
       apiHandlerFn, ingestionWorkerFn,
       cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn,
+      waitlistStatusFn, analyticsEventsFn,
     ];
 
     // ── SNS Ops Topic ─────────────────────────────────────────────────────────
@@ -464,7 +549,7 @@ export class WobblioAppStack extends Stack {
       NagSuppressions.addResourceSuppressions(fn, [
         {
           id: 'AwsSolutions-L1',
-          reason: 'Node 22 is current LTS; cdk-nag rule may flag it pending rule update',
+          reason: 'Node 24 is current LTS; cdk-nag rule may flag it pending rule update',
         },
         {
           id: 'AwsSolutions-IAM4',
@@ -500,7 +585,7 @@ export class WobblioAppStack extends Stack {
       ], true),
     );
 
-    // SES identity wildcard is scoped to wobblio.nl domain — required because CDK resolves the resource path dynamically
+    // SES identity wildcard is scoped to wobblio.com domain — required because CDK resolves the resource path dynamically
     NagSuppressions.addResourceSuppressions(cronWaitlistReleaseFn, [
       {
         id: 'AwsSolutions-IAM5',
@@ -522,6 +607,34 @@ export class WobblioAppStack extends Stack {
     // API Gateway: request validation deferred until real routes are defined (Epic 06+)
     NagSuppressions.addResourceSuppressions(api, [
       { id: 'AwsSolutions-APIG2', reason: 'Request validation deferred until real API routes are defined (Epic 06+)' },
+    ], true);
+
+    // Public API Gateway methods do not require authorization
+    NagSuppressions.addResourceSuppressions(waitlistStatusMethod, [
+      { id: 'AwsSolutions-COG4', reason: 'The waitlist status endpoint is public and does not require authentication' },
+    ]);
+    NagSuppressions.addResourceSuppressions(analyticsEventsMethod, [
+      { id: 'AwsSolutions-COG4', reason: 'The analytics events endpoint is public and does not require authentication' },
+    ]);
+
+    // Analytics events SQS queue: KMS key applied; access limited to analyticsEventsFn
+    NagSuppressions.addResourceSuppressions(analyticsEventsQueue, [
+      { id: 'AwsSolutions-SQS3', reason: 'DLQ configured (analyticsEventsDlq)' },
+    ]);
+    NagSuppressions.addResourceSuppressions(analyticsEventsDlq, [
+      { id: 'AwsSolutions-SQS3', reason: 'This is itself a DLQ; no further DLQ required' },
+    ]);
+
+    // analyticsEventsFn SQS send permission uses a wildcard on the queue resource
+    NagSuppressions.addResourceSuppressions(analyticsEventsFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'CDK grantSendMessages generates standard SQS sub-action wildcards scoped to the analytics queue ARN',
+        appliesTo: [
+          'Action::sqs:GetQueue*',
+          `Resource::<AnalyticsEventsQueue*.Arn>`,
+        ],
+      },
     ], true);
 
     // SNS ops topic: KMS key applied; SSL enforced by SNS default

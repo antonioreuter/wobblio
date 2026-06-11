@@ -61,26 +61,14 @@ from `shared/db/wobblio`. If the secret does not exist, they will fail at runtim
 ## Step 2 — Install PostgreSQL Extensions (one-time, using master credentials)
 
 The `wobblio_app` role lacks `rds_superuser` and cannot install extensions.
-Run the following using the master `postgres` credentials from Secrets Manager:
+Run the automated environment bootstrap script to fetch credentials, install extensions (`uuid-ossp`, `pg_trgm`, `vector`), seed parameters, and initialize Secrets:
 
 ```bash
-# Retrieve master credentials
-MASTER_SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id shared/db/master \
-  --query SecretString --output text)
+# Run for the default prod stage
+./scripts/bootstrap-aws.sh
 
-MASTER_PASSWORD=$(echo "$MASTER_SECRET" | jq -r .password)
-DB_HOST=$(aws ssm get-parameter \
-  --name /shared/db/endpoint \
-  --query Parameter.Value --output text)
-
-# Install extensions in wobblio_prod
-psql "host=$DB_HOST port=5432 user=postgres password=$MASTER_PASSWORD \
-      dbname=wobblio_prod sslmode=require" <<'SQL'
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE EXTENSION IF NOT EXISTS vector;
-SQL
+# Or run for a specific stage (e.g. dev)
+./scripts/bootstrap-aws.sh --stage dev
 ```
 
 **Required extensions:**
