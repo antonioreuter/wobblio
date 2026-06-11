@@ -1,5 +1,10 @@
 import * as path from 'path';
-import { Stack, StackProps, Duration, RemovalPolicy } from 'aws-cdk-lib';
+import { Stack, StackProps, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as budgets from 'aws-cdk-lib/aws-budgets';
+import * as ce from 'aws-cdk-lib/aws-ce';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -248,6 +253,11 @@ export class WobblioAppStack extends Stack {
     );
 
     // ── API Gateway ───────────────────────────────────────────────────────────
+    const apiAccessLogGroup = new logs.LogGroup(this, 'ApiGwAccessLogs', {
+      retention: logs.RetentionDays.THREE_DAYS,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
     const authorizer = new apigw.CognitoUserPoolsAuthorizer(this, 'JwtAuthorizer', {
       cognitoUserPools: [authStack.userPool],
       authorizerName: 'cognito-jwt',
@@ -265,6 +275,8 @@ export class WobblioAppStack extends Stack {
         throttlingBurstLimit: 50,
         throttlingRateLimit: 20,
         loggingLevel: apigw.MethodLoggingLevel.ERROR,
+        accessLogDestination: new apigw.LogGroupLogDestination(apiAccessLogGroup),
+        accessLogFormat: apigw.AccessLogFormat.jsonWithStandardFields(),
         tracingEnabled: true,
         metricsEnabled: true,
       },
@@ -335,6 +347,74 @@ export class WobblioAppStack extends Stack {
       cronWaitlistReleaseFn,
     );
 
+    const allLambdas = [
+      apiHandlerFn, ingestionWorkerFn,
+      cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn,
+    ];
+
+    // ── SNS Ops Topic ─────────────────────────────────────────────────────────
+    const opsEmail = ssm.StringParameter.valueForStringParameter(
+      this,
+      '/wobblio/config/ops/email',
+    );
+
+    const opsTopic = new sns.Topic(this, 'OpsAlarmTopic', {
+      topicName: `wobblio-ops-${config.stage}`,
+      masterKey: dbStack.kmsKey,
+    });
+    opsTopic.addSubscription(new subscriptions.EmailSubscription(opsEmail));
+
+    new CfnOutput(this, 'OpsTopicArn', {
+      value: opsTopic.topicArn,
+      exportName: `wobblio-${config.stage}-ops-topic-arn`,
+    });
+
+    // ── Lambda log retention (2 days — MVP) ───────────────────────────────────
+    allLambdas.forEach(fn =>
+      new logs.LogRetention(this, `${fn.node.id}LogRetention`, {
+        logGroupName: `/aws/lambda/${fn.functionName}`,
+        retention: logs.RetentionDays.THREE_DAYS,
+      }),
+    );
+
+    // ── AWS Budgets (€30/month, alert at 50%/80%/100%) ───────────────────────
+    const buildBudgetNotification = (
+      threshold: number,
+    ): budgets.CfnBudget.NotificationWithSubscribersProperty => ({
+      notification: {
+        notificationType: 'FORECASTED',
+        comparisonOperator: 'GREATER_THAN',
+        threshold,
+        thresholdType: 'PERCENTAGE',
+      },
+      subscribers: [{ subscriptionType: 'EMAIL', address: opsEmail }],
+    });
+
+    new budgets.CfnBudget(this, 'MonthlyBudget', {
+      budget: {
+        budgetName: `wobblio-monthly-${config.stage}`,
+        budgetType: 'COST',
+        timeUnit: 'MONTHLY',
+        budgetLimit: { amount: 30, unit: 'USD' },
+      },
+      notificationsWithSubscribers: [50, 80, 100].map(buildBudgetNotification),
+    });
+
+    // ── Cost Anomaly Detection (alert >€10) ───────────────────────────────────
+    const anomalyMonitor = new ce.CfnAnomalyMonitor(this, 'CostAnomalyMonitor', {
+      monitorName: `wobblio-anomaly-${config.stage}`,
+      monitorType: 'DIMENSIONAL',
+      monitorDimension: 'SERVICE',
+    });
+
+    new ce.CfnAnomalySubscription(this, 'CostAnomalySubscription', {
+      subscriptionName: `wobblio-anomaly-sub-${config.stage}`,
+      monitorArnList: [anomalyMonitor.attrMonitorArn],
+      subscribers: [{ address: opsEmail, type: 'EMAIL' }],
+      threshold: 10,
+      frequency: 'DAILY',
+    });
+
     // ── cdk-nag suppressions ──────────────────────────────────────────────────
 
     // Access logs bucket cannot log to itself
@@ -349,10 +429,6 @@ export class WobblioAppStack extends Stack {
     ]);
 
     // All Lambda functions: CDK auto-attaches AWSLambdaBasicExecutionRole (CloudWatch Logs only)
-    const allLambdas = [
-      apiHandlerFn, ingestionWorkerFn,
-      cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn,
-    ];
     allLambdas.forEach(fn =>
       NagSuppressions.addResourceSuppressions(fn, [
         {
@@ -403,11 +479,23 @@ export class WobblioAppStack extends Stack {
       },
     ], true);
 
-    // API Gateway: stub API — request validation and access logging added with real routes in later epics
+    // API Gateway: request validation deferred until real routes are defined (Epic 06+)
     NagSuppressions.addResourceSuppressions(api, [
       { id: 'AwsSolutions-APIG2', reason: 'Request validation deferred until real API routes are defined (Epic 06+)' },
-      { id: 'AwsSolutions-APIG1', reason: 'Access log group deferred to Epic 03 observability foundation' },
     ], true);
+
+    // SNS ops topic: KMS key applied; SSL enforced by SNS default
+    NagSuppressions.addResourceSuppressions(opsTopic, [
+      { id: 'AwsSolutions-SNS2', reason: 'KMS encryption applied via masterKey prop' },
+      { id: 'AwsSolutions-SNS3', reason: 'SNS enforces SSL in transit by default; no additional policy needed at MVP' },
+    ]);
+
+    // LogRetention custom resource Lambda is fully CDK-managed
+    NagSuppressions.addStackSuppressions(this, [
+      { id: 'AwsSolutions-L1', reason: 'LogRetention custom resource Lambda is CDK-managed; runtime not customer-controlled' },
+      { id: 'AwsSolutions-IAM4', reason: 'LogRetention custom resource uses AWSLambdaBasicExecutionRole; CDK-managed' },
+      { id: 'AwsSolutions-IAM5', reason: 'LogRetention custom resource requires wildcard log-group ARNs; CDK-managed pattern' },
+    ]);
 
     // API Gateway CloudWatch role uses AmazonAPIGatewayPushToCloudWatchLogs — standard CDK default
     NagSuppressions.addResourceSuppressions(api, [

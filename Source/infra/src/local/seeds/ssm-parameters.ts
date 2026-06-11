@@ -36,6 +36,8 @@ export async function seedSsmParameters(): Promise<void> {
     '/wobblio/config/routing/min_split_saving_eur': '5.00',
     '/wobblio/config/tags/dedicated_call_enabled': 'false',
     '/wobblio/config/tags/vocabulary': JSON.stringify(tagVocabulary),
+    '/wobblio/config/ai/daily_spend_cap': '0.10',
+    '/wobblio/config/ops/email': 'antonioreuter@gmail.com',
   };
 
   for (const [name, value] of Object.entries(params)) {
