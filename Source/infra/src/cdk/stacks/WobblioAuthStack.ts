@@ -5,6 +5,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import { NagSuppressions } from 'cdk-nag';
 import { EnvironmentConfig } from '../config/environment';
@@ -30,23 +31,40 @@ export class WobblioAuthStack extends Stack {
     // Stub only at this stage; business logic added in Epic 04.
     const backendRoot = path.join(__dirname, '../../../../backend');
 
-    const preSignUpHookFn = new NodejsFunction(this, 'PreSignUpHook', {
-      entry: path.join(backendRoot, 'src/handlers/pre-signup-hook/index.ts'),
-      handler: 'handler',
-      runtime: lambda.Runtime.NODEJS_22_X,
-      architecture: lambda.Architecture.ARM_64,
-      memorySize: 256,
-      timeout: Duration.seconds(5),
-      reservedConcurrentExecutions: 2,
-      projectRoot: backendRoot,
-      depsLockFilePath: path.join(backendRoot, 'package-lock.json'),
-      bundling: {
-        tsconfig: path.join(backendRoot, 'tsconfig.json'),
-        externalModules: ['@aws-sdk/*'],
-        minify: true,
-      },
-      environment: { STAGE: config.stage },
-    });
+    const dbHost      = ssm.StringParameter.valueForStringParameter(this, '/shared/db/endpoint');
+    const dbPort      = ssm.StringParameter.valueForStringParameter(this, '/shared/db/port');
+    const dbSecretArn = ssm.StringParameter.valueForStringParameter(this, '/shared/db/wobblio/secret-arn');
+
+    const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(this, 'DbSecret', dbSecretArn);
+
+    const cognitoHookEnv = {
+      STAGE:        config.stage,
+      DB_HOST:      dbHost,
+      DB_PORT:      dbPort,
+      DB_SECRET_ARN: dbSecretArn,
+    };
+
+    const makeCognitoHook = (id: string, handlerDir: string): NodejsFunction =>
+      new NodejsFunction(this, id, {
+        entry: path.join(backendRoot, `src/handlers/${handlerDir}/index.ts`),
+        handler: 'handler',
+        runtime: lambda.Runtime.NODEJS_22_X,
+        architecture: lambda.Architecture.ARM_64,
+        memorySize: 256,
+        timeout: Duration.seconds(5),
+        reservedConcurrentExecutions: 2,
+        projectRoot: backendRoot,
+        depsLockFilePath: path.join(backendRoot, 'package-lock.json'),
+        bundling: {
+          tsconfig: path.join(backendRoot, 'tsconfig.json'),
+          externalModules: ['@aws-sdk/*'],
+          minify: true,
+        },
+        environment: cognitoHookEnv,
+      });
+
+    const preSignUpHookFn       = makeCognitoHook('PreSignUpHook',       'pre-signup-hook');
+    const postConfirmationHookFn = makeCognitoHook('PostConfirmationHook', 'post-confirmation-hook');
 
     this.userPool = new cognito.UserPool(this, 'WobblioUserPool', {
       userPoolName: config.resourceName('user-pool'),
@@ -74,7 +92,7 @@ export class WobblioAuthStack extends Stack {
       mfaSecondFactor: { sms: false, otp: true },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       advancedSecurityMode: cognito.AdvancedSecurityMode.AUDIT,
-      lambdaTriggers: { preSignUp: preSignUpHookFn },
+      lambdaTriggers: { preSignUp: preSignUpHookFn, postConfirmation: postConfirmationHookFn },
       removalPolicy: config.stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     });
 
@@ -182,7 +200,21 @@ export class WobblioAuthStack extends Stack {
       },
     ]);
 
-    NagSuppressions.addResourceSuppressions(preSignUpHookFn, [
+    // ── IAM grants for Cognito hook Lambdas ──────────────────────────────────
+    const hookSsmPolicy = new iam.PolicyStatement({
+      actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/max_free_waitlist_cap`,
+      ],
+    });
+
+    [preSignUpHookFn, postConfirmationHookFn].forEach(fn => {
+      dbSecret.grantRead(fn);
+      fn.addToRolePolicy(hookSsmPolicy);
+    });
+
+    const hookNagSuppressions = [
       {
         id: 'AwsSolutions-L1',
         reason: 'Node 22 is current LTS; cdk-nag rule may flag it pending rule update',
@@ -192,7 +224,17 @@ export class WobblioAuthStack extends Stack {
         reason: 'AWSLambdaBasicExecutionRole is the minimal policy for Lambda CloudWatch Logs; acceptable for MVP',
         appliesTo: ['Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
       },
-    ], true);
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'SSM path wildcard is scoped to /shared/db/* and the specific waitlist cap parameter',
+        appliesTo: [
+          `Resource::arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
+        ],
+      },
+    ];
+
+    NagSuppressions.addResourceSuppressions(preSignUpHookFn, hookNagSuppressions, true);
+    NagSuppressions.addResourceSuppressions(postConfirmationHookFn, hookNagSuppressions, true);
 
     applyWobblioTags(this, config);
   }

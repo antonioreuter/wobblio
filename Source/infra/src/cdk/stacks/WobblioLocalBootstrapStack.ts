@@ -95,7 +95,12 @@ export class WobblioLocalBootstrapStack extends Stack {
       '/wobblio/config/tags/vocabulary': '[]',
     };
 
-    const allParams = { ...modelParams, ...quotaParams, ...routingParams, ...tagParams };
+    const observabilityParams: Record<string, string> = {
+      '/wobblio/config/ai/daily_spend_cap': '0.10',
+      '/wobblio/config/ops/email': 'antonioreuter@gmail.com',
+    };
+
+    const allParams = { ...modelParams, ...quotaParams, ...routingParams, ...tagParams, ...observabilityParams };
 
     for (const [name, value] of Object.entries(allParams)) {
       new ssm.StringParameter(this, `Param${name.replace(/\//g, '-').replace(/^-/, '')}`, {
