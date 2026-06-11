@@ -233,6 +233,7 @@ export class WobblioAppStack extends Stack {
     );
     dbSecret.grantRead(apiHandlerFn);
     dbSecret.grantRead(ingestionWorkerFn);
+    dbSecret.grantRead(cronWaitlistReleaseFn);
 
     // SSM: read shared DB connection parameters
     const ssmPolicy = new iam.PolicyStatement({
@@ -243,6 +244,24 @@ export class WobblioAppStack extends Stack {
     });
     [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
+
+    // SSM: waitlist cap — cron-waitlist-release and api-handler need this
+    const waitlistCapSsmPolicy = new iam.PolicyStatement({
+      actions: ['ssm:GetParameter'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/max_free_waitlist_cap`,
+      ],
+    });
+    [apiHandlerFn, cronWaitlistReleaseFn].forEach(fn => fn.addToRolePolicy(waitlistCapSsmPolicy));
+
+    // SES: cron-waitlist-release sends waitlist release notification emails
+    cronWaitlistReleaseFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+        resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`],
+      }),
+    );
+    cronWaitlistReleaseFn.addEnvironment('SES_FROM_ADDRESS', 'noreply@wobblio.nl');
 
     // Bedrock: ingestion worker calls foundation models (model IDs are runtime SSM values)
     ingestionWorkerFn.addToRolePolicy(
@@ -468,6 +487,15 @@ export class WobblioAppStack extends Stack {
         },
       ], true),
     );
+
+    // SES identity wildcard is scoped to wobblio.nl domain — required because CDK resolves the resource path dynamically
+    NagSuppressions.addResourceSuppressions(cronWaitlistReleaseFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'SES identity/* wildcard is scoped to this account and region; specific domain identity cannot be referenced before DNS verification',
+        appliesTo: [`Resource::arn:aws:ses:${this.region}:${this.account}:identity/*`],
+      },
+    ], true);
 
     // Bedrock: model IDs are runtime SSM values — wildcard scoped to foundation-model namespace
     NagSuppressions.addResourceSuppressions(ingestionWorkerFn, [
