@@ -2,6 +2,7 @@
 
 REPO_ROOT    := $(shell pwd)
 BACKEND_DIR  := $(REPO_ROOT)/Source/backend
+INFRA_DIR    := $(REPO_ROOT)/Source/infra
 COMPOSE_FILE := $(REPO_ROOT)/scripts/local-dev/docker-compose.yml
 DEPLOY_SCRIPT := $(REPO_ROOT)/scripts/local-dev/deploy-local.sh
 
@@ -38,13 +39,13 @@ deploy:
 
 ## seed: Re-run seed scripts only (services must be running)
 seed:
-	cd $(BACKEND_DIR) && \
+	cd $(INFRA_DIR) && \
 	  $(AWS_LOCAL_OPTS) DATABASE_URL=$(DATABASE_URL) \
-	  npx ts-node src/local/seed.ts
+	  npm run seed:local
 
 ## migrate: Run pending database migrations
 migrate:
-	cd $(BACKEND_DIR) && DATABASE_URL=$(DATABASE_URL) npm run migrate:up
+	cd $(INFRA_DIR) && DATABASE_URL=$(DATABASE_URL) npm run migrate:up
 
 ## logs: Tail all service logs (pass service= to filter, e.g. make logs service=localstack)
 logs:
@@ -60,7 +61,8 @@ validate:
 ## setup: One-time developer setup (symlink fix for hexagonal validator)
 setup:
 	@[ -L $(REPO_ROOT)/backend ] || ln -sfn Source/backend $(REPO_ROOT)/backend
-	@echo "Setup complete. 'backend' symlink points to Source/backend."
+	@[ -L $(REPO_ROOT)/infra ] || ln -sfn Source/infra $(REPO_ROOT)/infra
+	@echo "Setup complete. 'backend' → Source/backend, 'infra' → Source/infra."
 	@echo "Copy your env file: cp .env.local.template .env.local"
 
 ## help: Show available targets

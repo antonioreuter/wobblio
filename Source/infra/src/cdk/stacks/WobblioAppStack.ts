@@ -1,0 +1,437 @@
+import * as path from 'path';
+import { Stack, StackProps, Duration, RemovalPolicy } from 'aws-cdk-lib';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { SqsEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as apigw from 'aws-cdk-lib/aws-apigateway';
+import * as ses from 'aws-cdk-lib/aws-ses';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import { Construct } from 'constructs';
+import { NagSuppressions } from 'cdk-nag';
+import { EnvironmentConfig } from '../config/environment';
+import { WobblioDbStack } from './WobblioDbStack';
+import { WobblioAuthStack } from './WobblioAuthStack';
+import { applyWobblioTags } from '../utils/tagging';
+
+interface WobblioAppStackProps extends StackProps {
+  config: EnvironmentConfig;
+  dbStack: WobblioDbStack;
+  authStack: WobblioAuthStack;
+}
+
+export class WobblioAppStack extends Stack {
+  constructor(scope: Construct, id: string, props: WobblioAppStackProps) {
+    super(scope, id, props);
+
+    const { config, dbStack, authStack } = props;
+
+    // ── Shared DB connection env vars (resolved from SSM at deploy time) ─────
+    const dbHost      = ssm.StringParameter.valueForStringParameter(this, '/shared/db/endpoint');
+    const dbPort      = ssm.StringParameter.valueForStringParameter(this, '/shared/db/port');
+    const dbSecretArn = ssm.StringParameter.valueForStringParameter(this, '/shared/db/wobblio/secret-arn');
+
+    const commonLambdaEnv = {
+      STAGE:        config.stage,
+      DB_HOST:      dbHost,
+      DB_PORT:      dbPort,
+      DB_SECRET_ARN: dbSecretArn,
+      KMS_KEY_ARN:  dbStack.kmsKey.keyArn,
+    };
+
+    // ── S3 Buckets ────────────────────────────────────────────────────────────
+
+    // Access logs bucket (all other buckets log here)
+    const accessLogsBucket = new s3.Bucket(this, 'AccessLogsBucket', {
+      bucketName: config.resourceName('access-logs'),
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    const uploadsBucket = new s3.Bucket(this, 'UploadsBucket', {
+      bucketName: config.resourceName('uploads'),
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.KMS,
+      encryptionKey: dbStack.kmsKey,
+      enforceSSL: true,
+      serverAccessLogsBucket: accessLogsBucket,
+      serverAccessLogsPrefix: 'uploads/',
+      removalPolicy: config.stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+      cors: [
+        {
+          allowedMethods: [s3.HttpMethods.PUT],
+          allowedOrigins: config.stage === 'prod'
+            ? ['https://app.wobblio.nl']
+            : ['https://app.dev.wobblio.nl', 'http://localhost:3000'],
+          allowedHeaders: ['*'],
+          maxAge: 300,
+        },
+      ],
+      lifecycleRules: [
+        {
+          id: 'gdpr-18-month-delete',
+          expiration: Duration.days(548),
+          enabled: true,
+        },
+      ],
+    });
+
+    const exportsBucket = new s3.Bucket(this, 'ExportsBucket', {
+      bucketName: config.resourceName('exports'),
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.KMS,
+      encryptionKey: dbStack.kmsKey,
+      enforceSSL: true,
+      serverAccessLogsBucket: accessLogsBucket,
+      serverAccessLogsPrefix: 'exports/',
+      removalPolicy: RemovalPolicy.DESTROY,
+      lifecycleRules: [
+        {
+          id: 'gdpr-export-7-day-delete',
+          expiration: Duration.days(7),
+          enabled: true,
+        },
+      ],
+    });
+
+    const billingArchiveBucket = new s3.Bucket(this, 'BillingArchiveBucket', {
+      bucketName: config.resourceName('billing-archive'),
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.KMS,
+      encryptionKey: dbStack.kmsKey,
+      enforceSSL: true,
+      serverAccessLogsBucket: accessLogsBucket,
+      serverAccessLogsPrefix: 'billing-archive/',
+      removalPolicy: RemovalPolicy.RETAIN,
+      lifecycleRules: [
+        {
+          id: 'stripe-7-year-retention',
+          transitions: [
+            {
+              transitionAfter: Duration.days(90),
+              storageClass: s3.StorageClass.GLACIER_INSTANT_RETRIEVAL,
+            },
+          ],
+          expiration: Duration.days(2555),
+          enabled: true,
+        },
+      ],
+    });
+
+    const analyticsBucket = new s3.Bucket(this, 'AnalyticsBucket', {
+      bucketName: config.resourceName('analytics'),
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.KMS,
+      encryptionKey: dbStack.kmsKey,
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
+    // ── SQS Queues ────────────────────────────────────────────────────────────
+    const ingestionDlq = new sqs.Queue(this, 'IngestionDlq', {
+      queueName: config.resourceName('ingestion-dlq'),
+      retentionPeriod: Duration.days(14),
+      encryption: sqs.QueueEncryption.KMS,
+      encryptionMasterKey: dbStack.kmsKey,
+      enforceSSL: true,
+    });
+
+    const ingestionQueue = new sqs.Queue(this, 'IngestionQueue', {
+      queueName: config.resourceName('ingestion'),
+      visibilityTimeout: Duration.seconds(30),
+      encryption: sqs.QueueEncryption.KMS,
+      encryptionMasterKey: dbStack.kmsKey,
+      enforceSSL: true,
+      deadLetterQueue: {
+        queue: ingestionDlq,
+        maxReceiveCount: 3,
+      },
+    });
+
+    // ── Lambda stubs ──────────────────────────────────────────────────────────
+    // Lambdas run outside VPC — shared-infra DB SG allows off-VPC access (interim MVP posture).
+    // VPC placement + custom SG is the target posture and will be added when traffic warrants it.
+
+    const backendRoot = path.join(__dirname, '../../../../backend');
+
+    const makeLambda = (
+      handlerDir: string,
+      concurrency: number,
+      extraEnv: Record<string, string> = {},
+    ): NodejsFunction =>
+      new NodejsFunction(this, handlerDir, {
+        entry: path.join(backendRoot, `src/handlers/${handlerDir}/index.ts`),
+        handler: 'handler',
+        runtime: lambda.Runtime.NODEJS_22_X,
+        architecture: lambda.Architecture.ARM_64,
+        memorySize: 512,
+        timeout: Duration.seconds(30),
+        reservedConcurrentExecutions: concurrency,
+        projectRoot: backendRoot,
+        depsLockFilePath: path.join(backendRoot, 'package-lock.json'),
+        bundling: {
+          tsconfig: path.join(backendRoot, 'tsconfig.json'),
+          externalModules: ['@aws-sdk/*'],
+          minify: true,
+        },
+        environment: { ...commonLambdaEnv, ...extraEnv },
+      });
+
+    const apiHandlerFn = makeLambda('api-handler', 25, {
+      UPLOADS_BUCKET:  uploadsBucket.bucketName,
+      EXPORTS_BUCKET:  exportsBucket.bucketName,
+      INGEST_QUEUE_URL: ingestionQueue.queueUrl,
+    });
+
+    const ingestionWorkerFn = makeLambda('ingestion-worker', 5, {
+      UPLOADS_BUCKET: uploadsBucket.bucketName,
+    });
+
+    const cronBudgetResetFn    = makeLambda('cron-budget-reset', 2, { ANALYTICS_BUCKET: analyticsBucket.bucketName });
+    const cronFxRateFetchFn    = makeLambda('cron-fx-rate-fetch', 2);
+    const cronWaitlistReleaseFn = makeLambda('cron-waitlist-release', 2);
+
+    // ── SQS event source on ingestion worker ─────────────────────────────────
+    ingestionWorkerFn.addEventSource(
+      new SqsEventSource(ingestionQueue, {
+        batchSize: 1,
+        maxConcurrency: 5,
+        reportBatchItemFailures: true,
+      }),
+    );
+
+    // ── IAM grants (least-privilege) ──────────────────────────────────────────
+    uploadsBucket.grantPut(apiHandlerFn);
+    uploadsBucket.grantRead(ingestionWorkerFn);
+    exportsBucket.grantReadWrite(apiHandlerFn);
+    billingArchiveBucket.grantWrite(apiHandlerFn);
+    analyticsBucket.grantWrite(cronBudgetResetFn);
+
+    ingestionQueue.grantSendMessages(apiHandlerFn);
+    ingestionQueue.grantConsumeMessages(ingestionWorkerFn);
+
+    dbStack.kmsKey.grantEncryptDecrypt(apiHandlerFn);
+    dbStack.kmsKey.grantEncryptDecrypt(ingestionWorkerFn);
+
+    // Secrets Manager: read app DB credentials
+    const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(
+      this,
+      'DbSecret',
+      dbSecretArn,
+    );
+    dbSecret.grantRead(apiHandlerFn);
+    dbSecret.grantRead(ingestionWorkerFn);
+
+    // SSM: read shared DB connection parameters
+    const ssmPolicy = new iam.PolicyStatement({
+      actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
+      ],
+    });
+    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn]
+      .forEach(fn => fn.addToRolePolicy(ssmPolicy));
+
+    // Bedrock: ingestion worker calls foundation models (model IDs are runtime SSM values)
+    ingestionWorkerFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+        resources: [`arn:aws:bedrock:${this.region}::foundation-model/*`],
+      }),
+    );
+
+    // ── API Gateway ───────────────────────────────────────────────────────────
+    const authorizer = new apigw.CognitoUserPoolsAuthorizer(this, 'JwtAuthorizer', {
+      cognitoUserPools: [authStack.userPool],
+      authorizerName: 'cognito-jwt',
+      identitySource: 'method.request.header.Authorization',
+    });
+
+    const api = new apigw.RestApi(this, 'WobblioApi', {
+      restApiName: config.resourceName('api'),
+      defaultMethodOptions: {
+        authorizer,
+        authorizationType: apigw.AuthorizationType.COGNITO,
+      },
+      deployOptions: {
+        stageName: config.stage,
+        throttlingBurstLimit: 50,
+        throttlingRateLimit: 20,
+        loggingLevel: apigw.MethodLoggingLevel.ERROR,
+        tracingEnabled: true,
+        metricsEnabled: true,
+      },
+      defaultCorsPreflightOptions: {
+        allowOrigins: apigw.Cors.ALL_ORIGINS,
+        allowMethods: apigw.Cors.ALL_METHODS,
+        allowHeaders: ['Authorization', 'Content-Type'],
+      },
+    });
+
+    // Stub proxy route — real routes added in later epics
+    const proxyResource = api.root.addProxy({
+      defaultIntegration: new apigw.LambdaIntegration(apiHandlerFn),
+      anyMethod: true,
+    });
+
+    // ── SNS Platform Applications ─────────────────────────────────────────────
+    // SNS mobile push platform applications (FCM, APNs) cannot be created via
+    // CloudFormation. Create them once via AWS CLI after credentials are in SSM:
+    //
+    // FCM:
+    //   aws sns create-platform-application \
+    //     --name wobblio-fcm-{stage} --platform GCM \
+    //     --attributes PlatformCredential=$(aws ssm get-parameter \
+    //       --name /wobblio/config/fcm/server_key --query Parameter.Value --output text)
+    //
+    // APNs (sandbox for dev, APNS for prod):
+    //   aws sns create-platform-application \
+    //     --name wobblio-apns-{stage} --platform APNS_SANDBOX \
+    //     --attributes PlatformCredential=<pem>,PlatformPrincipal=<cert>
+    //
+    // Store the returned PlatformApplicationArn in SSM for Lambda use.
+
+    // ── SES Domain Identity ───────────────────────────────────────────────────
+    new ses.EmailIdentity(this, 'SesIdentity', {
+      identity: ses.Identity.domain('wobblio.nl'),
+      dkimSigning: true,
+    });
+
+    // ── EventBridge Cron Rules ────────────────────────────────────────────────
+    // Disabled in non-prod to avoid accidental runs against shared DB
+    const makeCron = (
+      id: string,
+      schedule: events.Schedule,
+      fn: lambda.Function,
+    ) =>
+      new events.Rule(this, id, {
+        schedule,
+        targets: [new targets.LambdaFunction(fn)],
+        enabled: config.stage === 'prod',
+      });
+
+    makeCron(
+      'BudgetResetCron',
+      events.Schedule.cron({ minute: '0', hour: '0', weekDay: 'MON' }),
+      cronBudgetResetFn,
+    );
+
+    makeCron(
+      'FxRateFetchCron',
+      events.Schedule.cron({ minute: '5', hour: '6' }),
+      cronFxRateFetchFn,
+    );
+
+    makeCron(
+      'WaitlistReleaseCron',
+      events.Schedule.cron({ minute: '0', hour: '8', weekDay: 'MON' }),
+      cronWaitlistReleaseFn,
+    );
+
+    // ── cdk-nag suppressions ──────────────────────────────────────────────────
+
+    // Access logs bucket cannot log to itself
+    NagSuppressions.addResourceSuppressions(
+      accessLogsBucket,
+      [{ id: 'AwsSolutions-S1', reason: 'This is the access logs bucket itself' }],
+    );
+
+    // Analytics bucket: internal KPI Parquet data; access logging deferred to Epic 15
+    NagSuppressions.addResourceSuppressions(analyticsBucket, [
+      { id: 'AwsSolutions-S1', reason: 'Analytics bucket logs internal KPI data; access logging added in Epic 15 observability' },
+    ]);
+
+    // All Lambda functions: CDK auto-attaches AWSLambdaBasicExecutionRole (CloudWatch Logs only)
+    const allLambdas = [
+      apiHandlerFn, ingestionWorkerFn,
+      cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn,
+    ];
+    allLambdas.forEach(fn =>
+      NagSuppressions.addResourceSuppressions(fn, [
+        {
+          id: 'AwsSolutions-L1',
+          reason: 'Node 22 is current LTS; cdk-nag rule may flag it pending rule update',
+        },
+        {
+          id: 'AwsSolutions-IAM4',
+          reason: 'AWSLambdaBasicExecutionRole is the minimal policy required for Lambda CloudWatch Logs; acceptable for MVP',
+          appliesTo: ['Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
+        },
+      ], true),
+    );
+
+    // CDK standard S3 grant methods generate wildcard sub-actions (GetObject*, List*, etc.)
+    // These are scoped to specific bucket ARNs — acceptable pattern
+    allLambdas.forEach(fn =>
+      NagSuppressions.addResourceSuppressions(fn, [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'CDK grant* methods generate standard S3/KMS sub-action wildcards scoped to specific resource ARNs',
+          appliesTo: [
+            'Action::s3:GetObject*',
+            'Action::s3:GetBucket*',
+            'Action::s3:List*',
+            'Action::s3:DeleteObject*',
+            'Action::s3:Abort*',
+            'Action::kms:GenerateDataKey*',
+            'Action::kms:ReEncrypt*',
+            `Resource::<UploadsBucket5E5E9B64.Arn>/*`,
+            `Resource::<ExportsBucket5A12738B.Arn>/*`,
+            `Resource::<BillingArchiveBucketC942022F.Arn>/*`,
+            `Resource::<AnalyticsBucket39EAAEEA.Arn>/*`,
+            // SSM path wildcard needed to read multiple /shared/db/* parameters
+            `Resource::arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
+          ],
+        },
+      ], true),
+    );
+
+    // Bedrock: model IDs are runtime SSM values — wildcard scoped to foundation-model namespace
+    NagSuppressions.addResourceSuppressions(ingestionWorkerFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'Bedrock foundation-model/* wildcard: model IDs are runtime SSM values and cannot be enumerated at synth time',
+        // cdk-nag uses the resolved region string in the finding path
+        appliesTo: [`Resource::arn:aws:bedrock:${this.region}::foundation-model/*`],
+      },
+    ], true);
+
+    // API Gateway: stub API — request validation and access logging added with real routes in later epics
+    NagSuppressions.addResourceSuppressions(api, [
+      { id: 'AwsSolutions-APIG2', reason: 'Request validation deferred until real API routes are defined (Epic 06+)' },
+      { id: 'AwsSolutions-APIG1', reason: 'Access log group deferred to Epic 03 observability foundation' },
+    ], true);
+
+    // API Gateway CloudWatch role uses AmazonAPIGatewayPushToCloudWatchLogs — standard CDK default
+    NagSuppressions.addResourceSuppressions(api, [
+      {
+        id: 'AwsSolutions-IAM4',
+        reason: 'AmazonAPIGatewayPushToCloudWatchLogs is the standard CDK-managed policy for APIGW log delivery',
+        appliesTo: ['Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs'],
+      },
+    ], true);
+
+    NagSuppressions.addStackSuppressions(this, [
+      {
+        id: 'AwsSolutions-APIG4',
+        reason: 'CORS preflight OPTIONS methods must be unauthenticated by design',
+      },
+      {
+        id: 'AwsSolutions-APIG3',
+        reason: 'WAF integration deferred to Epic 12 security controls',
+      },
+    ]);
+
+    applyWobblioTags(this, config);
+
+    // Suppress unused variable warnings — proxyResource is a side-effect construct
+    void proxyResource;
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "name": "wobblio-infra",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Wobblio CDK stacks, database migrations, and local seeds",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc",
+    "cdk:synth": "cdk synth",
+    "cdk:diff": "cdk diff",
+    "cdk:deploy:local": "AWS_ENDPOINT_URL=http://localhost:4566 cdklocal deploy --require-approval never",
+    "migrate:up": "node-pg-migrate up -m src/migrations --ts-node",
+    "migrate:down": "node-pg-migrate down -m src/migrations --ts-node",
+    "migrate:create": "node-pg-migrate create -m src/migrations --ts",
+    "seed:local": "ts-node src/local/seed.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.600.0",
+    "@aws-sdk/client-secrets-manager": "^3.600.0",
+    "@aws-sdk/client-sqs": "^3.600.0",
+    "@aws-sdk/client-ssm": "^3.600.0",
+    "aws-cdk-lib": "^2.150.0",
+    "aws-cdk-local": "^3.0.4",
+    "cdk-nag": "^2.28.0",
+    "constructs": "^10.3.0",
+    "node-pg-migrate": "^7.7.0",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "aws-cdk": "^2.150.0",
+    "esbuild": "^0.23.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0"
+  }
+}

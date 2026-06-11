@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BACKEND_DIR="$REPO_ROOT/Source/backend"
+INFRA_DIR="$REPO_ROOT/Source/infra"
 ENV_FILE="$REPO_ROOT/.env.local"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,22 +60,25 @@ wait_for_http "http://localhost:4577/health" "Bedrock mock"
 ok "All services healthy"
 echo ""
 
-# ── Step 1: Install backend dependencies ─────────────────────────────────────
+# ── Step 1: Install dependencies ─────────────────────────────────────────────
 
-bold "Step 1: Backend dependencies"
-cd "$BACKEND_DIR"
-if [[ ! -d node_modules ]]; then
-  info "Running npm install..."
-  npm install --silent
-  ok "Dependencies installed"
-else
-  ok "node_modules already present"
-fi
+bold "Step 1: Dependencies"
+for dir in "$BACKEND_DIR" "$INFRA_DIR"; do
+  cd "$dir"
+  if [[ ! -d node_modules ]]; then
+    info "Running npm install in $(basename $dir)..."
+    npm install --silent
+    ok "$(basename $dir) dependencies installed"
+  else
+    ok "$(basename $dir) node_modules already present"
+  fi
+done
 echo ""
 
 # ── Step 2: CDK bootstrap ─────────────────────────────────────────────────────
 
 bold "Step 2: CDK bootstrap (LocalStack)"
+cd "$INFRA_DIR"
 AWS_ENDPOINT_URL=http://localhost:4566 \
   AWS_ENDPOINT_URL_S3=http://localhost:4566 \
   AWS_ACCESS_KEY_ID=test \
@@ -90,6 +94,7 @@ echo ""
 # ── Step 3: CDK synth ─────────────────────────────────────────────────────────
 
 bold "Step 3: CDK synth (cdk-nag gate)"
+cd "$INFRA_DIR"
 STAGE=local npm run cdk:synth -- --quiet 2>&1 | tail -5
 ok "CDK synth passed"
 echo ""
@@ -97,6 +102,7 @@ echo ""
 # ── Step 4: Deploy WobblioLocalBootstrapStack ─────────────────────────────────
 
 bold "Step 4: Deploy WobblioLocalBootstrapStack"
+cd "$INFRA_DIR"
 AWS_ENDPOINT_URL=http://localhost:4566 \
   AWS_ENDPOINT_URL_S3=http://localhost:4566 \
   AWS_ACCESS_KEY_ID=test \
@@ -113,6 +119,7 @@ echo ""
 # ── Step 5: Database migrations ───────────────────────────────────────────────
 
 bold "Step 5: Database migrations"
+cd "$INFRA_DIR"
 if ls src/migrations/*.ts 2>/dev/null | grep -qv config.ts; then
   DATABASE_URL="${DATABASE_URL}" npm run migrate:up
   ok "Migrations applied"
@@ -124,13 +131,14 @@ echo ""
 # ── Step 6: Seed data (SSM parameters + PostgreSQL) ──────────────────────────
 
 bold "Step 6: Seed data"
+cd "$INFRA_DIR"
 AWS_ENDPOINT_URL=http://localhost:4566 \
   AWS_ENDPOINT_URL_S3=http://localhost:4566 \
   AWS_ACCESS_KEY_ID=test \
   AWS_SECRET_ACCESS_KEY=test \
   AWS_REGION="${AWS_REGION:-eu-west-1}" \
   DATABASE_URL="${DATABASE_URL}" \
-  npx ts-node src/local/seed.ts
+  npm run seed:local
 ok "Seed complete"
 echo ""
 

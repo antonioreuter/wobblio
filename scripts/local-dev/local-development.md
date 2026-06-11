@@ -99,12 +99,19 @@ After `./deploy-local.sh` runs:
 - 11 NL launch-market merchant aliases (Albert Heijn, Jumbo, Lidl, Aldi, Plus, Dirk, Kruidvat, Etos, Trekpleister, HEMA, Action)
 - 14 top-level product categories + 10 Groceries sub-categories
 
-**LocalStack resources** (via CDK `WobblioLocalBootstrapStack`):
+**LocalStack resources** (via CDK `WobblioLocalBootstrapStack` in `Source/infra/`):
 - S3 buckets: `wobblio-uploads-local`, `wobblio-exports-local`, `wobblio-billing-archive-local`, `wobblio-analytics-local`
 - SQS queues: `wobblio-ingestion-local` (with DLQ)
 - SSM parameter stubs, Secrets Manager secrets
 
 ---
+
+## Repository layout for local dev
+
+| Directory | Purpose |
+|---|---|
+| `Source/backend/` | Lambda handlers, core business logic, infrastructure adapters |
+| `Source/infra/` | CDK stacks, database migrations, local seed scripts |
 
 ## Running Tests
 
@@ -166,15 +173,15 @@ make reset
 
 **`cdklocal: command not found`**
 
-Install it via the backend project:
+Install it via the infra project:
 ```bash
-cd Source/backend && npm install
+cd Source/infra && npm install
 ```
 Then retry `./deploy-local.sh`. The script also falls back to `npx cdklocal` automatically.
 
 **CDK synth fails with cdk-nag errors**
 
-The `WobblioLocalBootstrapStack` has `NagSuppressions` for all rules that don't apply to LocalStack. If you see a new unhandled nag rule, add a suppression in `Source/backend/src/cdk/stacks/WobblioLocalBootstrapStack.ts` with the reason `'Local development only'`.
+The `WobblioLocalBootstrapStack` has `NagSuppressions` for all rules that don't apply to LocalStack. If you see a new unhandled nag rule, add a suppression in `Source/infra/src/cdk/stacks/WobblioLocalBootstrapStack.ts` with the reason `'Local development only'`.
 
 **Bedrock mock returns unexpected responses**
 
