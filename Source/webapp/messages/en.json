@@ -1,0 +1,13 @@
+{
+  "hero": {
+    "headline": "Scan your receipts. Outsmart inflation.",
+    "subline": "Wobblio reads any receipt with AI — automatic expense tracking, real local price comparison, and shopping lists that know the cheapest store. No bank access. Ever.",
+    "ctaStart": "Start free",
+    "ctaSignIn": "Sign in",
+    "ctaWaitlist": "Join the priority waitlist",
+    "waitlistSocialProof": "2,140 people ahead of you — or skip the line with Premium"
+  },
+  "nav": {
+    "siteName": "Wobblio"
+  }
+}
