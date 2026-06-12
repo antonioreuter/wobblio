@@ -9,8 +9,15 @@ export interface AppUser {
   status: UserStatus;
 }
 
+export interface UserProfile {
+  fullName: string;
+  country: string;
+  language: string;
+  currency: string;
+}
+
 export interface IAppUserRepository {
   findByCognitoSub(cognitoSub: string): Promise<AppUser | null>;
-  insertUser(cognitoSub: string, email: string, status: UserStatus): Promise<string>;
+  insertUser(cognitoSub: string, email: string, status: UserStatus, profile?: UserProfile): Promise<string>;
   promoteToPremium(userId: string, stripeCustomerId: string): Promise<void>;
 }

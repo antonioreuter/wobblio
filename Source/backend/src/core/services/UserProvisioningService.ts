@@ -1,4 +1,4 @@
-import type { IAppUserRepository, UserStatus } from '../ports/IAppUserRepository';
+import type { IAppUserRepository, UserStatus, UserProfile } from '../ports/IAppUserRepository';
 import type { IFreeUserCounter } from '../ports/IFreeUserCounter';
 import type { IWaitlistCapProvider } from '../ports/IWaitlistCapProvider';
 
@@ -9,11 +9,15 @@ export class UserProvisioningService {
     private readonly capProvider: IWaitlistCapProvider,
   ) {}
 
-  async provisionUser(cognitoSub: string, email: string): Promise<{ status: UserStatus }> {
+  async provisionUser(
+    cognitoSub: string,
+    email: string,
+    profile?: UserProfile,
+  ): Promise<{ status: UserStatus }> {
     const cap = await this.capProvider.getMaxFreeUsersCap();
     const slotClaimed = await this.counter.tryClaimSlot(cap);
     const status: UserStatus = slotClaimed ? 'ACTIVE' : 'WAITLIST';
-    await this.userRepo.insertUser(cognitoSub, email, status);
+    await this.userRepo.insertUser(cognitoSub, email, status, profile);
     return { status };
   }
 }

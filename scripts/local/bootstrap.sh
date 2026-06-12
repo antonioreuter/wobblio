@@ -79,7 +79,8 @@ ok "Docker running"
 # Keep .env.local in sync with config/local.env for tooling that expects it
 if [[ ! -f "$ENV_FILE" ]] || ! diff -q "$CONFIG_FILE" "$ENV_FILE" > /dev/null 2>&1; then
   cp "$CONFIG_FILE" "$ENV_FILE"
-  ok ".env.local synced from config/local.env"
+  cp "$CONFIG_FILE" "$REPO_ROOT/Source/webapp/.env.local"
+  ok ".env.local synced from config/local.env (root + Source/webapp)"
 fi
 
 
@@ -93,6 +94,15 @@ if [[ $SKIP_DOCKER -eq 0 ]]; then
   ok "Postgres healthy (localhost:5432)"
 else
   info "Skipping Phase 1: Docker Services"
+fi
+
+
+# ── Phase 1b: cognito-local Init ──────────────────────────────────────────────
+if [[ $SKIP_DOCKER -eq 0 ]]; then
+  step "Phase 1b: cognito-local — user pool + client + test user"
+  bash "$SCRIPT_DIR/init-cognito.sh"
+else
+  info "Skipping Phase 1b: cognito-local Init (--skip-docker)"
 fi
 
 

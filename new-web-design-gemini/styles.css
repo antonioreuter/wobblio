@@ -327,19 +327,14 @@ p {
 .brand-icon-wrap {
   width: 38px;
   height: 38px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--brand) 0%, var(--success) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px var(--brand-glow);
 }
 
 .brand-icon-wrap svg {
-  stroke: #ffffff;
-  width: 22px;
-  height: 22px;
-  stroke-width: 2;
+  width: 100%;
+  height: 100%;
 }
 
 .brand-text {
@@ -1064,15 +1059,9 @@ p {
 .rail-logo {
   width: 44px;
   height: 44px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--brand) 0%, var(--success) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 20px;
   margin-bottom: 20px;
   text-decoration: none;
 }

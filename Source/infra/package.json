@@ -27,9 +27,11 @@
     "@aws-sdk/client-secrets-manager": "^3.600.0",
     "@aws-sdk/client-sqs": "^3.600.0",
     "@aws-sdk/client-ssm": "^3.600.0",
+    "@opennextjs/aws": "^4.0.3",
     "aws-cdk-lib": "^2.150.0",
     "aws-cdk-local": "^3.0.4",
     "cdk-nag": "^2.28.0",
+    "cdk-nextjs-standalone": "^4.3.3",
     "constructs": "^10.3.0",
     "node-pg-migrate": "^7.7.0",
     "pg": "^8.12.0"

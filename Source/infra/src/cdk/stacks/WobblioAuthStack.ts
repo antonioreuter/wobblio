@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { Stack, StackProps, RemovalPolicy, Duration } from 'aws-cdk-lib';
+import { Stack, StackProps, RemovalPolicy, Duration, CfnOutput, SecretValue } from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -72,14 +72,18 @@ export class WobblioAuthStack extends Stack {
       signInAliases: { email: true },
       autoVerify: { email: true },
       standardAttributes: {
-        email: { required: true, mutable: false },
-        givenName: { required: true, mutable: true },
-        familyName: { required: true, mutable: true },
+        email:      { required: true,  mutable: false },
+        givenName:  { required: false, mutable: true },
+        familyName: { required: false, mutable: true },
       },
       customAttributes: {
         role:              new cognito.StringAttribute({ mutable: true }),
         status:            new cognito.StringAttribute({ mutable: true }),
         waitlist_position: new cognito.NumberAttribute({ mutable: true }),
+        full_name:         new cognito.StringAttribute({ mutable: true }),
+        country:           new cognito.StringAttribute({ mutable: true }),
+        language:          new cognito.StringAttribute({ mutable: true }),
+        currency:          new cognito.StringAttribute({ mutable: true }),
       },
       passwordPolicy: {
         minLength: 12,
@@ -103,8 +107,8 @@ export class WobblioAuthStack extends Stack {
 
     const callbackUrl =
       config.stage === 'prod'
-        ? 'https://app.wobblio.com/auth/callback'
-        : `https://app.${config.stage}.wobblio.com/auth/callback`;
+        ? 'https://app.wobblio.com/api/auth/callback/cognito'
+        : `https://app.${config.stage}.wobblio.com/api/auth/callback/cognito`;
 
     this.userPoolClientMobile = this.userPool.addClient('MobileClient', {
       userPoolClientName: config.resourceName('mobile-client'),
@@ -134,7 +138,7 @@ export class WobblioAuthStack extends Stack {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
         callbackUrls: [callbackUrl],
-        logoutUrls: [callbackUrl.replace('/callback', '/logout')],
+        logoutUrls: [callbackUrl.replace('/api/auth/callback/cognito', '/api/auth/signout')],
       },
       accessTokenValidity: Duration.hours(1),
       refreshTokenValidity: Duration.days(30),
@@ -189,5 +193,19 @@ export class WobblioAuthStack extends Stack {
     NagSuppressions.addResourceSuppressions(postConfirmationHookFn, hookNagSuppressions, true);
 
     applyWobblioTags(this, config);
+
+    // ── CI/CD outputs — consumed by Next.js build env vars ───────────────────
+    new CfnOutput(this, 'UserPoolId', {
+      value: this.userPool.userPoolId,
+      exportName: config.resourceName('user-pool-id'),
+    });
+    new CfnOutput(this, 'WebClientId', {
+      value: this.userPoolClientWeb.userPoolClientId,
+      exportName: config.resourceName('web-client-id'),
+    });
+    new CfnOutput(this, 'UserPoolIssuer', {
+      value: `https://cognito-idp.${this.region}.amazonaws.com/${this.userPool.userPoolId}`,
+      exportName: config.resourceName('user-pool-issuer'),
+    });
   }
 }

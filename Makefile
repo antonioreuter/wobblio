@@ -1,4 +1,4 @@
-.PHONY: setup bootstrap deploy restart stop migrate validate help
+.PHONY: setup bootstrap deploy restart stop migrate cognito-init validate help
 
 REPO_ROOT         := $(shell pwd)
 BACKEND_DIR       := $(REPO_ROOT)/Source/backend
@@ -19,7 +19,8 @@ setup:
 	@[ -L $(REPO_ROOT)/backend ] || ln -sfn Source/backend $(REPO_ROOT)/backend
 	@[ -L $(REPO_ROOT)/infra ]   || ln -sfn Source/infra   $(REPO_ROOT)/infra
 	@cp config/local.env .env.local
-	@echo "  .env.local synced from config/local.env"
+	@cp config/local.env Source/webapp/.env.local
+	@echo "  .env.local synced from config/local.env (root + Source/webapp)"
 	@echo "  Setup complete. Symlinks: backend → Source/backend, infra → Source/infra"
 
 ## bootstrap: One-time full local environment bootstrap (Docker + LocalStack + DB extensions + migrations + seed)
@@ -39,6 +40,10 @@ restart:
 stop:
 	@docker compose -f scripts/local/docker-compose.yml stop
 	@echo "Docker services stopped"
+
+## cognito-init: Initialize cognito-local user pool, client, and seed test user (dev@wobblio.local)
+cognito-init:
+	@bash scripts/local/init-cognito.sh
 
 ## migrate: Run pending database migrations against local Postgres
 migrate:

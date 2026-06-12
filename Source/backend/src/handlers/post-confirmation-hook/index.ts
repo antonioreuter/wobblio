@@ -15,8 +15,9 @@ export const handler = async (
   const log = createLambdaLogger('post-confirmation-hook', context.awsRequestId);
 
   try {
-    const cognitoSub = event.request.userAttributes.sub;
-    const email = event.request.userAttributes.email;
+    const attrs = event.request.userAttributes;
+    const cognitoSub = attrs.sub;
+    const email = attrs.email;
 
     if (!cognitoSub || !email) {
       log.warn('post-confirmation missing required attributes', { cognitoSub, hasEmail: !!email });
@@ -35,7 +36,14 @@ export const handler = async (
       new SsmWaitlistCapAdapter(REGION),
     );
 
-    const { status } = await service.provisionUser(cognitoSub, email);
+    const profile = {
+      fullName: attrs['custom:full_name'] ?? '',
+      country:  attrs['custom:country']   ?? 'NL',
+      language: attrs['custom:language']  ?? 'nl',
+      currency: attrs['custom:currency']  ?? 'EUR',
+    };
+
+    const { status } = await service.provisionUser(cognitoSub, email, profile);
     log.info('user provisioned', { cognitoSub, status });
   } catch (err) {
     // Log but never throw — throwing here prevents account confirmation

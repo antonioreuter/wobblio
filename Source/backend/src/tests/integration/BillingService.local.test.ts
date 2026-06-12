@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
-import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, CreateBucketCommand, DeleteObjectsCommand, DeleteBucketCommand } from '@aws-sdk/client-s3';
 import { BillingService } from '@core/services/BillingService';
 import { MockBillingGatewayAdapter } from '@infrastructure/adapters/MockBillingGatewayAdapter';
 import { SsmBillingWhitelistAdapter } from '@infrastructure/adapters/SsmBillingWhitelistAdapter';
@@ -19,7 +19,7 @@ describe('BillingService — LocalStack end-to-end', () => {
   let pool: Pool;
   let s3: S3Client;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     pool = new Pool({
       host: 'localhost',
       port: 5432,
@@ -29,9 +29,20 @@ describe('BillingService — LocalStack end-to-end', () => {
       max: 2,
     });
     s3 = new S3Client({ region: REGION, forcePathStyle: !!process.env.AWS_ENDPOINT_URL });
+    await s3.send(new CreateBucketCommand({ Bucket: ARCHIVE_BUCKET })).catch((e: { name?: string }) => {
+      if (e.name !== 'BucketAlreadyOwnedByYou' && e.name !== 'BucketAlreadyExists') throw e;
+    });
   });
 
   afterAll(async () => {
+    const listed = await s3.send(new ListObjectsV2Command({ Bucket: ARCHIVE_BUCKET }));
+    if (listed.Contents?.length) {
+      await s3.send(new DeleteObjectsCommand({
+        Bucket: ARCHIVE_BUCKET,
+        Delete: { Objects: listed.Contents.map(o => ({ Key: o.Key! })) },
+      }));
+    }
+    await s3.send(new DeleteBucketCommand({ Bucket: ARCHIVE_BUCKET }));
     await pool.end();
   });
 

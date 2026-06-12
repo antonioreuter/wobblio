@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import type { IAppUserRepository, AppUser, UserStatus } from '@core/ports/IAppUserRepository';
+import type { IAppUserRepository, AppUser, UserStatus, UserProfile } from '@core/ports/IAppUserRepository';
 import { UserNotFoundError } from '@core/domain/errors';
 
 interface DbUserRow {
@@ -29,10 +29,23 @@ export class AppUserRepositoryAdapter implements IAppUserRepository {
     };
   }
 
-  async insertUser(cognitoSub: string, email: string, status: UserStatus): Promise<string> {
+  async insertUser(
+    cognitoSub: string,
+    email: string,
+    status: UserStatus,
+    profile?: UserProfile,
+  ): Promise<string> {
     const result = await this.pool.query<{ provision_new_user: string }>(
-      'SELECT provision_new_user($1, $2, $3)',
-      [cognitoSub, email, status],
+      'SELECT provision_new_user($1, $2, $3, $4, $5, $6, $7)',
+      [
+        cognitoSub,
+        email,
+        status,
+        profile?.fullName ?? '',
+        profile?.country ?? 'NL',
+        profile?.language ?? 'nl',
+        profile?.currency ?? 'EUR',
+      ],
     );
     const id = result.rows[0]?.provision_new_user;
     if (!id) throw new UserNotFoundError(cognitoSub);

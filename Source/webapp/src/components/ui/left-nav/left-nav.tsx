@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { usePathname } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard,
@@ -10,37 +11,29 @@ import {
   Wallet,
   Users,
   Settings,
+  Shield,
   Menu,
   X,
 } from 'lucide-react'
 import { NavItem } from '@/components/ui/nav-item'
 import { cn } from '@/lib/cn'
 
-type NavPage =
-  | 'dashboard'
-  | 'invoices'
-  | 'reports'
-  | 'lists'
-  | 'budgets'
-  | 'household'
-  | 'settings'
-
 interface LeftNavProps {
-  activePage?: NavPage
-  onNavigate?: (page: NavPage) => void
+  userRole?: string
   className?: string
 }
 
-const navItems: { page: NavPage; icon: LucideIcon; label: string }[] = [
-  { page: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { page: 'invoices', icon: ReceiptText, label: 'Invoices' },
-  { page: 'reports', icon: BarChart3, label: 'Reports' },
-  { page: 'lists', icon: ShoppingCart, label: 'Shopping Lists' },
-  { page: 'budgets', icon: Wallet, label: 'Budgets' },
-  { page: 'household', icon: Users, label: 'Household' },
+const navItems: { href: string; icon: LucideIcon; label: string }[] = [
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { href: '/invoices', icon: ReceiptText, label: 'Invoices' },
+  { href: '/reports', icon: BarChart3, label: 'Reports' },
+  { href: '/lists', icon: ShoppingCart, label: 'Shopping Lists' },
+  { href: '/budgets', icon: Wallet, label: 'Budgets' },
+  { href: '/household', icon: Users, label: 'Household' },
 ]
 
-export function LeftNav({ activePage, onNavigate, className }: LeftNavProps) {
+export function LeftNav({ userRole, className }: LeftNavProps) {
+  const pathname = usePathname() ?? ''
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -73,14 +66,14 @@ export function LeftNav({ activePage, onNavigate, className }: LeftNavProps) {
 
       {/* Nav items */}
       <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-        {navItems.map(({ page, icon, label }) => (
+        {navItems.map(({ href, icon, label }) => (
           <NavItem
-            key={page}
+            key={href}
+            href={href}
             icon={icon}
             label={label}
-            active={activePage === page}
+            active={pathname.startsWith(href)}
             collapsed={collapsed}
-            onClick={() => onNavigate?.(page)}
           />
         ))}
       </div>
@@ -88,12 +81,21 @@ export function LeftNav({ activePage, onNavigate, className }: LeftNavProps) {
       {/* Bottom items */}
       <div className="flex flex-col gap-0.5 border-t border-[#e2e8f0] p-2 dark:border-[#334155]">
         <NavItem
+          href="/settings"
           icon={Settings}
           label="Settings"
-          active={activePage === 'settings'}
+          active={pathname.startsWith('/settings')}
           collapsed={collapsed}
-          onClick={() => onNavigate?.('settings')}
         />
+        {userRole === 'ADMIN' && (
+          <NavItem
+            href="/admin"
+            icon={Shield}
+            label="Admin"
+            active={pathname.startsWith('/admin')}
+            collapsed={collapsed}
+          />
+        )}
       </div>
     </nav>
   )

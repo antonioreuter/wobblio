@@ -55,7 +55,7 @@ describe('AppUserRepositoryAdapter', () => {
   });
 
   describe('insertUser', () => {
-    it('calls provision_new_user with correct arguments', async () => {
+    it('calls provision_new_user with correct arguments including default profile', async () => {
       mockPool.query.mockResolvedValue({
         rows: [{ provision_new_user: 'new-uuid' }],
       });
@@ -63,10 +63,28 @@ describe('AppUserRepositoryAdapter', () => {
       const id = await adapter.insertUser('sub-456', 'new@test.nl', 'ACTIVE');
 
       expect(mockPool.query).toHaveBeenCalledWith(
-        'SELECT provision_new_user($1, $2, $3)',
-        ['sub-456', 'new@test.nl', 'ACTIVE'],
+        'SELECT provision_new_user($1, $2, $3, $4, $5, $6, $7)',
+        ['sub-456', 'new@test.nl', 'ACTIVE', '', 'NL', 'nl', 'EUR'],
       );
       expect(id).toBe('new-uuid');
+    });
+
+    it('calls provision_new_user with provided profile fields', async () => {
+      mockPool.query.mockResolvedValue({
+        rows: [{ provision_new_user: 'profile-uuid' }],
+      });
+
+      await adapter.insertUser('sub-456', 'new@test.nl', 'ACTIVE', {
+        fullName: 'Jan de Vries',
+        country: 'NL',
+        language: 'nl',
+        currency: 'EUR',
+      });
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        'SELECT provision_new_user($1, $2, $3, $4, $5, $6, $7)',
+        ['sub-456', 'new@test.nl', 'ACTIVE', 'Jan de Vries', 'NL', 'nl', 'EUR'],
+      );
     });
 
     it('calls provision_new_user with WAITLIST status', async () => {
@@ -77,8 +95,8 @@ describe('AppUserRepositoryAdapter', () => {
       await adapter.insertUser('sub-789', 'waitlist@test.nl', 'WAITLIST');
 
       expect(mockPool.query).toHaveBeenCalledWith(
-        expect.any(String),
-        ['sub-789', 'waitlist@test.nl', 'WAITLIST'],
+        'SELECT provision_new_user($1, $2, $3, $4, $5, $6, $7)',
+        ['sub-789', 'waitlist@test.nl', 'WAITLIST', '', 'NL', 'nl', 'EUR'],
       );
     });
   });
