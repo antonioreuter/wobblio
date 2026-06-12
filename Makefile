@@ -1,83 +1,46 @@
-.PHONY: start stop reset deploy seed migrate logs validate setup help
+.PHONY: setup bootstrap deploy migrate validate help
 
-REPO_ROOT    := $(shell pwd)
-BACKEND_DIR  := $(REPO_ROOT)/Source/backend
-INFRA_DIR    := $(REPO_ROOT)/Source/infra
-COMPOSE_FILE := $(REPO_ROOT)/scripts/local-dev/docker-compose.yml
-DEPLOY_SCRIPT := $(REPO_ROOT)/scripts/local-dev/deploy-local.sh
+REPO_ROOT         := $(shell pwd)
+BACKEND_DIR       := $(REPO_ROOT)/Source/backend
+INFRA_DIR         := $(REPO_ROOT)/Source/infra
+BOOTSTRAP_SCRIPT  := $(REPO_ROOT)/scripts/local/bootstrap.sh
+DEPLOY_SCRIPT     := $(REPO_ROOT)/scripts/local/deploy.sh
 
-# Load .env.local if it exists (for AWS CLI targets)
-ifneq (,$(wildcard .env.local))
-  include .env.local
+# Load config/local.env as the canonical local configuration source.
+# .env.local is kept in sync by 'make setup' and 'make bootstrap' for
+# tooling (Next.js, Jest, etc.) that expects it at the repo root.
+ifneq (,$(wildcard config/local.env))
+  include config/local.env
   export
 endif
 
-AWS_LOCAL_OPTS := AWS_ENDPOINT_URL=http://localhost:4566 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=$(or $(AWS_REGION),eu-west-1)
+## setup: One-time developer setup — create symlinks and sync .env.local from config/local.env
+setup:
+	@[ -L $(REPO_ROOT)/backend ] || ln -sfn Source/backend $(REPO_ROOT)/backend
+	@[ -L $(REPO_ROOT)/infra ]   || ln -sfn Source/infra   $(REPO_ROOT)/infra
+	@cp config/local.env .env.local
+	@echo "  .env.local synced from config/local.env"
+	@echo "  Setup complete. Symlinks: backend → Source/backend, infra → Source/infra"
 
-## start: Start all local services (Postgres, LocalStack, Cognito, Bedrock mock)
-start:
-	docker compose -f $(COMPOSE_FILE) up -d
-	@echo "Waiting for services to become healthy..."
-	@until docker compose -f $(COMPOSE_FILE) ps --format json 2>/dev/null | python3 -c "import sys, json; raw = sys.stdin.read().strip(); containers = json.loads(raw) if raw.startswith('[') else [json.loads(line) for line in raw.splitlines() if line.strip()]; sys.exit(0 if containers and all(c.get('Health') == 'healthy' for c in containers) else 1)" 2>/dev/null; do sleep 2; done
-	@$(MAKE) --no-print-directory _print-endpoints
+## bootstrap: One-time full local environment bootstrap (Docker + LocalStack + DB extensions + migrations + seed)
+bootstrap:
+	$(BOOTSTRAP_SCRIPT)
 
-## stop: Stop all local services
-stop:
-	docker compose -f $(COMPOSE_FILE) down
-
-## reset: Destroy all local data volumes and restart clean
-reset:
-	@printf "This will delete all local data (Postgres, LocalStack, Cognito). Continue? [y/N] " && \
-	  read ans && [ "$${ans:-N}" = "y" ] || (echo "Aborted." && exit 1)
-	docker compose -f $(COMPOSE_FILE) down -v
-	$(MAKE) start
-	$(DEPLOY_SCRIPT)
-
-## deploy: Bootstrap CDK, deploy stack, run migrations, seed data
+## deploy: Start Docker, re-deploy LocalStack CDK stack, run pending migrations
 deploy:
 	$(DEPLOY_SCRIPT)
 
-## seed: Re-run seed scripts only (services must be running)
-seed:
-	cd $(INFRA_DIR) && \
-	  $(AWS_LOCAL_OPTS) DATABASE_URL=$(DATABASE_URL) \
-	  npm run seed:local
-
-## migrate: Run pending database migrations
+## migrate: Run pending database migrations against local Postgres
 migrate:
 	cd $(INFRA_DIR) && DATABASE_URL=$(DATABASE_URL) npm run migrate:up
 
-## logs: Tail all service logs (pass service= to filter, e.g. make logs service=localstack)
-logs:
-	docker compose -f $(COMPOSE_FILE) logs -f $(service)
-
-## validate: Run hexagonal architecture validator + security auditor
+## validate: Run hexagonal architecture validator + GDPR security auditor
 validate:
 	@echo "Running hexagonal architecture validator..."
 	cd $(BACKEND_DIR) && npm run skill:hexagonal-architecture-validator
 	@echo "Running GDPR/security auditor..."
 	cd $(BACKEND_DIR) && npm run validate:security
 
-## setup: One-time developer setup (symlink fix for hexagonal validator)
-setup:
-	@[ -L $(REPO_ROOT)/backend ] || ln -sfn Source/backend $(REPO_ROOT)/backend
-	@[ -L $(REPO_ROOT)/infra ] || ln -sfn Source/infra $(REPO_ROOT)/infra
-	@echo "Setup complete. 'backend' → Source/backend, 'infra' → Source/infra."
-	@echo "Copy your env file: cp .env.local.template .env.local"
-
 ## help: Show available targets
 help:
 	@grep -E '^## ' Makefile | sed 's/## //' | column -t -s ':'
-
-_print-endpoints:
-	@echo ""
-	@echo "  Local stack endpoints:"
-	@printf "  %-26s %s\n" "PostgreSQL"         "localhost:5432  (db: wobblio_local)"
-	@printf "  %-26s %s\n" "LocalStack"         "http://localhost:4566"
-	@printf "  %-26s %s\n" "Cognito local"      "http://localhost:9229"
-	@printf "  %-26s %s\n" "Bedrock mock"       "http://localhost:4577"
-	@echo ""
-	@printf "  %-26s %s\n" "LocalStack Desktop" "https://docs.localstack.cloud/user-guide/tools/localstack-desktop/"
-	@printf "  %-26s %s\n" "  → connect to:"   "http://localhost:4566"
-	@echo ""
-	@echo "  Run 'make deploy' to bootstrap CDK and seed data."

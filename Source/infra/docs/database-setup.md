@@ -131,25 +131,20 @@ Expected on first run:
 
 ## Local Development
 
-The Docker Compose stack runs PostgreSQL 16 with pgvector pre-installed — no manual
-extension setup needed.
+Local development connects directly to the dev RDS instance. No Docker required.
 
 ```bash
-# Start local services
-cd scripts/local-dev && docker-compose up -d
+# Fill in .env.local (see .env.local.template for the AWS CLI commands to retrieve each value)
+cp .env.local.template .env.local
 
-# Run migrations against local DB
-cd Source/infra
-DATABASE_URL=postgres://wobblio_dev:wobblio_dev_secret@localhost:5432/wobblio_local \
-  npm run migrate:up
-
-# Seed reference data (merchants, products, SSM parameters in LocalStack)
-npm run seed:local
+# Run migrations against dev RDS
+make migrate
 ```
 
 Verify the schema is correct:
 ```bash
-psql "postgres://wobblio_dev:wobblio_dev_secret@localhost:5432/wobblio_local" \
+source .env.local
+psql "$DATABASE_URL" \
   -c "\dt" -c "SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;"
 ```
 
@@ -159,13 +154,12 @@ psql "postgres://wobblio_dev:wobblio_dev_secret@localhost:5432/wobblio_local" \
 
 | Environment | Host | Database | Credentials |
 |---|---|---|---|
-| `local` | `localhost:5432` | `wobblio_local` | Hard-coded in `docker-compose.yml` |
-| `dev` | SSM `/shared/db/endpoint` | `wobblio_prod` | Secrets Manager `shared/db/wobblio` |
+| `dev` (local + dev AWS) | SSM `/shared/db/endpoint` | `wobblio_dev` | Secrets Manager `shared/db/wobblio` |
 | `prod` | SSM `/shared/db/endpoint` | `wobblio_prod` | Secrets Manager `shared/db/wobblio` |
 
-> **Note:** `dev` and `prod` currently share the same `wobblio_prod` database on the shared RDS.
-> To add a separate dev database, run `./scripts/onboard-app.sh wobblio-dev wobblio_dev`
-> in shared-infra, then create a second set of SSM parameters.
+> **Note:** `dev` and `prod` use separate databases on the shared RDS instance.
+> If the `wobblio_dev` database does not exist yet, create it from the `shared-infra` project:
+> `./scripts/onboard-app.sh wobblio wobblio_dev`
 
 ---
 
@@ -204,4 +198,4 @@ SET LOCAL app.current_tenant_id = '<cognito-sub-uuid>';
 
 **KMS encrypt/decrypt fails in Lambda**
 → Confirm the Lambda execution role has `kms:GenerateDataKey` and `kms:Decrypt` on the Wobblio CMK.
-→ Check `KMS_KEY_ARN` env var is set (injected by `WobblioAppStack`).
+→ Check `KMS_KEY_ARN` env var is set (injected by `WobblioBackendStack`).

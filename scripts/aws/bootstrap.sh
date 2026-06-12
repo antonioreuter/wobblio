@@ -9,16 +9,17 @@
 #   3. AWS CLI and psql client installed
 #
 # Usage:
-#   scripts/bootstrap-aws.sh
-#   scripts/bootstrap-aws.sh --stage dev
-#   scripts/bootstrap-aws.sh --dbname custom_db
-#   scripts/bootstrap-aws.sh --force-ssm --force-stripe
-#   scripts/bootstrap-aws.sh --skip-db --skip-ssm
+#   scripts/aws/bootstrap.sh
+#   scripts/aws/bootstrap.sh --stage dev
+#   scripts/aws/bootstrap.sh --dbname custom_db
+#   scripts/aws/bootstrap.sh --force-ssm --force-stripe
+#   scripts/aws/bootstrap.sh --skip-db --skip-ssm
 #
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 AWS_PROFILE="${AWS_PROFILE:-reuterAdmin}"
@@ -67,6 +68,17 @@ ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 info()  { printf '  \033[34m→\033[0m %s\n' "$*"; }
 warn()  { printf '  \033[33m⚠\033[0m %s\n' "$*"; }
 fail()  { printf '\033[31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# ── Load stage config ─────────────────────────────────────────────────────────
+CONFIG_FILE="$REPO_ROOT/config/${STAGE}.env"
+[[ -f "$CONFIG_FILE" ]] || fail "Config file not found: config/${STAGE}.env (valid stages: dev, prod)"
+# shellcheck source=/dev/null
+set -a; source "$CONFIG_FILE"; set +a
+ok "Config loaded: config/${STAGE}.env"
+
+# CLI args override config file values
+AWS_PROFILE="${AWS_PROFILE:-reuterAdmin}"
+AWS_REGION="${AWS_REGION:-eu-west-1}"
 
 bold "Wobblio AWS Environment Bootstrap"
 info "Stage:   $STAGE"
@@ -187,32 +199,32 @@ if [[ $SKIP_SSM -eq 0 ]]; then
   }
 
   # ── Bedrock model IDs ──────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/models/vision_parser"   "amazon.nova-lite-v1:0"
-  set_ssm_param "/wobblio/config/models/auxiliary"       "anthropic.claude-haiku-4-5-20251001-v1:0"
-  set_ssm_param "/wobblio/config/models/insight"         "anthropic.claude-sonnet-4-6-v1:0"
-  set_ssm_param "/wobblio/config/models/embedder"        "amazon.titan-embed-text-v2:0"
+  set_ssm_param "/wobblio/config/models/vision_parser"   "${MODEL_VISION_PARSER}"
+  set_ssm_param "/wobblio/config/models/auxiliary"       "${MODEL_AUXILIARY}"
+  set_ssm_param "/wobblio/config/models/insight"         "${MODEL_INSIGHT}"
+  set_ssm_param "/wobblio/config/models/embedder"        "${MODEL_EMBEDDER}"
 
   # ── Quotas ────────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/quotas/standard_uploads_per_week"   "3"
-  set_ssm_param "/wobblio/config/quotas/premium_uploads_per_week"    "10"
-  set_ssm_param "/wobblio/config/quotas/household_uploads_per_week"  "20"
-  set_ssm_param "/wobblio/config/quotas/max_free_waitlist_cap"       "5000"
+  set_ssm_param "/wobblio/config/quotas/standard_uploads_per_week"   "${QUOTA_STANDARD_UPLOADS_PER_WEEK}"
+  set_ssm_param "/wobblio/config/quotas/premium_uploads_per_week"    "${QUOTA_PREMIUM_UPLOADS_PER_WEEK}"
+  set_ssm_param "/wobblio/config/quotas/household_uploads_per_week"  "${QUOTA_HOUSEHOLD_UPLOADS_PER_WEEK}"
+  set_ssm_param "/wobblio/config/quotas/max_free_waitlist_cap"       "${QUOTA_MAX_FREE_WAITLIST_CAP}"
 
   # ── Routing ───────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/routing/max_stores"            "3"
-  set_ssm_param "/wobblio/config/routing/min_split_saving_eur"  "5.00"
+  set_ssm_param "/wobblio/config/routing/max_stores"            "${ROUTING_MAX_STORES}"
+  set_ssm_param "/wobblio/config/routing/min_split_saving_eur"  "${ROUTING_MIN_SPLIT_SAVING_EUR}"
 
   # ── Tags / AI ─────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/tags/dedicated_call_enabled"  "false"
-  set_ssm_param "/wobblio/config/tags/vocabulary"              "[]"
-  set_ssm_param "/wobblio/config/ai/daily_spend_cap"           "0.10"
+  set_ssm_param "/wobblio/config/tags/dedicated_call_enabled"  "${TAGS_DEDICATED_CALL_ENABLED}"
+  set_ssm_param "/wobblio/config/tags/vocabulary"              "${TAGS_VOCABULARY}"
+  set_ssm_param "/wobblio/config/ai/daily_spend_cap"           "${AI_DAILY_SPEND_CAP}"
 
   # ── Operations ────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/ops/email"            "antonioreuter@gmail.com"
-  set_ssm_param "/wobblio/config/web_app_url"          "https://wobblio.com"
+  set_ssm_param "/wobblio/config/ops/email"      "${OPS_EMAIL}"
+  set_ssm_param "/wobblio/config/web_app_url"    "${WEB_APP_URL}"
 
   # ── Billing ───────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/billing/mock_premium_whitelist"  "-"
+  set_ssm_param "/wobblio/config/billing/mock_premium_whitelist"  "${BILLING_MOCK_PREMIUM_WHITELIST}"
 
   ok "SSM parameters verified/set."
 else

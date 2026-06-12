@@ -16,7 +16,7 @@ src/
     adapters/      # concrete implementations of ports (AWS SDK v3, pg, stripe-node, …)
     config/        # SSM loaders, environment wiring
   handlers/        # Lambda entry points — thin, only translate event → core invocation → response
-  cdk/             # CDK stacks (WobblioDbStack, WobblioAppStack, WobblioAuthStack, WobblioAdminStack)
+  cdk/             # CDK stacks (WobblioDbStack, WobblioAuthStack, WobblioStorageStack, WobblioObservabilityStack, WobblioBackendStack)
   prompts/         # versioned LLM prompt artifacts (Appendix B contracts). prompt_version is mandatory.
   migrations/      # node-pg-migrate files; managed via the database-migrations skill
   tests/

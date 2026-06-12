@@ -66,7 +66,7 @@ async function runCheck() {
   console.log('📋 Starting Database Migrations Check...\n');
 
   console.log('--- Checking Local Migration Files ---');
-  const migrationsDir = path.join(__dirname, '../../../../infra/db/migrations');
+  const migrationsDir = path.join(__dirname, '../../../../Source/infra/src/migrations');
   
   if (!fs.existsSync(migrationsDir)) {
     console.error(`❌ Migration directory not found at: ${migrationsDir}`);

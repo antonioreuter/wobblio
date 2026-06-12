@@ -22,19 +22,19 @@ export class WobblioWebCertStack extends Stack {
     const { config } = props;
 
     const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
-      domainName: 'wobblio.com',
+      domainName: config.zoneDomain,
     });
 
     const cert = new acm.Certificate(this, 'WebCertificate', {
-      domainName: 'app.wobblio.com',
+      domainName: config.appDomain,
       validation: acm.CertificateValidation.fromDns(hostedZone),
     });
 
-    // ARN written to us-east-1 SSM; read cross-region by WobblioWebStack via AwsCustomResource
+    // ARN written to us-east-1 SSM (stage-scoped); read cross-region by WobblioWebStack via AwsCustomResource
     new ssm.StringParameter(this, 'WebCertArnParam', {
-      parameterName: '/wobblio/web/certificate-arn',
+      parameterName: config.webCertSsmPath,
       stringValue: cert.certificateArn,
-      description: 'ACM certificate ARN for wobblio.com CloudFront distribution (us-east-1)',
+      description: `ACM certificate ARN for ${config.appDomain} CloudFront distribution (us-east-1)`,
     });
 
     applyWobblioTags(this, config);

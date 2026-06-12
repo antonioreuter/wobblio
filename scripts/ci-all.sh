@@ -26,7 +26,9 @@ INFRA_DIR="$REPO_ROOT/Source/infra"
 WEBAPP_DIR="$REPO_ROOT/Source/webapp"
 ADMIN_DIR="$REPO_ROOT/Source/admin"
 LOG_DIR="/tmp/wobblio-ci"
-ENV_FILE="$REPO_ROOT/.env.local"
+# Use config/local.env as canonical source; fall back to .env.local for local overrides
+ENV_FILE="$REPO_ROOT/config/local.env"
+[[ -f "$REPO_ROOT/.env.local" ]] && ENV_FILE="$REPO_ROOT/.env.local"
 
 mkdir -p "$LOG_DIR"
 

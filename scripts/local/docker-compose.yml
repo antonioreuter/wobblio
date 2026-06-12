@@ -1,0 +1,37 @@
+services:
+  localstack:
+    image: localstack/localstack:3
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,sqs,ssm,secretsmanager
+      - DEFAULT_REGION=eu-west-1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres:
+    image: pgvector/pgvector:pg15
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=wobblio_dev
+      - POSTGRES_PASSWORD=wobblio_dev_secret
+      - POSTGRES_DB=wobblio_local
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wobblio_dev -d wobblio_local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  localstack_data:
+  postgres_data:

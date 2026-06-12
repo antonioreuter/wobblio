@@ -1,33 +1,31 @@
 #!/usr/bin/env bash
 # Deploy Wobblio to AWS.
-# Covers: CDK stacks (5 stacks), database migrations, webapp build + deployment.
+# Covers: CDK stacks (7 stacks), database migrations, webapp build + deployment.
 #
 # Profile: reuterAdmin  |  Region: eu-west-1  |  STAGE: prod (default)
 #
 # Pre-requisites (one-time, see DEPLOY-AWS.md):
 #   1. shared-infra deployed + wobblio onboarded (onboard-app.sh wobblio wobblio_prod)
-#   2. AWS environment bootstrapped (scripts/bootstrap-aws.sh)
+#   2. AWS environment bootstrapped (scripts/aws/bootstrap.sh)
 #   3. CDK bootstrapped in eu-west-1 AND us-east-1
 #   4. Route53 hosted zone for wobblio.com exists
 #
 # Usage:
-#   scripts/deploy-aws.sh                    # deploy all (prod)
-#   scripts/deploy-aws.sh --stage dev        # deploy dev stage
-#   scripts/deploy-aws.sh --skip-webapp      # skip webapp build + deploy
-#   scripts/deploy-aws.sh --skip-migrations  # skip database migrations
-#   STAGE=prod scripts/deploy-aws.sh         # env var override
+#   scripts/aws/deploy.sh                    # deploy all (prod)
+#   scripts/aws/deploy.sh --stage dev        # deploy dev stage
+#   scripts/aws/deploy.sh --skip-webapp      # skip webapp build + deploy
+#   scripts/aws/deploy.sh --skip-migrations  # skip database migrations
+#   STAGE=prod scripts/aws/deploy.sh         # env var override
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 INFRA_DIR="$REPO_ROOT/Source/infra"
 BACKEND_DIR="$REPO_ROOT/Source/backend"
 WEBAPP_DIR="$REPO_ROOT/Source/webapp"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-AWS_PROFILE="${AWS_PROFILE:-reuterAdmin}"
-AWS_REGION="${AWS_REGION:-eu-west-1}"
 STAGE="${STAGE:-prod}"
 SKIP_WEBAPP=0
 SKIP_MIGRATIONS=0
@@ -46,11 +44,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-export AWS_PROFILE
-export AWS_DEFAULT_REGION="$AWS_REGION"
-export CDK_DEFAULT_REGION="$AWS_REGION"
-export STAGE
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 step()  { printf '\n\033[34m▶ %s\033[0m\n' "$*"; }
@@ -58,6 +51,22 @@ ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 info()  { printf '  \033[34m→\033[0m %s\n' "$*"; }
 warn()  { printf '  \033[33m⚠\033[0m %s\n' "$*"; }
 fail()  { printf '\033[31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# ── Load stage config ─────────────────────────────────────────────────────────
+CONFIG_FILE="$REPO_ROOT/config/${STAGE}.env"
+[[ -f "$CONFIG_FILE" ]] || fail "Config file not found: config/${STAGE}.env (valid stages: dev, prod)"
+# shellcheck source=/dev/null
+set -a; source "$CONFIG_FILE"; set +a
+ok "Config loaded: config/${STAGE}.env"
+
+# CLI args override config file
+AWS_PROFILE="${AWS_PROFILE:-reuterAdmin}"
+AWS_REGION="${AWS_REGION:-eu-west-1}"
+
+export AWS_PROFILE
+export AWS_DEFAULT_REGION="$AWS_REGION"
+export CDK_DEFAULT_REGION="$AWS_REGION"
+export STAGE
 
 START_TIME=$(date +%s)
 
@@ -138,11 +147,23 @@ step "Deploy WobblioAuthStack-${STAGE} (Cognito)"
   --profile "$AWS_PROFILE" --require-approval never)
 ok "WobblioAuthStack-${STAGE} deployed"
 
-# ── CDK deploy: WobblioAppStack ───────────────────────────────────────────────
-step "Deploy WobblioAppStack-${STAGE} (Lambda fleet + API Gateway)"
-(cd "$INFRA_DIR" && npx cdk deploy "WobblioAppStack-${STAGE}" \
+# ── CDK deploy: WobblioStorageStack ───────────────────────────────────────────
+step "Deploy WobblioStorageStack-${STAGE} (S3 buckets)"
+(cd "$INFRA_DIR" && npx cdk deploy "WobblioStorageStack-${STAGE}" \
   --profile "$AWS_PROFILE" --require-approval never)
-ok "WobblioAppStack-${STAGE} deployed"
+ok "WobblioStorageStack-${STAGE} deployed"
+
+# ── CDK deploy: WobblioObservabilityStack ─────────────────────────────────────
+step "Deploy WobblioObservabilityStack-${STAGE} (SNS, Budgets, Cost Anomaly)"
+(cd "$INFRA_DIR" && npx cdk deploy "WobblioObservabilityStack-${STAGE}" \
+  --profile "$AWS_PROFILE" --require-approval never)
+ok "WobblioObservabilityStack-${STAGE} deployed"
+
+# ── CDK deploy: WobblioBackendStack ───────────────────────────────────────────
+step "Deploy WobblioBackendStack-${STAGE} (Lambda fleet + API Gateway)"
+(cd "$INFRA_DIR" && npx cdk deploy "WobblioBackendStack-${STAGE}" \
+  --profile "$AWS_PROFILE" --require-approval never)
+ok "WobblioBackendStack-${STAGE} deployed"
 
 # ── Database migrations ───────────────────────────────────────────────────────
 if [[ $SKIP_MIGRATIONS -eq 0 ]]; then
@@ -173,14 +194,17 @@ else
   warn "Skipping database migrations (--skip-migrations)"
 fi
 
+info "App domain: https://${APP_DOMAIN}"
+info "API domain: https://${API_DOMAIN}"
+
 # ── Webapp build + deploy ─────────────────────────────────────────────────────
 if [[ $SKIP_WEBAPP -eq 0 ]]; then
   step "Webapp build"
 
-  # Write production environment file
+  # Write environment file for Next.js build
   cat > "$WEBAPP_DIR/.env.production" <<EOF
-NEXT_PUBLIC_API_BASE_URL=https://api.wobblio.com
-NEXT_PUBLIC_SITE_URL=https://app.wobblio.com
+NEXT_PUBLIC_API_BASE_URL=https://${API_DOMAIN}
+NEXT_PUBLIC_SITE_URL=https://${APP_DOMAIN}
 EOF
   info "Written .env.production"
 
@@ -207,13 +231,13 @@ ELAPSED=$(( $(date +%s) - START_TIME ))
 printf '\n'
 bold "Deployment complete in ${ELAPSED}s"
 printf '\n'
-printf '  %-30s %s\n' "Landing page:"     "https://app.wobblio.com"
-printf '  %-30s %s\n' "API base:"         "https://api.wobblio.com"
-printf '  %-30s %s\n' "Waitlist status:"  "https://api.wobblio.com/waitlist/status"
+printf '  %-30s %s\n' "Landing page:"     "https://${APP_DOMAIN}"
+printf '  %-30s %s\n' "API base:"         "https://${API_DOMAIN}"
+printf '  %-30s %s\n' "Waitlist status:"  "https://${API_DOMAIN}/waitlist/status"
 printf '\n'
 info "Smoke test:"
-info "  curl -s https://api.wobblio.com/waitlist/status"
-info "  curl -sI https://app.wobblio.com | grep HTTP/"
+info "  curl -s https://${API_DOMAIN}/waitlist/status"
+info "  curl -sI https://${APP_DOMAIN} | grep HTTP/"
 printf '\n'
-warn "Action required: confirm SNS subscription email sent to antonioreuter@gmail.com"
+warn "Action required: confirm SNS subscription email sent to ${OPS_EMAIL}"
 warn "DNS/ACM validation may take up to 30 minutes on first deploy"

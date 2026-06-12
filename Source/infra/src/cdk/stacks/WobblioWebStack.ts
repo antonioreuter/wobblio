@@ -47,9 +47,9 @@ export class WobblioWebStack extends Stack {
       onUpdate: {
         service: 'SSM',
         action: 'getParameter',
-        parameters: { Name: '/wobblio/web/certificate-arn' },
+        parameters: { Name: config.webCertSsmPath },
         region: 'us-east-1',
-        physicalResourceId: cr.PhysicalResourceId.of('/wobblio/web/certificate-arn'),
+        physicalResourceId: cr.PhysicalResourceId.of(config.webCertSsmPath),
       },
       policy: cr.AwsCustomResourcePolicy.fromSdkCalls({
         resources: cr.AwsCustomResourcePolicy.ANY_RESOURCE,
@@ -93,7 +93,7 @@ function handler(event) {
           },
         ],
       },
-      domainNames: ['app.wobblio.com'],
+      domainNames: [config.appDomain],
       certificate,
       errorResponses: [
         {
@@ -115,12 +115,14 @@ function handler(event) {
 
     // ── Route53 alias records ─────────────────────────────────────────────────
     const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
-      domainName: 'wobblio.com',
+      domainName: config.zoneDomain,
     });
 
+    // recordName is the part before .wobblio.com: 'app' (prod) | 'app.dev' (dev)
+    const appRecordName = config.appDomain.replace(`.${config.zoneDomain}`, '');
     new route53.ARecord(this, 'AppAliasRecord', {
       zone: hostedZone,
-      recordName: 'app',
+      recordName: appRecordName,
       target: route53.RecordTarget.fromAlias(
         new route53Targets.CloudFrontTarget(distribution),
       ),
@@ -148,7 +150,7 @@ function handler(event) {
     });
 
     // ── Outputs ───────────────────────────────────────────────────────────────
-    new CfnOutput(this, 'WebUrl', { value: 'https://app.wobblio.com' });
+    new CfnOutput(this, 'WebUrl', { value: `https://${config.appDomain}` });
     new CfnOutput(this, 'CloudFrontDomainName', { value: distribution.distributionDomainName });
 
     applyWobblioTags(this, config);
