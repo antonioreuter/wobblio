@@ -1,4 +1,4 @@
-.PHONY: setup bootstrap deploy migrate validate help
+.PHONY: setup bootstrap deploy restart stop migrate validate help
 
 REPO_ROOT         := $(shell pwd)
 BACKEND_DIR       := $(REPO_ROOT)/Source/backend
@@ -30,6 +30,16 @@ bootstrap:
 deploy:
 	$(DEPLOY_SCRIPT)
 
+## restart: Start/restart Docker services (LocalStack, Postgres, Cognito Local)
+restart:
+	@docker compose -f scripts/local/docker-compose.yml up -d
+	@echo "Docker services started/restarted"
+
+## stop: Stop Docker services (data persists)
+stop:
+	@docker compose -f scripts/local/docker-compose.yml stop
+	@echo "Docker services stopped"
+
 ## migrate: Run pending database migrations against local Postgres
 migrate:
 	cd $(INFRA_DIR) && DATABASE_URL=$(DATABASE_URL) npm run migrate:up
@@ -41,6 +51,10 @@ validate:
 	@echo "Running GDPR/security auditor..."
 	cd $(BACKEND_DIR) && npm run validate:security
 
-## help: Show available targets
+## help: Show available commands
 help:
+	@echo "Wobblio — Local Development Commands\n"
 	@grep -E '^## ' Makefile | sed 's/## //' | column -t -s ':'
+	@echo "\nFor AWS deployment commands, see: scripts/aws/Makefile"
+	@echo "  cd scripts/aws && make help"
+	@echo ""

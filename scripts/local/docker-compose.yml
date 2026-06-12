@@ -32,6 +32,16 @@ services:
       timeout: 5s
       retries: 20
 
+  cognito-local:
+    image: jagregory/cognito-local:latest
+    ports:
+      - "9229:9229"
+    environment:
+      - DEBUG=cognito-local:*
+    volumes:
+      - cognito_data:/app/db
+
 volumes:
   localstack_data:
   postgres_data:
+  cognito_data:
