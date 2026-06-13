@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { INVOICE_DB, TODAY, type Invoice } from './invoice-data'
 import { InvoiceDrawer } from './invoice-drawer'
 import { ConfirmDialog } from './confirm-dialog'
@@ -128,13 +129,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   return (
     <WorkspaceContext.Provider value={value}>
       {children}
-      <WorkspaceToast
-        toast={toast}
-        onClose={() => {
-          if (toastTimer.current) clearTimeout(toastTimer.current)
-          setToast(null)
-        }}
-      />
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <WorkspaceToast
+            toast={toast}
+            onClose={() => {
+              if (toastTimer.current) clearTimeout(toastTimer.current)
+              setToast(null)
+            }}
+          />,
+          document.body,
+        )}
       {openInvoice && (
         <InvoiceDrawer
           invoice={openInvoice}

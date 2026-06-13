@@ -5,6 +5,8 @@ import { SandboxProvider } from '@/components/providers/sandbox-provider'
 import { AuroraBackground } from '@/components/ds'
 import './globals.css'
 
+const SANDBOX_ENABLED = process.env.NEXT_PUBLIC_SANDBOX_MODE === 'true'
+
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
@@ -27,10 +29,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${inter.variable} ${outfit.variable}`} suppressHydrationWarning>
       <body>
         <ThemeProvider>
-          <SandboxProvider>
-            <AuroraBackground />
-            <div className="kit">{children}</div>
-          </SandboxProvider>
+          {SANDBOX_ENABLED ? (
+            <SandboxProvider>
+              <AuroraBackground />
+              <div className="kit">{children}</div>
+            </SandboxProvider>
+          ) : (
+            <>
+              <AuroraBackground />
+              <div className="kit">{children}</div>
+            </>
+          )}
         </ThemeProvider>
       </body>
     </html>

@@ -3,10 +3,18 @@
    Extracted from Wobblio Design System / ui_kits/web/kit.css
    ========================================================================== */
 
+:root {
+  --chrome-top: 64px;
+  --z-rls: 95;
+  --z-header: 100;
+  --z-drawer: 200;
+  --z-modal: 300;
+  --z-toast: 400;
+}
+
 .workspace {
-  max-width: var(--app-max);
-  margin: 0 auto;
-  padding: 24px 32px;
+  width: 100%;
+  padding: 0;
   position: relative;
   z-index: 1;
 }
@@ -14,19 +22,21 @@
 .app-shell {
   display: grid;
   grid-template-columns: var(--rail-width) 1fr;
-  min-height: 760px;
-  background: rgba(11, 15, 26, 0.55);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-2xl);
-  overflow: hidden;
-  box-shadow: var(--card-shadow);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
-[data-theme="light"] .app-shell { background: rgba(255, 255, 255, 0.5); }
 
 .app-rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
   background: rgba(3, 4, 9, 0.92);
   border-right: 1px solid var(--glass-border);
   padding: 24px 12px;
+  z-index: var(--z-header);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -64,15 +74,38 @@
 .app-body { display: flex; flex-direction: column; min-width: 0; position: relative; }
 
 .app-topbar {
-  padding: 16px 24px;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  min-height: var(--chrome-top);
+  padding: 12px 24px;
   border-bottom: 1px solid var(--glass-border);
-  background: rgba(255, 255, 255, 0.028);
+  background: #0b0f1a;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
 }
-[data-theme="light"] .app-topbar { background: rgba(15, 23, 42, 0.03); }
+[data-theme="light"] .app-topbar { background: #f6f8fb; }
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+.topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.topbar-wordmark {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  color: var(--text-primary);
+}
+.topbar-wordmark > span { color: var(--brand); }
 .topbar-title {
   font-family: var(--font-display);
   font-size: 17px;
@@ -138,14 +171,18 @@
 .icon-toggle:hover { color: var(--text-primary); }
 
 .rls-banner {
+  position: sticky;
+  top: var(--chrome-top);
+  z-index: var(--z-rls);
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 20px;
+  padding: 10px 20px;
   background: rgba(244, 63, 94, 0.15);
-  border: 1px solid rgba(244, 63, 94, 0.25);
-  border-radius: 12px;
-  margin: 16px 24px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(244, 63, 94, 0.25);
+  border-radius: 0;
+  margin: 0;
 }
 .rls-banner svg { color: var(--danger); flex-shrink: 0; }
 .rls-banner .msg { font-size: 13px; color: var(--text-primary); flex-grow: 1; }
@@ -161,7 +198,11 @@
 }
 
 .pane { padding: 24px; }
-.pane-title { font-size: 24px; margin-bottom: 4px; }
+.pane-title {
+  font-size: 24px;
+  margin-bottom: 4px;
+  scroll-margin-top: calc(var(--chrome-top) + 16px);
+}
 .pane-subtitle { font-size: 13.5px; color: var(--text-secondary); margin-bottom: 24px; }
 .metrics-row {
   display: grid;
@@ -985,7 +1026,7 @@
    Toast
    ========================================================================== */
 .toast {
-  position: absolute; top: 88px; right: 20px; z-index: 60;
+  position: fixed; top: calc(var(--chrome-top) + 12px); right: 20px; z-index: var(--z-toast);
   display: flex; align-items: center; gap: 10px;
   padding: 12px 12px 12px 16px;
   border-radius: var(--radius-lg);
@@ -1083,9 +1124,8 @@
    ========================================================================== */
 .app-shell[data-surface="calm"] {
   background: #0b0f1a;
-  border-color: rgba(255, 255, 255, 0.09);
-  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8),
-              0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  border: 0;
+  box-shadow: none;
 }
 .app-shell[data-surface="calm"] .app-rail {
   background: #06080f;
@@ -1118,7 +1158,7 @@
 
 [data-theme="light"] .app-shell[data-surface="calm"] {
   background: #eef1f6;
-  border-color: rgba(15, 23, 42, 0.1);
+  border: 0;
 }
 [data-theme="light"] .app-shell[data-surface="calm"] .app-rail {
   background: #dde3ec;

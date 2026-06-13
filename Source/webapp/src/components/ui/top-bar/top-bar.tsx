@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Crown, ReceiptText } from 'lucide-react'
 import { Avatar } from '@/components/ds'
@@ -41,9 +42,16 @@ export function TopBar({
 
   return (
     <header className="app-topbar">
-      <h1 className="topbar-title" data-testid="topbar-title">
-        {title}
-      </h1>
+      <div className="topbar-left">
+        <Link href="/dashboard" className="topbar-brand" aria-label="Wobblio home">
+          <span className="topbar-wordmark">
+            Wobblio<span>.</span>
+          </span>
+        </Link>
+        <h1 className="topbar-title" data-testid="topbar-title">
+          {title}
+        </h1>
+      </div>
       <div className="topbar-right">
         <div className="usage-chip" data-testid="topbar-usage" title="Invoices processed this week">
           <span className="usage-icon">

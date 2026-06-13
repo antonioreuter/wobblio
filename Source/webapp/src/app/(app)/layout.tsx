@@ -2,9 +2,9 @@ import { auth } from '@/auth'
 import { LeftNav } from '@/components/ui/left-nav'
 import { TopBar } from '@/components/ui/top-bar'
 import { RlsWarningBanner } from '@/components/ui/top-bar/rls-warning-banner'
-import { SiteHeader } from '@/components/ui/site-header'
-import { SiteFooter } from '@/components/ui/site-footer'
 import { WorkspaceProvider } from '@/components/workspace'
+
+const SANDBOX_ENABLED = process.env.NEXT_PUBLIC_SANDBOX_MODE === 'true'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -13,20 +13,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const userInitials = deriveInitials(userEmail)
 
   return (
-    <>
-      <SiteHeader variant="app" />
-      <div className="workspace">
-        <div className="app-shell" data-surface="calm">
-          <LeftNav userRole={userRole} />
-          <div className="app-body">
-            <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
-            <RlsWarningBanner />
-            <WorkspaceProvider>{children}</WorkspaceProvider>
-          </div>
+    <div className="workspace">
+      <div className="app-shell" data-surface="calm">
+        <LeftNav userRole={userRole} />
+        <div className="app-body">
+          <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
+          {SANDBOX_ENABLED && <RlsWarningBanner />}
+          <WorkspaceProvider>{children}</WorkspaceProvider>
         </div>
       </div>
-      <SiteFooter />
-    </>
+    </div>
   )
 }
 
