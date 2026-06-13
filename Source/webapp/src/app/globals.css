@@ -1,14 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 
 @theme {
-  /* Brand */
-  --color-brand: #0d9488;
+  /* Obsidian Aurora Design System */
+  --color-deep-space: #090c15;
+  --color-obsidian-glass: rgba(17, 22, 39, 0.72);
+  --color-solar-glass-bg: #f1f5f9;
+  --color-light-glass-surface: rgba(255, 255, 255, 0.75);
+  
+  /* Accents */
+  --color-electric-indigo: #6366f1;
+  --color-aurora-teal: #0d9488;
+  --color-sunset-coral: #f43f5e;
+  --color-warm-amber: #f59e0b;
+  --color-star-white: #f8fafc;
+  --color-slate-space: #94a3b8;
+  
+  /* Glass Borders and Shadows */
+  --color-glass-border: rgba(255, 255, 255, 0.08);
+  --color-glass-border-light: rgba(15, 23, 74, 0.08);
+  --shadow-premium-glow: 0 0 25px 3px rgba(99, 102, 241, 0.15);
+
+  /* Legacy & mapped variables for backwards compatibility */
+  --color-brand: var(--color-aurora-teal);
   --color-brand-hover: #0f766e;
   --color-brand-light: #ccfbf1;
 
   /* Light mode surfaces */
-  --color-background: #ffffff;
-  --color-surface: #f8fafc;
+  --color-background: var(--color-solar-glass-bg);
+  --color-surface: var(--color-light-glass-surface);
   --color-surface-container: #f1f5f9;
   --color-surface-container-high: #e2e8f0;
   --color-text: #0f172a;
@@ -17,19 +37,19 @@
   --color-outline-variant: #e2e8f0;
 
   /* Dark mode surfaces */
-  --color-background-dark: #0b0f19;
-  --color-surface-dark: #111827;
+  --color-background-dark: var(--color-deep-space);
+  --color-surface-dark: var(--color-obsidian-glass);
   --color-surface-container-dark: #1e293b;
-  --color-text-dark: #f1f5f9;
-  --color-muted-dark: #94a3b8;
+  --color-text-dark: var(--color-star-white);
+  --color-muted-dark: var(--color-slate-space);
   --color-outline-dark: #334155;
 
   /* Semantic */
   --color-success: #16a34a;
   --color-success-light: #dcfce7;
-  --color-warning: #d97706;
+  --color-warning: var(--color-warm-amber);
   --color-warning-light: #fef3c7;
-  --color-error: #dc2626;
+  --color-error: var(--color-sunset-coral);
   --color-error-light: #fee2e2;
 
   /* Typography scale */
@@ -87,3 +107,29 @@ body {
   font-feature-settings: 'tnum';
   text-align: right;
 }
+
+/* Glassmorphism Cards */
+.glass-card {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 12px;
+  border: 1px solid var(--color-glass-border-light);
+  background: var(--color-light-glass-surface);
+  box-shadow: var(--shadow-md);
+}
+
+:where([data-theme='dark'], [data-theme='dark'] *) .glass-card {
+  border: 1px solid var(--color-glass-border);
+  background: var(--color-obsidian-glass);
+  box-shadow: 0px 4px 30px rgba(0, 0, 0, 0.4), var(--shadow-premium-glow);
+}
+
+/* Touch Targets for Mobile Accessibility */
+@media (max-width: 767px) {
+  button, a, [role="button"], input[type="checkbox"], input[type="radio"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+@import './obsidian-aurora.css';

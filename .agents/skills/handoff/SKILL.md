@@ -1,144 +1,56 @@
 ---
-name: po
-description: "Product Owner. Scouts the codebase, understands a prompt, writes a comprehensive PRD focused on product requirements for business people. Stack-agnostic, works across Ruby, Elixir, Rust, JS, Bash projects. Use when: PRD, product requirements, feature spec, what should we build, scope this, plan feature, po, write requirements, user story."
+name: handoff
+description: "Summarizes the current session's work and produces a compact structured brief for another model or agent to continue. Use when: handoff, continue in new session, pass to agent, summarize work done, session summary, pick up where left off."
 ---
 
-# Product Owner
+# Handoff — Session Context Distillation
 
-Scout the codebase, understand the user's prompt, write a comprehensive PRD from a product/UX/DX perspective. Not a technical spec. A document business people can read and align on.
+Gather current session state and emit a compact structured brief optimized for injection into another model or agent's context. Dense, no filler, under 600 tokens.
 
-## Usage
+## Phase 1: Gather State
 
-- `/po <prompt>` - Create a PRD from the feature description
-- `/po` - Ask the user what to build
-
-## Workflow
-
-### Phase 1: Understand
-
-If no prompt provided, ask the user: "What do you want to build? Describe it like you'd explain to a stakeholder."
-
-**Wait for the user's response.**
-
-Parse the prompt for:
-- What the user wants (feature, improvement, fix)
-- Who benefits (end user, developer, operator, business)
-- Why it matters (pain point, opportunity, gap)
-
-### Phase 2: Scout
-
-Launch the `scout` agent to map the relevant parts of the codebase:
-
-> Map the codebase areas relevant to this feature: "{user_prompt}". Focus on: current user-facing behavior, existing flows, data model, integration points, and gaps. Return compressed context.
-
-Read project context files (CLAUDE.md, AGENTS.md, README) for domain language, conventions, and roadmap items related to the prompt.
-
-### Phase 3: Write the PRD
-
-Write from a product perspective. The audience is a product manager, a designer, or a stakeholder. Technical details only where they affect the user experience or constrain the solution.
-
-```markdown
-# PRD: {feature title}
-
-**Date:** {YYYY-MM-DD}
-**Status:** Draft
-
-## Problem
-
-What user/business pain does this solve? Who feels it? How often?
-One paragraph. Be specific.
-
-## Background
-
-Why now? What motivated this? Product context, user feedback, business opportunity.
-Reference current behavior discovered by the scout. Use the project's domain language.
-
-## Requirements
-
-### Must Have
-- {requirement in user-facing terms}
-- {requirement}
-
-### Should Have
-- {requirement}
-
-### Out of Scope
-- {what we're explicitly not doing and why}
-
-## Constraints
-
-- {technical, business, or timeline constraint that affects the solution}
-- {only constraints a PM needs to know, not implementation details}
-
-## Acceptance Criteria
-
-### {Feature area or user story}
-- Given {context}, when {action}, then {expected result}
-- Given {context}, when {edge case}, then {graceful handling}
-
-### {Another feature area}
-- Given {context}, when {action}, then {expected result}
-```
-
-### Phase 4: Preview and Choose
-
-Show the full PRD to the user and ask:
-
-> **Where should I publish this?**
->
-> **a)** Write to `docs/prd/{timestamp}-{slug}.md` in the project
-> **b)** Create a GitHub issue (uses `gh` CLI)
-> **c)** Create a Linear issue (uses `lineark` CLI)
-
-**Wait for the user to choose.**
-
-### Option A: Write to docs/
+Run in parallel:
 
 ```bash
-mkdir -p docs/prd
+git diff HEAD --stat
+git log --oneline -10
+git status --short
 ```
 
-Write the PRD to `docs/prd/{YYYY-MM-DD}-{slug}.md` where `{slug}` is a
-kebab-case version of the feature title (max 50 chars).
+Also read: CLAUDE.md, any open task lists, and the active spec file (`specs/mvp/`) if known.
 
-Confirm the file path to the user.
+## Phase 2: Produce the Handoff Brief
 
-### Option B: GitHub Issue
+Output exactly this structure. No preamble, no sign-off.
 
-Before creating, ask the user for priority if not obvious: P0 (critical), P1 (high), P2 (medium), P3 (low).
+```
+## Handoff Brief — {YYYY-MM-DD HH:MM}
 
-```bash
-gh issue create \
-  --title "prd: {feature title}" \
-  --body "{PRD content}" \
-  --label "prd"
+### What was built
+{2-4 bullets. Specific: file names, function names, behaviors added.}
+
+### Current state
+- Branch: {branch name}
+- Tests: {passing / failing / not run — name failing tests if any}
+- Build: {clean / errors}
+- Last commit: {hash + message}
+
+### What's next
+{2-4 bullets. Concrete next steps. Reference spec file path if applicable.}
+
+### Blockers / open questions
+{Unresolved decisions, missing info, or escalation points. "None" if clean.}
+
+### Key files touched
+{file path — one-line note on what changed, one per line}
+
+### Context to carry forward
+{Non-obvious decisions, discovered constraints, or patterns the next agent must know to avoid breaking things.}
 ```
 
-If the `prd` label doesn't exist:
+## Rules
 
-```bash
-gh label create prd --description "Product Requirements Document" --color "0075ca"
-```
-
-Report the issue URL to the user.
-
-### Option C: Linear Issue
-
-Discover the team key first (user may have multiple teams). Ask the user if ambiguous.
-
-```bash
-lineark issues create "prd: {feature title}" \
-  --team {TEAM_KEY} \
-  --description "{PRD content}" \
-  -p {priority: 0-4 mapping to none/urgent/high/medium/low}
-```
-
-Report the issue identifier and URL to the user.
-
-## Writing Style
-
-- Write for humans, not machines
-- Domain language from the project, not generic product jargon
-- Short sentences. No filler. Every paragraph must earn its place
-- Concrete over abstract. "User sees a spinner for 3s" not "improve perceived performance"
-- Never use em dashes. Use periods or restructure
+- Use exact file paths, function names, commit hashes — not approximations.
+- If tests are failing, name the failing test explicitly.
+- Cite the active spec by path (e.g., `specs/mvp/07-core-ingestion-pipeline.md`).
+- Keep the entire brief under 600 tokens — cut ruthlessly.

@@ -1,4 +1,5 @@
 import { Shield } from 'lucide-react'
+import { WobblioLogo } from '@/components/ui/logo'
 
 const NAV_ITEMS = [
   { href: '/',          label: 'Hub' },
@@ -20,8 +21,11 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
         aria-label="Admin navigation"
       >
         <div className="flex h-14 items-center gap-2 border-b border-[#e2e8f0] px-4">
-          <Shield size={16} strokeWidth={1.5} className="text-[#dc2626]" aria-hidden />
-          <span className="text-sm font-bold text-[#0f172a]">Admin Console</span>
+          <WobblioLogo className="h-6 w-6" />
+          <span className="font-semibold text-[#0f172a]">
+            wobbl<span className="text-electric-indigo">io</span>
+            <span className="ml-1 text-[10px] font-bold uppercase tracking-wider text-rose-500 bg-rose-500/10 px-1 py-0.5 rounded">admin</span>
+          </span>
         </div>
         <ul className="flex flex-col gap-0.5 p-2" role="list">
           {NAV_ITEMS.map(({ href, label }) => (
@@ -45,8 +49,13 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center border-b border-[#e2e8f0] bg-white px-6">
-          <span className="text-sm font-semibold text-[#0f172a]">Wobblio Admin</span>
-          <span className="ml-2 text-xs text-[#64748b]">admin.wobblio.com</span>
+          <div className="flex items-center gap-1.5">
+            <WobblioLogo className="h-5 w-5" />
+            <span className="text-sm font-bold text-[#0f172a]">
+              wobbl<span className="text-electric-indigo">io</span> <span className="text-slate-400">Admin</span>
+            </span>
+          </div>
+          <span className="ml-auto text-xs text-[#64748b]">admin.wobblio.com</span>
         </header>
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>

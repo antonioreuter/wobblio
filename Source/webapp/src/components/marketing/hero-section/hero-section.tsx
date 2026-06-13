@@ -23,8 +23,7 @@ export function HeroSection({ waitlistActive }: HeroSectionProps) {
           Scan your receipts.<br />Outsmart inflation.
         </h1>
         <p className="mb-8 text-lg text-[#64748b] dark:text-[#94a3b8]">
-          Wobblio reads any receipt with AI — automatic expense tracking, real local price
-          comparison, and shopping lists that know the cheapest store. No bank access. Ever.
+          Wobblio reads any receipt worldwide with AI — automatic expense breakdown, real local price comparison, and shopping lists that locate the cheapest store. No bank connection required. Ever.
         </p>
 
         {waitlistActive ? (

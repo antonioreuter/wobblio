@@ -1,102 +1,81 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { usePathname } from 'next/navigation'
-import type { LucideIcon } from 'lucide-react'
+import React from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   ReceiptText,
-  BarChart3,
+  CheckSquare,
+  LineChart,
   ShoppingCart,
   Wallet,
   Users,
   Settings,
-  Shield,
-  Menu,
-  X,
-} from 'lucide-react'
-import { NavItem } from '@/components/ui/nav-item'
-import { cn } from '@/lib/cn'
+  Terminal,
+} from 'lucide-react';
+import { WobblioLogo } from '@/components/ui/logo';
 
 interface LeftNavProps {
-  userRole?: string
-  className?: string
+  userRole?: string;
 }
 
-const navItems: { href: string; icon: LucideIcon; label: string }[] = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/invoices', icon: ReceiptText, label: 'Invoices' },
-  { href: '/reports', icon: BarChart3, label: 'Reports' },
-  { href: '/lists', icon: ShoppingCart, label: 'Shopping Lists' },
-  { href: '/budgets', icon: Wallet, label: 'Budgets' },
-  { href: '/household', icon: Users, label: 'Household' },
-]
+export function LeftNav({ userRole }: LeftNavProps) {
+  const pathname = usePathname() ?? '';
 
-export function LeftNav({ userRole, className }: LeftNavProps) {
-  const pathname = usePathname() ?? ''
-  const [collapsed, setCollapsed] = useState(false)
+  const menuItems = [
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/invoices', icon: ReceiptText, label: 'Invoices Ledger' },
+    { href: '/review', icon: CheckSquare, label: 'Awaiting Check' },
+    { href: '/reports', icon: LineChart, label: 'Price Trends' },
+    { href: '/lists', icon: ShoppingCart, label: 'Shopping Lists' },
+    { href: '/budgets', icon: Wallet, label: 'Category Budgets' },
+    { href: '/household', icon: Users, label: 'Household Synced Space' },
+  ];
 
   return (
-    <nav
-      className={cn(
-        'flex h-full flex-col border-r border-[#e2e8f0] bg-white transition-all dark:border-[#334155] dark:bg-[#111827]',
-        collapsed ? 'w-14' : 'w-60',
-        className
-      )}
-      aria-label="Main navigation"
-    >
-      {/* Header */}
-      <div
-        className={cn(
-          'flex h-14 items-center border-b border-[#e2e8f0] px-3 dark:border-[#334155]',
-          collapsed ? 'justify-center' : 'justify-between'
-        )}
-      >
-        {!collapsed && (
-          <span className="text-base font-bold text-[#0d9488]">Wobblio</span>
-        )}
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          className="rounded p-1 text-[#64748b] hover:text-[#0f172a] dark:text-[#94a3b8] dark:hover:text-[#f1f5f9]"
-          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-        >
-          {collapsed ? <Menu size={18} strokeWidth={1.5} /> : <X size={18} strokeWidth={1.5} />}
-        </button>
-      </div>
+    <aside className="app-nav-rail">
+      <Link href="/dashboard" className="rail-logo" title="Wobblio">
+        <WobblioLogo className="w-8 h-[21px]" />
+      </Link>
+      
+      <nav className="rail-menu" aria-label="App Navigation Modules">
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`rail-btn ${isActive ? 'active' : ''}`}
+              title={item.label}
+              aria-label={item.label}
+            >
+              <Icon className="w-5 h-5" />
+            </Link>
+          );
+        })}
 
-      {/* Nav items */}
-      <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-        {navItems.map(({ href, icon, label }) => (
-          <NavItem
-            key={href}
-            href={href}
-            icon={icon}
-            label={label}
-            active={pathname.startsWith(href)}
-            collapsed={collapsed}
-          />
-        ))}
-      </div>
-
-      {/* Bottom items */}
-      <div className="flex flex-col gap-0.5 border-t border-[#e2e8f0] p-2 dark:border-[#334155]">
-        <NavItem
+        <Link
           href="/settings"
-          icon={Settings}
-          label="Settings"
-          active={pathname.startsWith('/settings')}
-          collapsed={collapsed}
-        />
+          className={`rail-btn ${pathname.startsWith('/settings') ? 'active' : ''}`}
+          title="Settings & Privacy"
+          aria-label="Settings"
+        >
+          <Settings className="w-5 h-5" />
+        </Link>
+
         {userRole === 'ADMIN' && (
-          <NavItem
+          <Link
             href="/admin"
-            icon={Shield}
-            label="Admin"
-            active={pathname.startsWith('/admin')}
-            collapsed={collapsed}
-          />
+            className={`rail-btn ${pathname.startsWith('/admin') ? 'active' : ''}`}
+            title="Developer Console"
+            aria-label="Admin"
+          >
+            <Terminal className="w-5 h-5" />
+          </Link>
         )}
-      </div>
-    </nav>
-  )
+      </nav>
+    </aside>
+  );
 }

@@ -47,23 +47,25 @@ Present the test plan to the user. **Wait for approval before executing.**
 
 ## Phase 3: Execute Smoke Tests
 
-Run each test using `agent-browser` CLI via Bash tool:
+Use the **Playwright MCP tools** (not Bash). Available tools:
 
-```bash
-agent-browser open <url>
-agent-browser snapshot
-agent-browser click "<selector>"
-agent-browser fill "<selector>" "<value>"
-agent-browser type "<selector>" "<value>"
-agent-browser wait "<selector>"
-agent-browser screenshot /tmp/qa-test-N.png
-agent-browser eval "<expression>"
-```
+| Action | Tool |
+|---|---|
+| Navigate to URL | `mcp__plugin_playwright_playwright__browser_navigate` |
+| Accessibility snapshot | `mcp__plugin_playwright_playwright__browser_snapshot` |
+| Click element | `mcp__plugin_playwright_playwright__browser_click` |
+| Fill form fields | `mcp__plugin_playwright_playwright__browser_fill_form` |
+| Type text | `mcp__plugin_playwright_playwright__browser_type` |
+| Wait for element | `mcp__plugin_playwright_playwright__browser_wait_for` |
+| Take screenshot | `mcp__plugin_playwright_playwright__browser_take_screenshot` |
+| Run JS expression | `mcp__plugin_playwright_playwright__browser_evaluate` |
+| Check console errors | `mcp__plugin_playwright_playwright__browser_console_messages` |
+| Inspect network calls | `mcp__plugin_playwright_playwright__browser_network_requests` |
 
 For each test:
-1. Execute the steps
-2. Take a screenshot as evidence (`/tmp/qa-test-N.png`)
-3. Read the screenshot to verify
+1. Execute the steps using the tools above
+2. Take a screenshot as evidence (save path `/tmp/qa-test-N.png`)
+3. Read the screenshot to verify visually
 4. Record result: PASS, FAIL (with details), or SKIP (with reason)
 
 After all tests, present a results table:
