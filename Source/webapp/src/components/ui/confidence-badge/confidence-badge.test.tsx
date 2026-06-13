@@ -22,6 +22,6 @@ describe('ConfidenceBadge', () => {
   it('applies amber styling for low confidence', () => {
     render(<ConfidenceBadge confidence="low" />)
     const badge = screen.getByTestId('confidence-badge-low')
-    expect(badge.className).toContain('bg-amber-50')
+    expect(badge.className).toContain('#fef3c7')
   })
 })
