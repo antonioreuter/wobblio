@@ -1,5 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
+@import './obsidian-aurora.css';
 
 @theme {
   /* Obsidian Aurora Design System */
@@ -131,5 +131,3 @@ body {
     min-width: 44px;
   }
 }
-
-@import './obsidian-aurora.css';
