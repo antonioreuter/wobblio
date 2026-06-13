@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-label="Wobblio">
+  <defs>
+    <linearGradient id="wob-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6366F1"></stop>
+      <stop offset="100%" stop-color="#0D9488"></stop>
+    </linearGradient>
+  </defs>
+  <path d="M 6 30 C 10 30, 14 14, 20 14 C 24 14, 26 26, 32 22 L 42 22" stroke="url(#wob-grad)" stroke-width="4.5"></path>
+  <path d="M 6 30 C 10 30, 15 34, 20 28 C 23 24, 26 20, 30 24 C 33 27, 36 32, 42 32" stroke="url(#wob-grad)" stroke-width="4.5"></path>
+</svg>

@@ -1,0 +1,82 @@
+/* ==========================================================================
+   Wobblio · Color Tokens — "Obsidian Aurora"
+   Dark-first. The :root block is the default (dark) theme.
+   [data-theme="light"] is the "Solar Light" toggle.
+   ========================================================================== */
+:root {
+  /* ---- Raw palette ----------------------------------------------------- */
+  --indigo-500: #6366f1;   /* Electric Indigo — brand */
+  --indigo-600: #4f46e5;
+  --indigo-700: #3730a3;
+  --teal-600:   #0d9488;   /* Aurora Teal — success */
+  --amber-500:  #f59e0b;   /* Warm Amber — review/warn */
+  --amber-600:  #d97706;
+  --rose-500:   #f43f5e;   /* Sunset Coral — danger */
+  --rose-600:   #e11d48;
+
+  --space-950:  #05060b;   /* Deep Space — app background */
+  --space-900:  #090c15;
+  --ink-900:    #0f172a;   /* Deep Ink — light-mode text */
+  --slate-500:  #64748b;
+  --slate-400:  #94a3b8;   /* Slate Space — muted label */
+  --slate-300:  #cbd5e1;
+  --white-50:   #f8fafc;   /* Star White */
+  --solar-100:  #f1f5f9;   /* Solar light background */
+
+  /* ---- Merchant brand colors ------------------------------------------ */
+  --merchant-ah:        #00a1e2;
+  --merchant-jumbo:     #f59e0b;
+  --merchant-dirk:      #ef4444;
+  --merchant-lidl:      #8b5cf6;
+  --merchant-tokomania: #10b981;
+  --merchant-cantinho:  #be123c;
+
+  /* ---- Semantic surface tokens (DARK default) ------------------------- */
+  --bg-color:           #161a24;  /* lifted off pure black so the centered app's shadow reads */
+  --glass-bg:           rgba(13, 17, 30, 0.72);
+  --glass-border:       rgba(255, 255, 255, 0.07);
+  --glass-hover-border: rgba(99, 102, 241, 0.25);
+  --glass-highlight:    rgba(255, 255, 255, 0.02);
+  --nav-bg:             rgba(9, 12, 21, 0.85);
+
+  /* ---- Semantic text -------------------------------------------------- */
+  --text-primary:   #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted:     #64748b;
+
+  /* ---- Semantic accents ----------------------------------------------- */
+  --brand:        #6366f1;
+  --brand-glow:   rgba(99, 102, 241, 0.25);
+  --brand-hover:  #4f46e5;
+
+  --success:      #0d9488;
+  --success-glow: rgba(13, 148, 136, 0.15);
+  --warning:      #f59e0b;
+  --warning-glow: rgba(245, 158, 11, 0.15);
+  --danger:       #f43f5e;
+  --danger-glow:  rgba(244, 63, 94, 0.15);
+}
+
+[data-theme="light"] {
+  --bg-color:           #eaeef5;
+  --glass-bg:           rgba(255, 255, 255, 0.9);
+  --glass-border:       rgba(15, 23, 42, 0.1);
+  --glass-hover-border: rgba(99, 102, 241, 0.45);
+  --glass-highlight:    rgba(15, 23, 42, 0.025);
+  --nav-bg:             rgba(255, 255, 255, 0.85);
+
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #64748b;
+
+  --brand:        #4f46e5;
+  --brand-glow:   rgba(79, 70, 229, 0.12);
+  --brand-hover:  #3730a3;
+
+  --success:      #0d9488;
+  --success-glow: rgba(13, 148, 136, 0.1);
+  --warning:      #d97706;
+  --warning-glow: rgba(217, 119, 6, 0.1);
+  --danger:       #e11d48;
+  --danger-glow:  rgba(225, 29, 72, 0.1);
+}

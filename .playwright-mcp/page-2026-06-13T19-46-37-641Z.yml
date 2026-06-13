@@ -1,0 +1,181 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "Wobblio" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e5]:
+          - img "Wobblio" [ref=e6]
+          - generic [ref=e9]: wobblio
+      - generic [ref=e10]:
+        - button "Toggle theme" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+        - link "Sign in" [ref=e18] [cursor=pointer]:
+          - /url: /login
+        - link "Get started" [ref=e19] [cursor=pointer]:
+          - /url: /register
+  - generic [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e22]: Smart Expense Ingestion
+      - heading "Scan your receipts. Outsmart inflation." [level=1] [ref=e23]
+      - paragraph [ref=e24]: Wobblio reads any receipt with AI — automatic expense tracking, real local price comparison, and shopping lists that know the cheapest store. No bank access. Ever.
+      - link "Start ingesting free" [ref=e26] [cursor=pointer]:
+        - /url: /register
+        - text: Start ingesting free
+        - img [ref=e27]
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - generic [ref=e31]: OCR Scan Speed
+          - generic [ref=e32]: < 8 sec
+        - generic [ref=e33]:
+          - generic [ref=e34]: Privacy Level
+          - generic [ref=e35]: 100% Private
+        - generic [ref=e36]:
+          - generic [ref=e37]: GDPR Status
+          - generic [ref=e38]: Fully Ready
+    - generic [ref=e40]:
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - generic [ref=e43]: Lidl — Lisbon Norte
+          - text: 25 May 2026
+        - generic [ref=e44]: Scanning
+      - button "Click to scan a receipt Simulate AI parsing instantly" [ref=e45] [cursor=pointer]:
+        - img [ref=e47]
+        - paragraph [ref=e51]: Click to scan a receipt
+        - paragraph [ref=e52]: Simulate AI parsing instantly
+      - generic [ref=e53]:
+        - generic [ref=e54]: Total
+        - generic [ref=e55]: €11.13
+  - generic [ref=e57]:
+    - generic [ref=e58]:
+      - img [ref=e59]
+      - text: No bank connection required
+    - generic [ref=e62]:
+      - img [ref=e63]
+      - text: GDPR-compliant, EU-hosted, delete anytime
+    - generic [ref=e65]:
+      - img [ref=e66]
+      - text: Only anonymized prices are ever shared
+  - generic [ref=e69]:
+    - generic [ref=e70]:
+      - generic [ref=e71]: Capabilities
+      - heading "Designed for household intelligence" [level=2] [ref=e72]
+      - paragraph [ref=e73]: From AI extraction to price trends — the entire flow runs automatically.
+    - generic [ref=e74]:
+      - generic [ref=e75]:
+        - img [ref=e77]
+        - generic [ref=e80]: AI Ingestion
+        - generic [ref=e81]: Drag and drop receipt photos. AI extracts merchant names, product descriptions, quantities, and prices in seconds.
+      - generic [ref=e82]:
+        - img [ref=e84]
+        - generic [ref=e87]: Price Trends
+        - generic [ref=e88]: Interactive charts show how your everyday items fluctuate across local chains over time.
+      - generic [ref=e89]:
+        - img [ref=e91]
+        - generic [ref=e94]: List Optimizer
+        - generic [ref=e95]: Build a list and compare store prices — get the cheapest local store recommendations instantly.
+  - generic [ref=e96]:
+    - generic [ref=e97]:
+      - generic [ref=e98]: Use Cases
+      - heading "Built for how you actually spend" [level=2] [ref=e99]
+      - paragraph [ref=e100]: Wobblio adapts to your lifestyle — household, travel, or local savings hunting.
+    - generic [ref=e101]:
+      - generic [ref=e102]:
+        - img [ref=e104]
+        - generic [ref=e109]:
+          - generic [ref=e110]: One family, one picture of the money
+          - generic [ref=e111]: "\"Alerts before the budget breaks — not a post-mortem after.\""
+          - generic [ref=e112]: Share uploads across household members. Track combined totals and trigger warnings before you overspend.
+      - generic [ref=e113]:
+        - img [ref=e115]
+        - generic [ref=e118]:
+          - generic [ref=e119]: Inflation is personal
+          - generic [ref=e120]: "\"See exactly which store raised which price — and shop around with proof.\""
+          - generic [ref=e121]: Map price details across brands and chains. Watch charts creep up and find where items are cheapest.
+      - generic [ref=e122]:
+        - img [ref=e124]
+        - generic [ref=e129]:
+          - generic [ref=e130]: One photo. Tap who had what
+          - generic [ref=e131]: "\"Fair split — including the tip — in your group chat in 30 seconds.\""
+          - generic [ref=e132]: Split restaurant bills proportionally. Allocates service and tip automatically, then exports to WhatsApp.
+      - generic [ref=e133]:
+        - img [ref=e135]
+        - generic [ref=e138]:
+          - generic [ref=e139]: Three countries, one budget
+          - generic [ref=e140]: "\"Every receipt converted on the day you paid — not when your bank felt like it.\""
+          - generic [ref=e141]: Scan foreign receipts on the go. Converts currencies on the transaction date, with zero bank lag.
+  - generic [ref=e142]:
+    - generic [ref=e143]:
+      - generic [ref=e144]: Pricing
+      - heading "Ready to start saving?" [level=2] [ref=e145]
+      - paragraph [ref=e146]: Annual billing is two months free.
+    - tablist "Billing period" [ref=e147]:
+      - tab "Monthly" [ref=e148] [cursor=pointer]
+      - tab "Annual · 2 months free" [selected] [ref=e149] [cursor=pointer]
+    - generic [ref=e150]:
+      - generic [ref=e151]:
+        - heading "Standard" [level=3] [ref=e152]
+        - paragraph [ref=e153]: Perfect for basic receipt tracking.
+        - generic [ref=e154]:
+          - generic [ref=e155]: €
+          - generic [ref=e156]: "0"
+          - generic [ref=e157]: /mo
+        - list [ref=e158]:
+          - listitem [ref=e159]:
+            - img [ref=e160]
+            - text: 10 scans per month
+          - listitem [ref=e162]:
+            - img [ref=e163]
+            - text: Standard AI ingestion
+          - listitem [ref=e165]:
+            - img [ref=e166]
+            - text: Single-user workspace
+        - link "Get started" [ref=e168] [cursor=pointer]:
+          - /url: /register
+      - generic [ref=e169]:
+        - text: POPULAR
+        - heading "Household Pro" [level=3] [ref=e170]
+        - paragraph [ref=e171]: Complete sync for active families.
+        - generic [ref=e172]:
+          - generic [ref=e173]: €
+          - generic [ref=e174]: "6.58"
+          - generic [ref=e175]: /mo, billed yearly
+        - list [ref=e176]:
+          - listitem [ref=e177]:
+            - img [ref=e178]
+            - text: Unlimited scans
+          - listitem [ref=e180]:
+            - img [ref=e181]
+            - text: Shared household pool
+          - listitem [ref=e183]:
+            - img [ref=e184]
+            - text: List optimizer & store comparisons
+          - listitem [ref=e186]:
+            - img [ref=e187]
+            - text: WhatsApp reports & exports
+        - link "Upgrade now" [ref=e189] [cursor=pointer]:
+          - /url: /register
+  - generic [ref=e190]:
+    - generic [ref=e191]:
+      - generic [ref=e192]: FAQ
+      - heading "Questions, answered" [level=2] [ref=e193]
+    - generic [ref=e194]:
+      - group [ref=e195]:
+        - generic "Does Wobblio need access to my bank?" [ref=e196] [cursor=pointer]:
+          - text: Does Wobblio need access to my bank?
+          - img [ref=e197]
+      - group [ref=e199]:
+        - generic "How private is the price data I share?" [ref=e200] [cursor=pointer]:
+          - text: How private is the price data I share?
+          - img [ref=e201]
+      - group [ref=e203]:
+        - generic "What does AI ingestion actually do?" [ref=e204] [cursor=pointer]:
+          - text: What does AI ingestion actually do?
+          - img [ref=e205]
+      - group [ref=e207]:
+        - generic "Can I delete my data?" [ref=e208] [cursor=pointer]:
+          - text: Can I delete my data?
+          - img [ref=e209]
+  - button "Start ingesting free" [ref=e211] [cursor=pointer]:
+    - text: Start ingesting free
+    - img [ref=e212]
+  - contentinfo [ref=e214]: © 2026 Wobblio · Built in Eindhoven · GDPR-compliant, EU-hosted

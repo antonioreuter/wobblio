@@ -1,431 +1,242 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { Search, Calendar, Check } from 'lucide-react'
-import { Money } from '@/components/ui/money'
-
-const VOCABULARY = [
-  "Organic Whole Milk 1L",
-  "Organic Avocados",
-  "Fairtrade Bananas",
-  "Jasmine Rice 5kg",
-  "Eggs 12-pack",
-  "Sourdough Bread 800g",
-  "Bulk Coffee Beans 1kg",
-  "Premium Soy Sauce 500ml",
-  "Red Sangria 1L"
-]
-
-const STORES = ['Albert Heijn', 'Jumbo', 'Dirk', 'Lidl']
-const STORE_COLORS: Record<string, string> = {
-  'Albert Heijn': '#00a1e2',
-  'Jumbo': '#f59e0b',
-  'Dirk': '#ef4444',
-  'Lidl': '#8b5cf6'
-}
-
-function getProductBasePrice(productName: string) {
-  let hash = 0
-  for (let i = 0; i < productName.length; i++) {
-    hash = productName.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  hash = Math.abs(hash)
-  return 1.8 + (hash % 100) / 10
-}
-
-function getPriceOnDay(store: string, basePrice: number, dayOffset: number) {
-  const storeMod = store === 'Albert Heijn' ? 1.12 : store === 'Jumbo' ? 1.04 : store === 'Dirk' ? 0.94 : 0.84
-  const storeFreq = store === 'Albert Heijn' ? 18 : store === 'Jumbo' ? 24 : store === 'Dirk' ? 14 : 30
-  const fluctuation = Math.sin(dayOffset / storeFreq) * (basePrice * 0.07) + Math.cos(dayOffset / 40) * (basePrice * 0.03)
-  return parseFloat((basePrice * storeMod + fluctuation).toFixed(2))
-}
+import { useState } from 'react'
+import { Calendar, Clock, Search, Trash2, TrendingUp } from 'lucide-react'
+import { Button, Card } from '@/components/ds'
+import {
+  daysAgo,
+  FilterSelect,
+  LineChart,
+  MAX_PRODUCTS,
+  MERCHANT_SHORT,
+  MONTHS,
+  PRESETS,
+  ProductSearch,
+  SERIES_COLORS,
+  TODAY,
+  TREND_DATA,
+  TREND_PRODUCTS,
+  TREND_WEEKS,
+  type Preset,
+} from '@/components/workspace'
 
 export default function ReportsPage() {
-  const [product, setProduct] = useState('Organic Whole Milk 1L')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [suggestions, setSuggestions] = useState<string[]>([])
-  const [activeStores, setActiveStores] = useState<Record<string, boolean>>({
-    'Albert Heijn': true,
-    'Jumbo': true,
-    'Dirk': true,
-    'Lidl': true
-  })
-  const [period, setPeriod] = useState<30 | 90 | 180 | 365>(90)
+  const [selected, setSelected] = useState<string[]>(['milk'])
+  const [preset, setPreset] = useState<Preset>('90d')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [searching, setSearching] = useState(false)
 
-  // Hover state for SVG chart
-  const svgRef = useRef<SVGSVGElement | null>(null)
-  const [hoverState, setHoverState] = useState<{
-    show: boolean
-    x: number
-    dayIndex: number
-    dateStr: string
-    prices: { store: string; price: number }[]
-  } | null>(null)
+  const atMax = selected.length >= MAX_PRODUCTS
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value
-    setSearchQuery(query)
-    if (query.trim() === '') {
-      setSuggestions([])
-    } else {
-      const filtered = VOCABULARY.filter(item =>
-        item.toLowerCase().includes(query.toLowerCase())
-      )
-      setSuggestions(filtered)
-    }
-  }
-
-  const selectProduct = (pName: string) => {
-    setProduct(pName)
-    setSearchQuery('')
-    setSuggestions([])
-  }
-
-  const toggleStore = (store: string) => {
-    setActiveStores(prev => ({
-      ...prev,
-      [store]: !prev[store]
+  const lines = selected.flatMap((id) => {
+    const pr = TREND_PRODUCTS.find((p) => p.id === id)
+    if (!pr) return []
+    return pr.stores.map(([m]) => ({
+      id: `${id}|${m}`,
+      product: pr.short,
+      merchant: MERCHANT_SHORT[m] ?? m,
+      name: `${pr.short} · ${MERCHANT_SHORT[m] ?? m}`,
+      full: TREND_DATA[`${id}|${m}`],
     }))
+  })
+
+  const rangeDays =
+    from && to ? Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) : 0
+  const rangeInvalid = preset === 'custom' && from !== '' && to !== '' && (rangeDays < 0 || rangeDays > 92)
+
+  const inRange = (d: Date) => {
+    if (preset === '30d') return d >= daysAgo(30)
+    if (preset === 'month')
+      return d.getUTCMonth() === TODAY.getUTCMonth() && d.getUTCFullYear() === TODAY.getUTCFullYear()
+    if (preset === 'custom' && !rangeInvalid && from && to)
+      return d >= new Date(from) && d <= new Date(to)
+    return d >= daysAgo(92)
   }
 
-  const basePrice = getProductBasePrice(product)
-  const today = new Date()
+  const idx = TREND_WEEKS.map((d, i) => [d, i] as const).filter(([d]) => inRange(d)).map(([, i]) => i)
+  const labels = idx.map((i) => {
+    const d = TREND_WEEKS[i]
+    return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
+  })
+  const series = lines.map((ln, i) => ({
+    ...ln,
+    color: SERIES_COLORS[i % SERIES_COLORS.length],
+    data: idx.map((j) => ln.full[j]),
+  }))
+  const rangeLabel = PRESETS.find(([v]) => v === preset)?.[1] ?? 'Last 3 months'
 
-  // Generate data points
-  const points: { dayIndex: number; date: Date; dateStr: string; prices: Record<string, number> }[] = []
-  for (let i = period - 1; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(today.getDate() - i)
-    const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-    const storePrices: Record<string, number> = {}
-    STORES.forEach(store => {
-      storePrices[store] = getPriceOnDay(store, basePrice, i)
-    })
-    points.push({
-      dayIndex: i,
-      date: d,
-      dateStr,
-      prices: storePrices
-    })
+  const add = (id: string) => {
+    if (!atMax && !selected.includes(id)) setSelected((s) => [...s, id])
   }
-
-  // Find min/max price in the visible dataset to scale Y
-  const visiblePrices = points.flatMap(pt =>
-    Object.entries(pt.prices)
-      .filter(([store]) => activeStores[store])
-      .map(([, price]) => price)
-  )
-  const minPrice = visiblePrices.length > 0 ? Math.min(...visiblePrices) * 0.95 : 0
-  const maxPrice = visiblePrices.length > 0 ? Math.max(...visiblePrices) * 1.05 : 10
-
-  // SVG dimensions
-  const svgWidth = 800
-  const svgHeight = 400
-  const paddingLeft = 50
-  const paddingRight = 30
-  const paddingTop = 30
-  const paddingBottom = 45
-
-  const chartWidth = svgWidth - paddingLeft - paddingRight
-  const chartHeight = svgHeight - paddingTop - paddingBottom
-
-  // Mapping functions
-  const getX = (index: number) => {
-    return paddingLeft + (index / (points.length - 1)) * chartWidth
+  const removeProduct = (id: string) => setSelected((s) => s.filter((x) => x !== id))
+  const clear = () => {
+    setSelected([])
+    setPreset('90d')
+    setFrom('')
+    setTo('')
   }
-  const getY = (price: number) => {
-    return paddingTop + chartHeight - ((price - minPrice) / (maxPrice - minPrice)) * chartHeight
-  }
-
-  // Hover detection handler
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement, MouseEvent>) => {
-    if (!svgRef.current) return
-    const rect = svgRef.current.getBoundingClientRect()
-    const clientX = e.clientX - rect.left
-    const percentage = clientX / rect.width
-    const rawX = percentage * svgWidth
-
-    // Bound checking inside chart area
-    if (rawX >= paddingLeft && rawX <= svgWidth - paddingRight) {
-      // Find closest day index
-      const relativeX = rawX - paddingLeft
-      const fraction = relativeX / chartWidth
-      const rawIndex = fraction * (points.length - 1)
-      const index = Math.max(0, Math.min(points.length - 1, Math.round(rawIndex)))
-      
-      const point = points[index]
-      if (point) {
-        const sortedPrices = STORES.filter(store => activeStores[store])
-          .map(store => ({
-            store,
-            price: point.prices[store]
-          }))
-          .sort((a, b) => a.price - b.price)
-
-        setHoverState({
-          show: true,
-          x: getX(index),
-          dayIndex: index,
-          dateStr: point.date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
-          prices: sortedPrices
-        })
-      }
-    } else {
-      setHoverState(null)
-    }
-  }
-
-  const handleMouseLeave = () => {
-    setHoverState(null)
+  const search = () => {
+    setSearching(true)
+    setTimeout(() => setSearching(false), 550)
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-[24px] font-bold text-[#0f172a] dark:text-[#f1f5f9]">Price Trends Engine</h1>
-        <p className="text-sm text-[#64748b] dark:text-[#94a3b8] mt-1">
-          Historical pricing intelligence tracking inflation patterns across major retailers.
-        </p>
-      </div>
+    <div className="pane">
+      <h2 className="pane-title">Price Trends</h2>
+      <p className="pane-subtitle">
+        Compare an item across local stores over time — one line per store. Track up to {MAX_PRODUCTS} products.
+      </p>
 
-      {/* Control Selector Pane */}
-      <div className="glass-card p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        
-        {/* Product Search Selector */}
-        <div className="relative flex-1 max-w-sm">
-          <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-            Selected Product
-          </label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]" size={15} />
-            <input
-              type="text"
-              placeholder="Search products..."
-              value={searchQuery || product}
-              onChange={handleSearchChange}
-              onFocus={() => {
-                if (searchQuery === '') setSuggestions(VOCABULARY)
-              }}
-              className="h-10 w-full rounded-lg border border-[#e2e8f0] bg-white pl-9 pr-3 text-sm text-[#0f172a] focus:border-[#0d9488] focus:outline-none dark:border-[#334155] dark:bg-[#0b0f19] dark:text-[#f1f5f9]"
-            />
+      <Card className="panel filter-card">
+        <div className="filter-head">
+          <TrendingUp size={15} /> <span>Filter price trends</span>
+        </div>
+
+        <div className="filter-grid">
+          <div className="span-2">
+            <ProductSearch onAdd={add} disabled={atMax} exclude={selected} />
           </div>
+          <FilterSelect
+            label="Date range"
+            icon={<Calendar size={15} />}
+            value={preset}
+            onChange={(e) => setPreset(e.target.value as Preset)}
+          >
+            {PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </FilterSelect>
+        </div>
 
-          {/* Suggestions list */}
-          {suggestions.length > 0 && (
-            <ul className="absolute z-20 top-full left-0 right-0 mt-1 rounded-lg border border-[#e2e8f0] bg-white shadow-lg dark:border-[#334155] dark:bg-[#111827] overflow-hidden">
-              {suggestions.map(pName => (
-                <li key={pName}>
+        {preset === 'custom' && (
+          <div className="filter-grid filter-dates">
+            <div className="filter-field">
+              <label className="filter-label">From</label>
+              <div className="filter-wrap">
+                <span className="lead-icon"><Calendar size={15} /></span>
+                <input
+                  type="date"
+                  className="filter-select"
+                  value={from}
+                  max={to || undefined}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="filter-field">
+              <label className="filter-label">To</label>
+              <div className="filter-wrap">
+                <span className="lead-icon"><Calendar size={15} /></span>
+                <input
+                  type="date"
+                  className="filter-select"
+                  value={to}
+                  min={from || undefined}
+                  onChange={(e) => setTo(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="filter-sep" />
+
+        <div className="filter-field">
+          <label className="filter-label">
+            Selected products ({selected.length}/{MAX_PRODUCTS})
+          </label>
+          <div className="trend-picker">
+            {selected.length === 0 && (
+              <span className="trend-empty-hint">Search above to add up to {MAX_PRODUCTS} products.</span>
+            )}
+            {selected.map((id) => {
+              const pr = TREND_PRODUCTS.find((p) => p.id === id)
+              if (!pr) return null
+              return (
+                <span className="trend-chip" key={id}>
+                  {pr.short} <span className="trend-stores">{pr.stores.length} stores</span>
                   <button
                     type="button"
-                    onClick={() => selectProduct(pName)}
-                    className="w-full px-4 py-2.5 text-left text-sm text-[#0f172a] hover:bg-[#f8fafc] dark:text-[#f1f5f9] dark:hover:bg-[#1e293b] transition-colors"
+                    className="trend-x"
+                    aria-label={`Remove ${pr.name}`}
+                    onClick={() => removeProduct(id)}
                   >
-                    {pName}
+                    ✕
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Retailer Filter Checks */}
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Retailers
-          </span>
-          <div className="flex flex-wrap gap-3">
-            {STORES.map(store => (
-              <button
-                key={store}
-                onClick={() => toggleStore(store)}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${
-                  activeStores[store]
-                    ? 'bg-slate-100 dark:bg-slate-800 text-[#0f172a] dark:text-[#f1f5f9] border-slate-300 dark:border-slate-700'
-                    : 'bg-transparent text-slate-400 border-dashed border-slate-200 dark:border-slate-800'
-                }`}
-              >
-                <div
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: activeStores[store] ? STORE_COLORS[store] : '#94a3b8' }}
-                />
-                {store}
-                {activeStores[store] && <Check size={10} />}
-              </button>
-            ))}
+                </span>
+              )
+            })}
           </div>
         </div>
 
-        {/* Time Periods */}
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Timeframe
+        <div className="filter-foot">
+          <span className={`filter-hint ${rangeInvalid ? 'invalid' : ''}`}>
+            <Clock size={13} />
+            {rangeInvalid ? 'Range can’t exceed 3 months.' : `${lines.length} lines · max range 3 months`}
           </span>
-          <div className="flex rounded-lg border border-[#e2e8f0] dark:border-[#334155] overflow-hidden">
-            {([30, 90, 180, 365] as const).map(days => (
-              <button
-                key={days}
-                onClick={() => setPeriod(days)}
-                className={`px-3 py-1.5 text-xs font-semibold transition-all ${
-                  period === days
-                    ? 'bg-electric-indigo text-white'
-                    : 'bg-transparent text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                {days === 365 ? '1y' : `${days}d`}
-              </button>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
-      {/* SVG Line Chart Renderer */}
-      <div className="glass-card p-6 relative flex flex-col items-center">
-        <div className="w-full aspect-[4/3] md:aspect-[2/1] relative">
-          <svg
-            ref={svgRef}
-            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-            className="w-full h-full select-none cursor-crosshair overflow-visible"
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-          >
-            {/* Grid Lines */}
-            {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
-              const y = paddingTop + ratio * chartHeight
-              const price = maxPrice - ratio * (maxPrice - minPrice)
-              return (
-                <g key={index} className="opacity-40">
-                  <line
-                    x1={paddingLeft}
-                    y1={y}
-                    x2={svgWidth - paddingRight}
-                    y2={y}
-                    stroke="var(--color-glass-border)"
-                    strokeWidth={1}
-                    strokeDasharray="4 4"
-                  />
-                  <text
-                    x={paddingLeft - 8}
-                    y={y + 4}
-                    textAnchor="end"
-                    className="fill-[#64748b] dark:fill-[#94a3b8] text-[10px] font-mono"
-                  >
-                    €{price.toFixed(2)}
-                  </text>
-                </g>
-              )
-            })}
-
-            {/* X Axis Labels */}
-            {points.map((pt, idx) => {
-              const labelInterval = Math.ceil(points.length / 6)
-              if (idx % labelInterval !== 0 && idx !== points.length - 1) return null
-              return (
-                <text
-                  key={idx}
-                  x={getX(idx)}
-                  y={svgHeight - paddingBottom + 18}
-                  textAnchor="middle"
-                  className="fill-[#64748b] dark:fill-[#94a3b8] text-[9px] sm:text-[10px] font-medium"
-                >
-                  {pt.dateStr}
-                </text>
-              )
-            })}
-
-            {/* Line Charts */}
-            {STORES.map(store => {
-              if (!activeStores[store]) return null
-              
-              // Build points string for SVG polyline
-              const linePoints = points
-                .map((pt, idx) => `${getX(idx)},${getY(pt.prices[store])}`)
-                .join(' ')
-
-              return (
-                <g key={store}>
-                  <polyline
-                    fill="none"
-                    stroke={STORE_COLORS[store]}
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    points={linePoints}
-                    className="transition-all duration-300"
-                  />
-                </g>
-              )
-            })}
-
-            {/* Hover Snapping Guide Line & Circles */}
-            {hoverState && hoverState.show && (
-              <>
-                <line
-                  x1={hoverState.x}
-                  y1={paddingTop}
-                  x2={hoverState.x}
-                  y2={svgHeight - paddingBottom}
-                  stroke="var(--color-electric-indigo)"
-                  strokeWidth={1.5}
-                  strokeDasharray="3 3"
-                />
-                {STORES.map(store => {
-                  if (!activeStores[store]) return null
-                  const storePrice = points[hoverState.dayIndex].prices[store]
-                  return (
-                    <circle
-                      key={store}
-                      cx={hoverState.x}
-                      cy={getY(storePrice)}
-                      r={5}
-                      fill={STORE_COLORS[store]}
-                      stroke="white"
-                      strokeWidth={1.5}
-                    />
-                  )
-                })}
-              </>
-            )}
-          </svg>
-
-          {/* Detailed Floating Tooltip */}
-          {hoverState && hoverState.show && (
-            <div
-              className="absolute z-10 p-4 rounded-lg bg-[var(--color-obsidian-glass)] border border-[var(--color-glass-border)] backdrop-blur-[20px] shadow-lg flex flex-col gap-2 text-[11px] sm:text-xs pointer-events-none"
-              style={{
-                left: `${Math.min(80, (hoverState.x / svgWidth) * 100)}%`,
-                top: '10%'
-              }}
+          <div className="filter-actions">
+            <button
+              type="button"
+              className="btn btn--text"
+              style={{ padding: '8px 14px' }}
+              onClick={clear}
             >
-              <div className="flex items-center gap-1.5 text-slate-400 font-semibold border-b border-[var(--color-glass-border)] pb-1.5 mb-1">
-                <Calendar size={12} />
-                <span>{hoverState.dateStr}</span>
-              </div>
-              <ul className="flex flex-col gap-1.5">
-                {hoverState.prices.map(({ store, price }, index) => {
-                  const isCheapest = index === 0
-                  return (
-                    <li key={store} className="flex items-center justify-between gap-4 font-medium">
-                      <div className="flex items-center gap-1.5">
-                        <div
-                          className="h-2 w-2 rounded-full"
-                          style={{ backgroundColor: STORE_COLORS[store] }}
-                        />
-                        <span className="text-[#f1f5f9]">{store}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Money amount={price} size="secondary" className="font-mono text-star-white font-bold" />
-                        {isCheapest && <span className="text-[10px]" title="Cheapest Store">🏆</span>}
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
+              <Trash2 size={14} /> Clear filters
+            </button>
+            <Button
+              variant="primary"
+              disabled={rangeInvalid}
+              style={{ padding: '9px 20px', fontSize: 13 }}
+              onClick={search}
+              iconLeft={searching ? null : <Search size={15} />}
+            >
+              {searching ? 'Searching…' : 'Search'}
+            </Button>
+          </div>
         </div>
-      </div>
+      </Card>
 
+      <Card className="panel">
+        <div className="panel-header" style={{ marginBottom: 8 }}>
+          <span className="panel-title">Price per unit</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {rangeInvalid ? 'Last 3 months' : rangeLabel}
+          </span>
+        </div>
+        {series.length === 0 ? (
+          <div className="table-empty">
+            <TrendingUp size={26} />
+            <span>Add a product above to start comparing prices across stores.</span>
+          </div>
+        ) : (
+          <>
+            <LineChart series={series} months={labels} />
+            <div className="trend-legend">
+              {series.map((s) => {
+                const d = ((s.data[s.data.length - 1] - s.data[0]) / s.data[0]) * 100
+                return (
+                  <div className="legend-item" key={s.id}>
+                    <span className="dot" style={{ background: s.color }} />
+                    <div className="legend-meta">
+                      <span className="legend-name">
+                        {s.product} · <strong>{s.merchant}</strong>
+                      </span>
+                      <span className="legend-now">
+                        €{s.data[s.data.length - 1].toFixed(2)}
+                        <span
+                          className="legend-delta"
+                          style={{ color: d > 0 ? 'var(--danger)' : 'var(--success)' }}
+                        >
+                          {d > 0 ? '▲' : '▼'} {Math.abs(d).toFixed(1)}%
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </Card>
     </div>
   )
 }

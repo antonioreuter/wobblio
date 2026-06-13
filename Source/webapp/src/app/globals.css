@@ -1,132 +1,61 @@
 @import 'tailwindcss';
-@import './obsidian-aurora.css';
 
+@import '../styles/ds/tokens/colors.css';
+@import '../styles/ds/tokens/typography.css';
+@import '../styles/ds/tokens/spacing.css';
+@import '../styles/ds/tokens/effects.css';
+@import '../styles/ds/base.css';
+@import '../styles/ds/auth.css';
+@import '../styles/ds/landing.css';
+@import '../styles/ds/workspace.css';
+
+/* Light theme is the opt-in via data-theme="light"; dark is default. */
+@variant light (&:where([data-theme='light'], [data-theme='light'] *));
+
+/* Bridge next/font CSS variables into the design system font tokens. */
+:root {
+  --font-body: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: var(--font-outfit), 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Expose DS tokens to Tailwind so utilities like bg-brand / text-primary resolve. */
 @theme {
-  /* Obsidian Aurora Design System */
-  --color-deep-space: #090c15;
-  --color-obsidian-glass: rgba(17, 22, 39, 0.72);
-  --color-solar-glass-bg: #f1f5f9;
-  --color-light-glass-surface: rgba(255, 255, 255, 0.75);
-  
-  /* Accents */
-  --color-electric-indigo: #6366f1;
-  --color-aurora-teal: #0d9488;
-  --color-sunset-coral: #f43f5e;
-  --color-warm-amber: #f59e0b;
-  --color-star-white: #f8fafc;
-  --color-slate-space: #94a3b8;
-  
-  /* Glass Borders and Shadows */
-  --color-glass-border: rgba(255, 255, 255, 0.08);
-  --color-glass-border-light: rgba(15, 23, 74, 0.08);
-  --shadow-premium-glow: 0 0 25px 3px rgba(99, 102, 241, 0.15);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-glass-bg: var(--glass-bg);
+  --color-glass-border: var(--glass-border);
+  --color-bg: var(--bg-color);
 
-  /* Legacy & mapped variables for backwards compatibility */
-  --color-brand: var(--color-aurora-teal);
-  --color-brand-hover: #0f766e;
-  --color-brand-light: #ccfbf1;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
 
-  /* Light mode surfaces */
-  --color-background: var(--color-solar-glass-bg);
-  --color-surface: var(--color-light-glass-surface);
-  --color-surface-container: #f1f5f9;
-  --color-surface-container-high: #e2e8f0;
-  --color-text: #0f172a;
-  --color-muted: #64748b;
-  --color-outline: #cbd5e1;
-  --color-outline-variant: #e2e8f0;
-
-  /* Dark mode surfaces */
-  --color-background-dark: var(--color-deep-space);
-  --color-surface-dark: var(--color-obsidian-glass);
-  --color-surface-container-dark: #1e293b;
-  --color-text-dark: var(--color-star-white);
-  --color-muted-dark: var(--color-slate-space);
-  --color-outline-dark: #334155;
-
-  /* Semantic */
-  --color-success: #16a34a;
-  --color-success-light: #dcfce7;
-  --color-warning: var(--color-warm-amber);
-  --color-warning-light: #fef3c7;
-  --color-error: var(--color-sunset-coral);
-  --color-error-light: #fee2e2;
-
-  /* Typography scale */
-  --font-size-display: 30px;
-  --line-height-display: 36px;
-  --font-size-h1: 24px;
-  --line-height-h1: 32px;
-  --font-size-h2: 20px;
-  --line-height-h2: 28px;
-  --font-size-body: 16px;
-  --line-height-body: 24px;
-  --font-size-secondary: 14px;
-  --line-height-secondary: 20px;
-  --font-size-caption: 12px;
-  --line-height-caption: 16px;
-
-  /* Radii */
-  --radius-card: 12px;
-  --radius-btn: 8px;
-  --radius-chip: 9999px;
-
-  /* Font family */
-  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
 }
 
-/* Dark mode via data-theme attribute (Tailwind v4 variant config) */
-@variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html {
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-body {
-  background-color: var(--color-background);
-  color: var(--color-text);
-}
-
-/* Tabular nums utility — apply to every monetary figure */
-.tabular {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum';
-}
-
-/* Numeric table cell — right-aligned tabular nums */
+/* Money & numeric utilities */
 .numeric-cell {
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum';
   text-align: right;
 }
 
-/* Glassmorphism Cards */
-.glass-card {
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-radius: 12px;
-  border: 1px solid var(--color-glass-border-light);
-  background: var(--color-light-glass-surface);
-  box-shadow: var(--shadow-md);
-}
-
-:where([data-theme='dark'], [data-theme='dark'] *) .glass-card {
-  border: 1px solid var(--color-glass-border);
-  background: var(--color-obsidian-glass);
-  box-shadow: 0px 4px 30px rgba(0, 0, 0, 0.4), var(--shadow-premium-glow);
-}
-
-/* Touch Targets for Mobile Accessibility */
+/* Touch targets for mobile accessibility */
 @media (max-width: 767px) {
-  button, a, [role="button"], input[type="checkbox"], input[type="radio"] {
+  button,
+  a,
+  [role='button'],
+  input[type='checkbox'],
+  input[type='radio'] {
     min-height: 44px;
     min-width: 44px;
   }

@@ -2,37 +2,36 @@ import { auth } from '@/auth'
 import { LeftNav } from '@/components/ui/left-nav'
 import { TopBar } from '@/components/ui/top-bar'
 import { RlsWarningBanner } from '@/components/ui/top-bar/rls-warning-banner'
-import { MobileNav } from '@/components/ui/mobile-nav'
+import { SiteHeader } from '@/components/ui/site-header'
+import { SiteFooter } from '@/components/ui/site-footer'
+import { WorkspaceProvider } from '@/components/workspace'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   const userRole = session?.user?.role ?? 'STANDARD'
+  const userEmail = session?.user?.email ?? 'AR'
+  const userInitials = deriveInitials(userEmail)
 
   return (
-    <div className="h-screen w-screen relative overflow-hidden flex flex-col">
-      {/* Background Aurora Blobs */}
-      <div className="aurora-bg">
-        <div className="blob blob-1"></div>
-        <div className="blob blob-2"></div>
-        <div className="blob blob-3"></div>
-      </div>
-
-      {/* Workspace View Container */}
-      <main className="workspace-view active w-full h-full z-10 flex flex-col">
-        <div className="app-shell h-full w-full bg-[rgba(8,10,19,0.4)] border-none rounded-none overflow-hidden shadow-none grid grid-cols-[80px_1fr]">
+    <>
+      <SiteHeader variant="app" />
+      <div className="workspace">
+        <div className="app-shell" data-surface="calm">
           <LeftNav userRole={userRole} />
-          
-          <div className="app-workspace-body flex flex-col min-w-0 h-full relative">
-            <TopBar quotaUsed={7} quotaLimit={10} />
+          <div className="app-body">
+            <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
             <RlsWarningBanner />
-            <main className="app-workspace-content">
-              {children}
-            </main>
+            <WorkspaceProvider>{children}</WorkspaceProvider>
           </div>
         </div>
-      </main>
-
-      <MobileNav userRole={userRole} />
-    </div>
+      </div>
+      <SiteFooter />
+    </>
   )
+}
+
+function deriveInitials(input: string): string {
+  const parts = input.trim().split(/[\s@.]+/).filter(Boolean)
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+  return input.slice(0, 2).toUpperCase()
 }

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter, Outfit } from 'next/font/google'
 import { ThemeProvider } from '@/components/providers/theme-provider'
 import { SandboxProvider } from '@/components/providers/sandbox-provider'
+import { AuroraBackground } from '@/components/ds'
 import './globals.css'
 
 const inter = Inter({
@@ -27,7 +28,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <ThemeProvider>
           <SandboxProvider>
-            {children}
+            <AuroraBackground />
+            <div className="kit">{children}</div>
           </SandboxProvider>
         </ThemeProvider>
       </body>

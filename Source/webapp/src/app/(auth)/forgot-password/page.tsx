@@ -1,21 +1,26 @@
 import Link from 'next/link'
+import { ShieldCheck } from 'lucide-react'
+import { WobblioLogo } from '@/components/ds/WobblioLogo'
 import { ForgotPasswordForm } from './forgot-password-form'
 
 export const metadata = { title: 'Reset password — Wobblio' }
 
 export default function ForgotPasswordPage() {
   return (
-    <div className="w-full max-w-md rounded-[12px] border border-[#E2E8F0] bg-white p-8 shadow-sm dark:border-[#1E293B] dark:bg-[#111827]">
-      <div className="mb-8 text-center">
-        <Link href="/" className="text-2xl font-semibold tracking-tight text-[#0D9488]">
-          wobblio
-        </Link>
+    <div className="auth-screen">
+      <div className="auth-card glass">
+        <div className="auth-brand">
+          <WobblioLogo size={30} withWordmark />
+        </div>
+        <ForgotPasswordForm />
+        <p className="auth-foot">
+          <Link href="/login" className="auth-link strong">
+            Back to sign in
+          </Link>
+        </p>
       </div>
-      <ForgotPasswordForm />
-      <p className="mt-5 text-center text-sm text-[#64748B] dark:text-[#94A3B8]">
-        <Link href="/login" className="font-medium text-[#0D9488] hover:underline">
-          Back to sign in
-        </Link>
+      <p className="auth-legal">
+        <ShieldCheck size={14} /> Protected by row-level security · GDPR-compliant · EU-hosted
       </p>
     </div>
   )

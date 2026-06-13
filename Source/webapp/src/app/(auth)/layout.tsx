@@ -1,7 +1,12 @@
+import { SiteHeader } from '@/components/ui/site-header'
+import { SiteFooter } from '@/components/ui/site-footer'
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC] dark:bg-[#0B0F19]">
+    <>
+      <SiteHeader variant="auth" />
       {children}
-    </div>
+      <SiteFooter />
+    </>
   )
 }

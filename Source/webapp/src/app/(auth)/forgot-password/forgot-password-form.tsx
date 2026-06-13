@@ -2,7 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { sendPasswordResetCode, confirmPasswordReset } from '../actions'
+import { ArrowRight, Lock, Mail, ShieldCheck } from 'lucide-react'
+import { Button } from '@/components/ds/Button'
+import { Input } from '@/components/ds/Input'
+import { confirmPasswordReset, sendPasswordResetCode } from '../actions'
 
 type Step = 'email' | 'reset'
 
@@ -62,38 +65,38 @@ export function ForgotPasswordForm() {
   if (step === 'email') {
     return (
       <>
-        <h1 className="mb-2 text-[30px] font-semibold leading-tight text-[#0F172A] dark:text-[#F1F5F9]">
-          Reset your password
-        </h1>
-        <p className="mb-6 text-sm text-[#64748B] dark:text-[#94A3B8]">
-          Enter your email and we&apos;ll send a reset code.
-        </p>
-        <form onSubmit={handleEmailSubmit} data-testid="forgot-email-form" noValidate>
-          <label htmlFor="email" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-            Email
-          </label>
-          <input
-            id="email"
-            name="email"
+        <h1 className="auth-title">Reset your password</h1>
+        <p className="auth-sub">Enter your email and we&apos;ll send you a reset code.</p>
+        <form
+          onSubmit={handleEmailSubmit}
+          className="auth-form"
+          data-testid="forgot-email-form"
+          noValidate
+        >
+          <Input
+            label="Email"
             type="email"
+            name="email"
             autoComplete="email"
+            icon={<Mail size={16} />}
             required
             data-testid="forgot-email"
-            className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-[16px] text-[#0F172A] outline-none transition focus:border-[#0D9488] focus:ring-1 focus:ring-[#0D9488] dark:border-[#1E293B] dark:bg-[#0B0F19] dark:text-[#F1F5F9]"
           />
           {error && (
-            <p role="alert" data-testid="forgot-error" className="mt-3 text-sm text-[#DC2626]">
+            <p role="alert" className="field-error" data-testid="forgot-error">
               {error}
             </p>
           )}
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={loading}
+            style={{ width: '100%' }}
+            iconLeft={loading ? null : <ArrowRight size={16} />}
             data-testid="forgot-submit"
-            className="mt-5 w-full rounded-lg bg-[#0D9488] px-4 py-2.5 text-[16px] font-medium text-white transition hover:bg-[#0F766E] disabled:opacity-60"
           >
             {loading ? 'Sending…' : 'Send reset code'}
-          </button>
+          </Button>
         </form>
       </>
     )
@@ -101,79 +104,68 @@ export function ForgotPasswordForm() {
 
   return (
     <>
-      <h1 className="mb-2 text-[30px] font-semibold leading-tight text-[#0F172A] dark:text-[#F1F5F9]">
-        Enter reset code
-      </h1>
-      <p className="mb-6 text-sm text-[#64748B] dark:text-[#94A3B8]">
-        Check your email at <span className="font-medium text-[#0F172A] dark:text-[#F1F5F9]">{email}</span> for the 6-digit code.
+      <h1 className="auth-title">Enter reset code</h1>
+      <p className="auth-sub">
+        Check your email at{' '}
+        <strong style={{ color: 'var(--text-primary)' }}>{email}</strong> for the 6-digit code.
       </p>
-      <form onSubmit={handleResetSubmit} data-testid="reset-form" noValidate>
-        <div className="flex flex-col gap-3">
-          <div>
-            <label htmlFor="code" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-              Verification code
-            </label>
-            <input
-              id="code"
-              name="code"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              required
-              data-testid="reset-code"
-              className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-[16px] tracking-widest text-[#0F172A] outline-none transition focus:border-[#0D9488] focus:ring-1 focus:ring-[#0D9488] dark:border-[#1E293B] dark:bg-[#0B0F19] dark:text-[#F1F5F9]"
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-              New password
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              required
-              data-testid="reset-password"
-              className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-[16px] text-[#0F172A] outline-none transition focus:border-[#0D9488] focus:ring-1 focus:ring-[#0D9488] dark:border-[#1E293B] dark:bg-[#0B0F19] dark:text-[#F1F5F9]"
-            />
-          </div>
-          <div>
-            <label htmlFor="confirm" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-              Confirm password
-            </label>
-            <input
-              id="confirm"
-              name="confirm"
-              type="password"
-              autoComplete="new-password"
-              required
-              data-testid="reset-confirm"
-              className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-[16px] text-[#0F172A] outline-none transition focus:border-[#0D9488] focus:ring-1 focus:ring-[#0D9488] dark:border-[#1E293B] dark:bg-[#0B0F19] dark:text-[#F1F5F9]"
-            />
-          </div>
-        </div>
-        <p className="mt-2 text-xs text-[#64748B] dark:text-[#94A3B8]">
+      <form onSubmit={handleResetSubmit} className="auth-form" data-testid="reset-form" noValidate>
+        <Input
+          label="Verification code"
+          type="text"
+          name="code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          required
+          icon={<ShieldCheck size={16} />}
+          style={{ letterSpacing: '0.5em', fontFamily: 'var(--font-display)' }}
+          data-testid="reset-code"
+        />
+        <Input
+          label="New password"
+          type="password"
+          name="password"
+          autoComplete="new-password"
+          icon={<Lock size={16} />}
+          required
+          data-testid="reset-password"
+        />
+        <Input
+          label="Confirm password"
+          type="password"
+          name="confirm"
+          autoComplete="new-password"
+          icon={<Lock size={16} />}
+          required
+          data-testid="reset-confirm"
+        />
+        <p className="field-hint">
           Min. 12 characters with uppercase, lowercase, number, and symbol.
         </p>
         {error && (
-          <p role="alert" data-testid="reset-error" className="mt-3 text-sm text-[#DC2626]">
+          <p role="alert" className="field-error" data-testid="reset-error">
             {error}
           </p>
         )}
-        <button
+        <Button
           type="submit"
+          variant="primary"
           disabled={loading}
+          style={{ width: '100%' }}
+          iconLeft={loading ? null : <ShieldCheck size={16} />}
           data-testid="reset-submit"
-          className="mt-5 w-full rounded-lg bg-[#0D9488] px-4 py-2.5 text-[16px] font-medium text-white transition hover:bg-[#0F766E] disabled:opacity-60"
         >
           {loading ? 'Resetting…' : 'Reset password'}
-        </button>
+        </Button>
         <button
           type="button"
-          onClick={() => { setStep('email'); setError(null) }}
-          className="mt-2 w-full text-sm text-[#64748B] hover:text-[#0D9488] dark:text-[#94A3B8]"
+          onClick={() => {
+            setStep('email')
+            setError(null)
+          }}
+          className="auth-link"
+          style={{ background: 'none', border: 0, cursor: 'pointer', marginTop: 4 }}
         >
           Use a different email
         </button>

@@ -1,120 +1,191 @@
 'use client'
 
-import { StatCard } from '@/components/ui/stat-card'
-import { DataTable, type Column } from '@/components/ui/data-table'
-import { ConfidenceBadge } from '@/components/ui/confidence-badge'
-import { CategoryChip } from '@/components/ui/category-chip'
-import { Money } from '@/components/ui/money'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ReceiptText } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowRight, RotateCw, Upload } from 'lucide-react'
+import { Button, Card, MetricCard, ProgressBar } from '@/components/ds'
+import {
+  BUDGETS,
+  budgetColor,
+  InvoiceTable,
+  SPEND,
+  useWorkspace,
+} from '@/components/workspace'
 
-interface InvoiceRow {
-  id: string
-  date: string
-  merchant: string
-  category: string
-  categoryColor: string
-  total: number
-  status: 'confirmed' | 'auto' | 'low'
+function SpendChart() {
+  return (
+    <Card className="panel">
+      <div className="panel-header" style={{ marginBottom: 4 }}>
+        <span className="panel-title">Spending by Category</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>June 2026</span>
+      </div>
+      <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 20 }}>
+        How your{' '}
+        <strong style={{ color: 'var(--text-primary)' }}>€642.30</strong>{' '}
+        broke down across expense types.
+      </p>
+      <div className="spend-chart">
+        {SPEND.map(([label, val, h]) => (
+          <div className="spend-col" key={label}>
+            <div className="spend-val">€{Math.round(val)}</div>
+            <div
+              className="spend-bar"
+              style={{ height: h }}
+              title={`${label}: €${val.toFixed(2)}`}
+            />
+            <div className="spend-label">{label}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  )
 }
 
-const MOCK_INVOICES: InvoiceRow[] = [
-  {
-    id: '1',
-    date: '2026-06-11',
-    merchant: 'Albert Heijn',
-    category: 'Groceries',
-    categoryColor: '#0d9488',
-    total: 47.85,
-    status: 'confirmed',
-  },
-  {
-    id: '2',
-    date: '2026-06-10',
-    merchant: 'Praxis',
-    category: 'Home & Garden',
-    categoryColor: '#7c3aed',
-    total: 124.0,
-    status: 'auto',
-  },
-  {
-    id: '3',
-    date: '2026-06-09',
-    merchant: 'Vapiano',
-    category: 'Dining',
-    categoryColor: '#ea580c',
-    total: 38.5,
-    status: 'low',
-  },
-]
-
-const COLUMNS: Column<InvoiceRow>[] = [
-  { key: 'date', header: 'Date' },
-  { key: 'merchant', header: 'Merchant' },
-  {
-    key: 'category',
-    header: 'Category',
-    render: (row) => <CategoryChip label={row.category} color={row.categoryColor} />,
-  },
-  {
-    key: 'total',
-    header: 'Total',
-    numeric: true,
-    render: (row) => <Money amount={row.total} size="secondary" />,
-  },
-  {
-    key: 'status',
-    header: 'Status',
-    render: (row) => <ConfidenceBadge confidence={row.status} />,
-  },
-]
-
 export default function DashboardPage() {
+  const {
+    invoices,
+    loading,
+    refreshing,
+    refresh,
+    setOpenInvoice,
+    setConfirmDelete,
+    setShareTarget,
+    scanReceipt,
+  } = useWorkspace()
+
+  const overBudget = BUDGETS.filter((b) => b.pct >= 100).length
+
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-[24px] font-bold text-[#0f172a] dark:text-[#f1f5f9]">Dashboard</h1>
+    <div className="pane">
+      <h2 className="pane-title">Your Everyday Savings</h2>
+      <p className="pane-subtitle">Overview of your household expenses and price trends.</p>
 
-      {/* Stat card row */}
-      <div className="flex flex-wrap gap-4">
-        <StatCard label="Month-to-date spend" amount={1284.5} delta={8.3} deltaLabel="vs May" />
-        <StatCard label="Δ vs last month" amount={98.5} delta={8.3} deltaLabel="more" />
-        <StatCard label="Budget health" value="68%" delta={-5.2} deltaLabel="vs last month" />
-        <StatCard label="Scans remaining" value="3" />
+      <div className="metrics-row">
+        {loading
+          ? [0, 1, 2].map((i) => (
+              <div className="glass" style={{ padding: 'var(--space-5)' }} key={i}>
+                <span className="sk sk-line" style={{ width: 90, height: 11 }} />
+                <span
+                  className="sk sk-line"
+                  style={{ width: 120, height: 26, margin: '12px 0 8px' }}
+                />
+                <span className="sk sk-line" style={{ width: 140, height: 10 }} />
+              </div>
+            ))
+          : (
+            <>
+              <MetricCard
+                label="Spent This Month"
+                value="€642.30"
+                delta="↓ 11.8% vs €728.42 last month"
+                tone="success"
+              />
+              <MetricCard
+                label="Needs Check"
+                value="3 items"
+                delta="1 receipt needs verification"
+                tone="warning"
+              />
+              <MetricCard
+                label="Processed This Month"
+                value="24"
+                delta="receipts scanned in June"
+                tone="neutral"
+              />
+            </>
+          )}
       </div>
 
-      {/* Charts placeholder */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="col-span-2 flex h-48 items-center justify-center rounded-[12px] border border-dashed border-[#e2e8f0] text-sm text-[#64748b] dark:border-[#334155] dark:text-[#94a3b8]">
-          Spend-over-time area chart
-        </div>
-        <div className="flex h-48 items-center justify-center rounded-[12px] border border-dashed border-[#e2e8f0] text-sm text-[#64748b] dark:border-[#334155] dark:text-[#94a3b8]">
-          Category donut
-        </div>
-      </div>
+      <div className="dash-row">
+        <div className="stack">
+          <SpendChart />
 
-      {/* Recent invoices */}
-      <div className="rounded-[12px] border border-[#e2e8f0] bg-white dark:border-[#334155] dark:bg-[#111827]">
-        <div className="flex items-center justify-between border-b border-[#e2e8f0] px-4 py-3 dark:border-[#334155]">
-          <p className="text-sm font-semibold text-[#0f172a] dark:text-[#f1f5f9]">
-            Recent Invoices
-          </p>
-          <a href="/invoices" className="text-xs text-[#0d9488] hover:underline">
-            See all
-          </a>
-        </div>
-        <DataTable
-          columns={COLUMNS}
-          rows={MOCK_INVOICES}
-          emptyState={
-            <EmptyState
-              icon={ReceiptText}
-              heading="No invoices yet"
-              body="Scan your first receipt to see your spending here."
-              ctaLabel="Scan receipt"
-              onCta={() => { }}
+          <Card className="panel" style={{ padding: 0 }}>
+            <div className="panel-header" style={{ padding: '20px 24px 0' }}>
+              <span className="panel-title">Recent Invoices</span>
+              <div className="panel-actions">
+                <Button
+                  variant="outline"
+                  className="refresh-btn"
+                  style={{ padding: '6px 14px', fontSize: 12.5 }}
+                  onClick={refresh}
+                  iconLeft={
+                    <span
+                      className={`refresh-ico ${refreshing ? 'spin' : ''}`}
+                      style={{ display: 'flex' }}
+                    >
+                      <RotateCw size={14} />
+                    </span>
+                  }
+                  data-testid="dashboard-refresh"
+                >
+                  {refreshing ? 'Refreshing…' : 'Refresh'}
+                </Button>
+                <Link
+                  href="/invoices"
+                  className="btn btn--primary"
+                  style={{ padding: '6px 14px', fontSize: 12.5 }}
+                  data-testid="dashboard-view-all"
+                >
+                  View all <ArrowRight size={14} />
+                </Link>
+              </div>
+            </div>
+            <InvoiceTable
+              invoices={invoices.slice(0, 4)}
+              loading={loading}
+              skeletonRows={4}
+              onOpen={setOpenInvoice}
+              onRequestDelete={setConfirmDelete}
+              onShare={setShareTarget}
             />
-          }
-        />
+          </Card>
+        </div>
+
+        <div className="stack">
+          <Card
+            className="upload-dropzone"
+            style={{ padding: '28px 20px', cursor: 'pointer' }}
+            onClick={scanReceipt}
+            data-testid="dashboard-upload"
+          >
+            <div className="upload-icon"><Upload size={26} /></div>
+            <h3 style={{ fontSize: 15, marginBottom: 4, color: 'var(--text-primary)' }}>
+              Upload New Receipt
+            </h3>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+              Drag and drop a receipt (PNG, JPG, PDF), or{' '}
+              <span style={{ color: 'var(--brand)', textDecoration: 'underline' }}>browse files</span>
+            </p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+              Location metadata removed · compressed client-side.
+            </p>
+          </Card>
+
+          <Card className="panel budget-tones">
+            <div className="panel-header" style={{ marginBottom: 4 }}>
+              <span className="panel-title">Category Budgets</span>
+            </div>
+            <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 18 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>{BUDGETS.length} budgets</strong>{' '}
+              tracked ·{' '}
+              <strong style={{ color: overBudget ? 'var(--danger)' : 'var(--success)' }}>
+                {overBudget} over budget
+              </strong>
+            </p>
+            {BUDGETS.map((b) => {
+              const tone = budgetColor(b.pct)
+              return (
+                <div className="budget-item" key={b.name}>
+                  <div className="budget-meta">
+                    <span className="name">{b.name}</span>
+                    <span className="pct" style={{ color: `var(--${tone})` }}>{b.pct}%</span>
+                  </div>
+                  <ProgressBar value={Math.min(b.pct, 100)} tone={tone} />
+                </div>
+              )
+            })}
+          </Card>
+        </div>
       </div>
     </div>
   )

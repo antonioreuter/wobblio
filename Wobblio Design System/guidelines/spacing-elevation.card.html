@@ -1,0 +1,28 @@
+<!-- @dsCard group="Spacing" viewport="700x200" name="Elevation & Glass" subtitle="Card shadow + backdrop blur anatomy" -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:28px; background:var(--bg-color); position:relative; }
+  .aurora { position:absolute; width:300px; height:300px; border-radius:50%; background:var(--blob-gradient-1); filter:blur(80px); top:-80px; left:30%; }
+  .grid { position:relative; display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .card { padding:20px; }
+  .h { font-family:var(--font-display); font-weight:700; font-size:14px; color:var(--text-primary); margin-bottom:6px; }
+  .p { font-size:12px; color:var(--text-secondary); }
+  .tok { font-size:10.5px; color:var(--text-muted); margin-top:10px; font-family:var(--font-body); }
+</style></head>
+<body>
+  <div class="aurora"></div>
+  <div class="grid">
+    <div class="glass card">
+      <div class="h">Frosted glass surface</div>
+      <div class="p">72% obsidian fill · 1px hairline border · 20px backdrop blur with 160% saturation.</div>
+      <div class="tok">.glass · --card-shadow · --blur-glass</div>
+    </div>
+    <div class="glass glass-interactive card">
+      <div class="h">Interactive lift</div>
+      <div class="p">Hover raises the card 4px and adds an indigo glow halo for clickable surfaces.</div>
+      <div class="tok">.glass-interactive · --shadow-brand-glow</div>
+    </div>
+  </div>
+</body></html>

@@ -1,5 +1,7 @@
-import type { Metadata } from 'next';
-import { LandingPageView } from '@/components/marketing/landing-page-view';
+import type { Metadata } from 'next'
+import { LandingPageView } from '@/components/marketing/landing-page-view'
+import { SiteHeader } from '@/components/ui/site-header'
+import { SiteFooter } from '@/components/ui/site-footer'
 
 export const metadata: Metadata = {
   title: 'Wobblio — Scan receipts. Outsmart inflation.',
@@ -13,8 +15,14 @@ export const metadata: Metadata = {
     locale: 'en_NL',
     siteName: 'Wobblio',
   },
-};
+}
 
 export default function LandingPage() {
-  return <LandingPageView />;
+  return (
+    <>
+      <SiteHeader variant="landing" />
+      <LandingPageView />
+      <SiteFooter />
+    </>
+  )
 }

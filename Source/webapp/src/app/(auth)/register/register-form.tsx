@@ -3,61 +3,78 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
+import { ChevronDown, Globe, Languages, Lock, Mail, User, Wallet } from 'lucide-react'
+import { Button } from '@/components/ds/Button'
+import { Input } from '@/components/ds/Input'
 import { registerUser } from '../actions'
 
 interface Country {
   code: string
   name: string
   currency: string
+  symbol: string
   defaultLanguage: string
 }
 
 const COUNTRIES: Country[] = [
-  { code: 'BR', name: 'Brazil',         currency: 'BRL', defaultLanguage: 'pt-BR' },
-  { code: 'CA', name: 'Canada',         currency: 'CAD', defaultLanguage: 'en'    },
-  { code: 'FR', name: 'France',         currency: 'EUR', defaultLanguage: 'fr'    },
-  { code: 'DE', name: 'Germany',        currency: 'EUR', defaultLanguage: 'de'    },
-  { code: 'IT', name: 'Italy',          currency: 'EUR', defaultLanguage: 'it'    },
-  { code: 'NL', name: 'Netherlands',    currency: 'EUR', defaultLanguage: 'nl'    },
-  { code: 'PT', name: 'Portugal',       currency: 'EUR', defaultLanguage: 'pt-BR' },
-  { code: 'ES', name: 'Spain',          currency: 'EUR', defaultLanguage: 'en'    },
-  { code: 'GB', name: 'United Kingdom', currency: 'GBP', defaultLanguage: 'en'    },
-  { code: 'US', name: 'United States',  currency: 'USD', defaultLanguage: 'en'    },
+  { code: 'BR', name: 'Brazil',         currency: 'BRL', symbol: 'R$', defaultLanguage: 'pt-BR' },
+  { code: 'CA', name: 'Canada',         currency: 'CAD', symbol: 'C$', defaultLanguage: 'en'    },
+  { code: 'FR', name: 'France',         currency: 'EUR', symbol: '€',  defaultLanguage: 'fr'    },
+  { code: 'DE', name: 'Germany',        currency: 'EUR', symbol: '€',  defaultLanguage: 'de'    },
+  { code: 'IT', name: 'Italy',          currency: 'EUR', symbol: '€',  defaultLanguage: 'it'    },
+  { code: 'NL', name: 'Netherlands',    currency: 'EUR', symbol: '€',  defaultLanguage: 'nl'    },
+  { code: 'PT', name: 'Portugal',       currency: 'EUR', symbol: '€',  defaultLanguage: 'pt-BR' },
+  { code: 'ES', name: 'Spain',          currency: 'EUR', symbol: '€',  defaultLanguage: 'en'    },
+  { code: 'GB', name: 'United Kingdom', currency: 'GBP', symbol: '£',  defaultLanguage: 'en'    },
+  { code: 'US', name: 'United States',  currency: 'USD', symbol: '$',  defaultLanguage: 'en'    },
 ]
 
 const LANGUAGES = [
-  { code: 'nl',    label: 'Dutch' },
+  { code: 'nl',    label: 'Nederlands' },
   { code: 'en',    label: 'English' },
-  { code: 'fr',    label: 'French' },
-  { code: 'de',    label: 'German' },
-  { code: 'it',    label: 'Italian' },
-  { code: 'pt-BR', label: 'Portuguese (pt-BR)' },
+  { code: 'fr',    label: 'Français' },
+  { code: 'de',    label: 'Deutsch' },
+  { code: 'it',    label: 'Italiano' },
+  { code: 'pt-BR', label: 'Português (BR)' },
 ]
 
-const CURRENCY_LABELS: Record<string, string> = {
-  EUR: 'EUR — Euro',
-  GBP: 'GBP — British Pound',
-  USD: 'USD — US Dollar',
-  CAD: 'CAD — Canadian Dollar',
-  BRL: 'BRL — Brazilian Real',
+const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.code === 'NL') ?? COUNTRIES[0]
+
+function scorePassword(pw: string): 0 | 1 | 2 | 3 | 4 {
+  if (!pw) return 0
+  let s = 0
+  if (pw.length >= 8) s++
+  if (pw.length >= 12) s++
+  if (/[0-9]/.test(pw) && /[a-z]/.test(pw)) s++
+  if (/[A-Z]/.test(pw) && /[^A-Za-z0-9]/.test(pw)) s++
+  return Math.min(4, s) as 0 | 1 | 2 | 3 | 4
 }
 
-const DEFAULT_COUNTRY = COUNTRIES.find(c => c.code === 'NL') ?? COUNTRIES[0]
-
-const inputClass =
-  'w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-[16px] text-[#0F172A] outline-none transition focus:border-[#0D9488] focus:ring-1 focus:ring-[#0D9488] dark:border-[#1E293B] dark:bg-[#0B0F19] dark:text-[#F1F5F9]'
+const STRENGTH = [
+  { label: '', tone: '' as const },
+  { label: 'Weak', tone: 'danger' as const },
+  { label: 'Fair', tone: 'warning' as const },
+  { label: 'Good', tone: 'warning' as const },
+  { label: 'Strong', tone: 'success' as const },
+]
 
 export function RegisterForm() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [selectedCountry, setSelectedCountry] = useState<Country>(DEFAULT_COUNTRY)
+  const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY)
   const [language, setLanguage] = useState(DEFAULT_COUNTRY.defaultLanguage)
+  const [pw, setPw] = useState('')
+  const [confirm, setConfirm] = useState('')
+
+  const score = scorePassword(pw)
+  const meter = STRENGTH[score]
+  const mismatch = confirm.length > 0 && confirm !== pw
 
   function handleCountryChange(code: string) {
-    const country = COUNTRIES.find(c => c.code === code) ?? DEFAULT_COUNTRY
-    setSelectedCountry(country)
-    setLanguage(country.defaultLanguage)
+    const c = COUNTRIES.find((x) => x.code === code) ?? DEFAULT_COUNTRY
+    setCountry(c)
+    setLanguage(c.defaultLanguage)
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -67,9 +84,9 @@ export function RegisterForm() {
 
     const form = new FormData(e.currentTarget)
     const password = form.get('password') as string
-    const confirm  = form.get('confirm')  as string
+    const confirmField = form.get('confirm') as string
 
-    if (password !== confirm) {
+    if (password !== confirmField) {
       setError('Passwords do not match.')
       setLoading(false)
       return
@@ -79,9 +96,9 @@ export function RegisterForm() {
       form.get('email') as string,
       password,
       form.get('fullName') as string,
-      selectedCountry.code,
+      country.code,
       language,
-      selectedCountry.currency,
+      country.currency,
     )
 
     if (result.error) {
@@ -108,147 +125,168 @@ export function RegisterForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} data-testid="register-form" noValidate>
-      <div className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="auth-form" data-testid="register-form" noValidate>
+      <Input
+        label="Full name"
+        type="text"
+        name="fullName"
+        autoComplete="name"
+        icon={<User size={16} />}
+        placeholder="Antonio Reuter"
+        required
+        data-testid="register-fullName"
+      />
 
-        {/* Full name */}
-        <div>
-          <label htmlFor="fullName" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-            Full name
-          </label>
-          <input
-            id="fullName"
-            name="fullName"
-            type="text"
-            autoComplete="name"
-            required
-            data-testid="register-fullName"
-            className={inputClass}
-          />
+      <Input
+        label="Email"
+        type="email"
+        name="email"
+        autoComplete="email"
+        icon={<Mail size={16} />}
+        placeholder="you@example.com"
+        required
+        data-testid="register-email"
+      />
+
+      <div className="pw-field">
+        <Input
+          label="Password"
+          type="password"
+          name="password"
+          autoComplete="new-password"
+          icon={<Lock size={16} />}
+          placeholder="At least 12 characters"
+          required
+          value={pw}
+          onChange={(e) => setPw(e.target.value)}
+          data-testid="register-password"
+        />
+        <div className="pw-meter" aria-hidden>
+          <div className="pw-track">
+            {[1, 2, 3, 4].map((i) => (
+              <span
+                key={i}
+                className={`pw-seg ${i <= score && meter.tone ? `on tone-${meter.tone}` : ''}`}
+              />
+            ))}
+          </div>
+          {meter.label && (
+            <span className="pw-label" style={{ color: `var(--${meter.tone})` }}>
+              {meter.label}
+            </span>
+          )}
         </div>
+        <p className="field-hint">
+          Min. 12 characters with uppercase, lowercase, number, and symbol.
+        </p>
+      </div>
 
-        {/* Email */}
-        <div>
-          <label htmlFor="email" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-            Email
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            data-testid="register-email"
-            className={inputClass}
-          />
-        </div>
+      <div className="pw-field">
+        <Input
+          label="Confirm password"
+          type="password"
+          name="confirm"
+          autoComplete="new-password"
+          icon={<Lock size={16} />}
+          placeholder="Re-enter your password"
+          required
+          flagged={mismatch}
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          data-testid="register-confirm"
+        />
+        {mismatch && <span className="field-error">Passwords don&apos;t match.</span>}
+      </div>
 
-        {/* Password */}
-        <div>
-          <label htmlFor="password" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-            Password
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            required
-            data-testid="register-password"
-            className={inputClass}
-          />
-          <p className="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
-            Min. 12 characters with uppercase, lowercase, number, and symbol.
-          </p>
-        </div>
-
-        {/* Confirm password */}
-        <div>
-          <label htmlFor="confirm" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-            Confirm password
-          </label>
-          <input
-            id="confirm"
-            name="confirm"
-            type="password"
-            autoComplete="new-password"
-            required
-            data-testid="register-confirm"
-            className={inputClass}
-          />
-        </div>
-
-        {/* Country */}
-        <div>
-          <label htmlFor="country" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
+      <div className="auth-grid-2">
+        <div className="auth-field">
+          <label htmlFor="country" className="auth-field-label">
             Country
           </label>
-          <select
-            id="country"
-            name="country"
-            required
-            value={selectedCountry.code}
-            onChange={e => handleCountryChange(e.target.value)}
-            data-testid="register-country"
-            className={inputClass}
-          >
-            {COUNTRIES.map(c => (
-              <option key={c.code} value={c.code}>{c.name}</option>
-            ))}
-          </select>
+          <div className="auth-control-wrap">
+            <span className="lead-icon">
+              <Globe size={16} />
+            </span>
+            <select
+              id="country"
+              name="country"
+              className="auth-select"
+              value={country.code}
+              onChange={(e) => handleCountryChange(e.target.value)}
+              data-testid="register-country"
+            >
+              {COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <span className="chevron">
+              <ChevronDown size={16} />
+            </span>
+          </div>
         </div>
 
-        {/* Language */}
-        <div>
-          <label htmlFor="language" className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-            Preferred language
-          </label>
+        <div className="auth-field">
+          <label className="auth-field-label">Display currency</label>
+          <div className="auth-control-wrap">
+            <span className="lead-icon">
+              <Wallet size={16} />
+            </span>
+            <div className="auth-static" data-testid="register-currency" aria-readonly="true">
+              <span>
+                {country.currency} · {country.symbol}
+              </span>
+              <span className="auto-tag">Auto</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="auth-field">
+        <label htmlFor="language" className="auth-field-label">
+          Preferred language
+        </label>
+        <div className="auth-control-wrap">
+          <span className="lead-icon">
+            <Languages size={16} />
+          </span>
           <select
             id="language"
             name="language"
+            className="auth-select"
             value={language}
-            onChange={e => setLanguage(e.target.value)}
+            onChange={(e) => setLanguage(e.target.value)}
             data-testid="register-language"
-            className={inputClass}
           >
-            {LANGUAGES.map(l => (
-              <option key={l.code} value={l.code}>{l.label}</option>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
             ))}
           </select>
+          <span className="chevron">
+            <ChevronDown size={16} />
+          </span>
         </div>
-
-        {/* Currency — derived, read-only */}
-        <div>
-          <label className="mb-1 block text-sm font-medium text-[#0F172A] dark:text-[#F1F5F9]">
-            Currency
-          </label>
-          <div
-            data-testid="register-currency"
-            className="w-full rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-[16px] text-[#64748B] dark:border-[#1E293B] dark:bg-[#0B0F19] dark:text-[#94A3B8]"
-          >
-            {CURRENCY_LABELS[selectedCountry.currency] ?? selectedCountry.currency}
-          </div>
-          <p className="mt-1 text-xs text-[#64748B] dark:text-[#94A3B8]">
-            Set automatically from your country.
-          </p>
-        </div>
-
       </div>
 
       {error && (
-        <p role="alert" data-testid="register-error" className="mt-4 text-sm text-[#DC2626]">
+        <p role="alert" className="field-error" data-testid="register-error">
           {error}
         </p>
       )}
 
-      <button
+      <Button
         type="submit"
+        variant="primary"
         disabled={loading}
+        style={{ width: '100%' }}
+        iconLeft={loading ? null : <User size={16} />}
         data-testid="register-submit"
-        className="mt-5 w-full rounded-lg bg-[#0D9488] px-4 py-2.5 text-[16px] font-medium text-white transition hover:bg-[#0F766E] disabled:opacity-60"
       >
         {loading ? 'Creating account…' : 'Create account'}
-      </button>
+      </Button>
     </form>
   )
 }
