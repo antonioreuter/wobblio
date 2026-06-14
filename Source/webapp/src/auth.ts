@@ -11,6 +11,7 @@ declare module 'next-auth' {
     user: {
       id: string
       email: string
+      name: string
       role: string
       status: string
     }
@@ -18,6 +19,7 @@ declare module 'next-auth' {
   interface JWT {
     sub: string
     email: string
+    name: string
     role: string
     status: string
   }
@@ -66,6 +68,7 @@ function buildLocalCredentialsProvider() {
         return {
           id: payload.sub,
           email: payload.email,
+          name: payload['custom:full_name'] ?? payload.name ?? '',
           role: payload['custom:role'] ?? 'STANDARD',
           status: payload['custom:status'] ?? 'ACTIVE',
         }
@@ -104,6 +107,7 @@ const nextAuth = NextAuth({
       if (account && user) {
         token.sub = user.id ?? token.sub
         token.email = user.email ?? token.email ?? ''
+        token.name = (user as { name?: string }).name ?? token.name ?? ''
         token.role = (user as { role?: string }).role ?? 'STANDARD'
         token.status = (user as { status?: string }).status ?? 'ACTIVE'
 
@@ -119,6 +123,7 @@ const nextAuth = NextAuth({
       // OIDC provider: extract custom claims from Cognito ID token profile
       if (profile) {
         const p = profile as Record<string, string>
+        token.name = p['custom:full_name'] ?? p.name ?? token.name ?? ''
         token.role = p['custom:role'] ?? token.role ?? 'STANDARD'
         token.status = p['custom:status'] ?? token.status ?? 'ACTIVE'
       }
@@ -127,6 +132,7 @@ const nextAuth = NextAuth({
     session({ session, token }) {
       session.user.id = token.sub as string
       session.user.email = token.email as string
+      session.user.name = (token.name as string) ?? ''
       session.user.role = (token.role as string) ?? 'STANDARD'
       session.user.status = (token.status as string) ?? 'ACTIVE'
       return session

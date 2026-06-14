@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Crown, LogOut } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import { Avatar } from '@/components/ds'
+import { SignOutConfirmDialog } from './sign-out-confirm-dialog'
 
 interface UserMenuProps {
   userInitials: string
@@ -12,6 +13,7 @@ interface UserMenuProps {
 
 export function UserMenu({ userInitials, userPlan }: UserMenuProps) {
   const [open, setOpen] = useState(false)
+  const [confirming, setConfirming] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -52,12 +54,21 @@ export function UserMenu({ userInitials, userPlan }: UserMenuProps) {
             type="button"
             className="user-menu-item"
             role="menuitem"
-            onClick={() => signOut({ callbackUrl: '/' })}
+            onClick={() => {
+              setOpen(false)
+              setConfirming(true)
+            }}
             data-testid="signout-button"
           >
             <LogOut size={15} /> Sign out
           </button>
         </div>
+      )}
+      {confirming && (
+        <SignOutConfirmDialog
+          onConfirm={() => signOut({ callbackUrl: '/' })}
+          onCancel={() => setConfirming(false)}
+        />
       )}
     </div>
   )

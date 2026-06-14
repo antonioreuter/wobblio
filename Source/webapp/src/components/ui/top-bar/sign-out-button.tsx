@@ -1,19 +1,31 @@
 'use client'
 
+import { useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { signOut } from 'next-auth/react'
+import { SignOutConfirmDialog } from './sign-out-confirm-dialog'
 
 export function SignOutButton() {
+  const [confirming, setConfirming] = useState(false)
+
   return (
-    <button
-      type="button"
-      className="signout-btn has-tip has-tip--bottom"
-      data-tip="Sign out"
-      onClick={() => signOut({ callbackUrl: '/' })}
-      aria-label="Sign out"
-      data-testid="signout-button"
-    >
-      <LogOut size={16} />
-    </button>
+    <>
+      <button
+        type="button"
+        className="signout-btn has-tip has-tip--bottom"
+        data-tip="Sign out"
+        onClick={() => setConfirming(true)}
+        aria-label="Sign out"
+        data-testid="signout-button"
+      >
+        <LogOut size={16} />
+      </button>
+      {confirming && (
+        <SignOutConfirmDialog
+          onConfirm={() => signOut({ callbackUrl: '/' })}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
+    </>
   )
 }

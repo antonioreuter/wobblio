@@ -1014,6 +1014,7 @@
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
+.confirm-icon--neutral { background: var(--brand-glow, var(--glass-highlight)); color: var(--brand); }
 .confirm-head { min-width: 0; }
 .confirm-title {
   font-family: var(--font-display); font-size: 18px; font-weight: 700;

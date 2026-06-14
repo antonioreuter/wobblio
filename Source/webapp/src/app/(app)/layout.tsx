@@ -9,8 +9,9 @@ const SANDBOX_ENABLED = process.env.NEXT_PUBLIC_SANDBOX_MODE === 'true'
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   const userRole = session?.user?.role ?? 'STANDARD'
-  const userEmail = session?.user?.email ?? 'AR'
-  const userInitials = deriveInitials(userEmail)
+  const userName = session?.user?.name ?? ''
+  const userEmail = session?.user?.email ?? ''
+  const userInitials = deriveInitials(userName, userEmail)
 
   return (
     <div className="workspace">
@@ -31,8 +32,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   )
 }
 
-function deriveInitials(input: string): string {
-  const parts = input.trim().split(/[\s@.]+/).filter(Boolean)
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return input.slice(0, 2).toUpperCase()
+function deriveInitials(name: string, email: string): string {
+  // First letter of the first name + first letter of the last name.
+  // A single name yields just its first letter (e.g. "Antonio" → "A").
+  const words = name.trim().split(/\s+/).filter((w) => /\p{L}/u.test(w))
+  if (words.length >= 2) {
+    const first = words[0][0]
+    const last = words[words.length - 1][0]
+    return (first + last).toUpperCase()
+  }
+  if (words.length === 1) return words[0][0].toUpperCase()
+  // Fall back to the email local part when no name is available.
+  const localPart = email.split('@')[0].replace(/[^\p{L}]/gu, '')
+  return (localPart.slice(0, 2) || 'AR').toUpperCase()
 }

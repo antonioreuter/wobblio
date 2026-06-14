@@ -4,18 +4,22 @@ import { useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowRight,
-  Box,
+  BarChart3,
   Calendar,
   Camera,
   Check,
   ChevronDown,
   Globe,
   Lock,
+  Route,
+  ScanLine,
   ShieldCheck,
   Split,
+  Sparkles,
   TrendingUp,
   Upload,
   Users,
+  Wallet,
 } from 'lucide-react'
 import { Badge, Button, Card } from '@/components/ds'
 import { useAnalytics } from '@/hooks/use-analytics/use-analytics'
@@ -23,67 +27,112 @@ import { useWaitlistStatus } from '@/hooks/use-waitlist-status/use-waitlist-stat
 
 const SIGNUP_URL = process.env.NEXT_PUBLIC_COGNITO_SIGNUP_URL ?? '/register'
 
-const FEATURES = [
+const HOW_IT_WORKS = [
   {
     Icon: Camera,
-    title: 'AI Ingestion',
-    desc: 'Drag and drop receipt photos. AI extracts merchant names, product descriptions, quantities, and prices in seconds.',
+    step: '01',
+    title: 'Snap',
+    desc: 'Photograph any receipt — even crumpled thermal paper or a PDF. Paper, restaurant bill, foreign-language till slip: all fair game.',
+  },
+  {
+    Icon: Sparkles,
+    step: '02',
+    title: 'Done',
+    desc: 'AI extracts every item, price, quantity, and store in seconds. You just confirm.',
+    micro: 'Spot a mistake? One tap fixes it — and Wobblio learns.',
+  },
+  {
+    Icon: BarChart3,
+    step: '03',
+    title: 'Save',
+    desc: 'Budgets fill themselves, prices get compared across local stores, and your shopping lists get smarter with every scan.',
+  },
+]
+
+const CAPABILITIES = [
+  {
+    Icon: ScanLine,
+    title: 'AI receipt ingestion',
+    desc: 'Drag, drop, or photograph. Multimodal AI reads merchant, line items, quantities, prices, and totals — zero manual entry, no bank feed.',
+  },
+  {
+    Icon: Wallet,
+    title: 'Budgets & alerts',
+    desc: 'Set category budgets and get an 85% warning before the breach — and a 100% alert when it lands. Protection that is proactive, not a post-mortem.',
+  },
+  {
+    Icon: BarChart3,
+    title: 'Spend analytics',
+    desc: 'A live dashboard of month-to-date spend, category breakdowns, and trends over time. See exactly where the money went.',
   },
   {
     Icon: TrendingUp,
-    title: 'Price Trends',
-    desc: 'Interactive charts show how your everyday items fluctuate across local chains over time.',
+    title: 'Anti-inflation price engine',
+    desc: 'Real shelf prices from real receipts in your area — including in-store promos no website lists. Watch each item creep up, store by store.',
   },
   {
-    Icon: Box,
-    title: 'List Optimizer',
-    desc: 'Build a list and compare store prices — get the cheapest local store recommendations instantly.',
+    Icon: Route,
+    title: 'Split-route optimizer',
+    desc: 'Build a list and Wobblio splits it across local stores for the biggest saving — with the quantified number, not a hunch.',
+  },
+  {
+    Icon: Globe,
+    title: 'Multi-currency',
+    desc: 'Travel receipts convert to your home currency at the rate on the day you paid — not whenever your bank felt like it.',
   },
 ]
 
 const USE_CASES = [
   {
     Icon: Users,
-    title: 'One family, one picture of the money',
+    title: 'Families — one picture of the money',
     hook: '"Alerts before the budget breaks — not a post-mortem after."',
-    desc: 'Share uploads across household members. Track combined totals and trigger warnings before you overspend.',
-  },
-  {
-    Icon: TrendingUp,
-    title: 'Inflation is personal',
-    hook: '"See exactly which store raised which price — and shop around with proof."',
-    desc: 'Map price details across brands and chains. Watch charts creep up and find where items are cheapest.',
-  },
-  {
-    Icon: Split,
-    title: 'One photo. Tap who had what',
-    hook: '"Fair split — including the tip — in your group chat in 30 seconds."',
-    desc: 'Split restaurant bills proportionally. Allocates service and tip automatically, then exports to WhatsApp.',
+    desc: 'Both partners scan as they shop. The shared household dashboard shows the real burn rate mid-month, with per-member attribution and category budgets that warn you at 85%.',
   },
   {
     Icon: Globe,
-    title: 'Three countries, one budget',
-    hook: '"Every receipt converted on the day you paid — not when your bank felt like it."',
-    desc: 'Scan foreign receipts on the go. Converts currencies on the transaction date, with zero bank lag.',
+    title: 'Budget travelers — three countries, one budget',
+    hook: '"Every receipt converted on the day you paid — not the day your bank felt like it."',
+    desc: 'Photograph a Lisbon dinner bill at the table and watch it land in your home-currency trip budget instantly, converted at that day’s rate. No statement-shock weeks later.',
+  },
+  {
+    Icon: TrendingUp,
+    title: 'Smart shoppers — inflation is personal',
+    hook: '"See exactly which store raised which price — and shop around with proof."',
+    desc: 'A 6-month chart shows your coffee creeping +14% at your usual store while it stays flat next door — then the optimizer splits the basket for a quantified saving.',
+  },
+  {
+    Icon: Split,
+    title: 'Friends — one photo, tap who had what',
+    hook: '"Fair split — including the tip — in your group chat in 30 seconds."',
+    desc: 'One photo of the bill, tap names onto lines, fractional split on the shared starter. Service and tip scale proportionally, then export straight to WhatsApp.',
   },
 ]
 
 const FAQS = [
   {
-    q: 'Does Wobblio need access to my bank?',
-    a: 'No. We never connect to your bank. Wobblio reads only the receipts you upload, so the data stays with you.',
+    q: 'Is my financial data safe?',
+    a: 'Yes. Every row is isolated per tenant with database row-level security, sensitive free-text is encrypted, and everything is hosted in the EU. We never connect to your bank — Wobblio only reads the receipts you upload.',
   },
   {
-    q: 'How private is the price data I share?',
-    a: 'Anonymized price points feed a regional index. We strip tenant and user identifiers before any cross-household aggregation.',
+    q: 'What happens to my receipts?',
+    a: 'Original receipt images are deleted from storage after 18 months. The parsed data stays yours until you delete your account.',
   },
   {
-    q: 'What does AI ingestion actually do?',
-    a: 'It extracts merchant, items, quantities, prices, and totals from photos of paper or PDF receipts — no manual typing.',
+    q: 'What is this "community price index"?',
+    a: 'Anonymous price points only — product, store, region, and date. Never who you are, never your full basket. We strip every tenant and user identifier before any price crosses your account boundary.',
   },
   {
-    q: 'Can I delete my data?',
-    a: 'Yes. GDPR-compliant deletion runs a 30-day soft-lock then a hard purge. Anonymized price observations stay; nothing personal survives.',
+    q: 'Does it work with receipts from any store or country?',
+    a: 'Yes. Wobblio reads receipts with AI rather than integrating with stores, so any merchant, language, or currency works out of the box.',
+  },
+  {
+    q: 'Can I export or delete everything?',
+    a: 'Yes — one-tap export and full account deletion, in line with GDPR Articles 17 and 20. Deletion runs a 30-day soft-lock then a hard purge; only de-identified, anonymous price points survive.',
+  },
+  {
+    q: 'Why is there a waitlist?',
+    a: 'We grow within our capacity so the experience stays fast for everyone. When the free tier is full, you can wait your turn — or skip the line with Premium.',
   },
 ]
 
@@ -158,6 +207,61 @@ function HeroMockup() {
   )
 }
 
+// Static 6-month price story for one relatable product across two named-look stores.
+// Numbers are illustrative; the honest-data badge below the chart makes the cold-start
+// limitation explicit per spec §13.2 (never overclaim observed prices).
+const CHART = {
+  months: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+  rising: { label: 'SuperCenter', color: 'var(--danger)', points: [4.29, 4.39, 4.55, 4.69, 4.79, 4.89] },
+  flat: { label: 'MarktPlein', color: 'var(--brand)', points: [4.25, 4.19, 4.29, 4.22, 4.25, 4.19] },
+}
+
+function PriceEngineChart() {
+  const W = 460
+  const H = 220
+  const PAD = { top: 16, right: 16, bottom: 28, left: 36 }
+  const all = [...CHART.rising.points, ...CHART.flat.points]
+  const min = Math.floor(Math.min(...all) * 10) / 10 - 0.1
+  const max = Math.ceil(Math.max(...all) * 10) / 10 + 0.1
+  const x = (i: number) =>
+    PAD.left + (i * (W - PAD.left - PAD.right)) / (CHART.months.length - 1)
+  const y = (v: number) =>
+    PAD.top + ((max - v) / (max - min)) * (H - PAD.top - PAD.bottom)
+  const path = (pts: number[]) =>
+    pts.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ')
+
+  return (
+    <svg
+      className="price-engine-chart"
+      viewBox={`0 0 ${W} ${H}`}
+      role="img"
+      aria-label="Six-month price comparison of one product across two stores"
+    >
+      {[min, (min + max) / 2, max].map((v) => (
+        <g key={v}>
+          <line className="pe-grid" x1={PAD.left} y1={y(v)} x2={W - PAD.right} y2={y(v)} />
+          <text className="pe-axis" x={PAD.left - 6} y={y(v) + 3} textAnchor="end">
+            €{v.toFixed(2)}
+          </text>
+        </g>
+      ))}
+      {CHART.months.map((m, i) => (
+        <text key={m} className="pe-axis" x={x(i)} y={H - 8} textAnchor="middle">
+          {m}
+        </text>
+      ))}
+      {[CHART.flat, CHART.rising].map((series) => (
+        <g key={series.label}>
+          <path d={path(series.points)} fill="none" stroke={series.color} strokeWidth={2.5} />
+          {series.points.map((v, i) => (
+            <circle key={i} cx={x(i)} cy={y(v)} r={3} fill={series.color} />
+          ))}
+        </g>
+      ))}
+    </svg>
+  )
+}
+
 export function LandingPageView() {
   const { waitlistActive } = useWaitlistStatus()
   const { track } = useAnalytics()
@@ -191,6 +295,9 @@ export function LandingPageView() {
             >
               {primaryCtaLabel} <ArrowRight size={18} />
             </Link>
+            <Link href="/login" className="btn btn--outline btn--lg">
+              Sign in
+            </Link>
           </div>
           <div className="landing-stats-grid">
             {[
@@ -216,24 +323,47 @@ export function LandingPageView() {
             <ShieldCheck size={16} /> No bank connection required
           </div>
           <div className="trust-item">
-            <Calendar size={16} /> GDPR-compliant, EU-hosted, delete anytime
+            <Calendar size={16} /> GDPR-compliant, EU-hosted, delete everything anytime
           </div>
           <div className="trust-item">
-            <Lock size={16} /> Only anonymized prices are ever shared
+            <Lock size={16} /> Your data stays yours — only anonymous price points are shared
           </div>
         </div>
       </section>
 
       <section className="landing-section">
         <div className="section-header">
-          <Badge tone="primary">Capabilities</Badge>
-          <h2 className="section-title">Designed for household intelligence</h2>
+          <Badge tone="primary">How it works</Badge>
+          <h2 className="section-title">From paper to data in three steps</h2>
           <p className="section-subtitle">
-            From AI extraction to price trends — the entire flow runs automatically.
+            Take a picture and you’re done. No typing, no spreadsheets, no bank login.
+          </p>
+        </div>
+        <div className="how-it-works-grid">
+          {HOW_IT_WORKS.map(({ Icon, step, title, desc, micro }) => (
+            <Card className="how-step-card" key={step}>
+              <span className="how-step-number">{step}</span>
+              <div className="how-step-icon">
+                <Icon size={22} />
+              </div>
+              <div className="how-step-title">{title}</div>
+              <div className="how-step-desc">{desc}</div>
+              {micro ? <div className="how-step-micro">{micro}</div> : null}
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-section" style={{ paddingTop: 0 }}>
+        <div className="section-header">
+          <Badge tone="primary">Capabilities</Badge>
+          <h2 className="section-title">Everything your receipts already know</h2>
+          <p className="section-subtitle">
+            One photo unlocks expense tracking, budgets, analytics, local price intelligence, and more.
           </p>
         </div>
         <div className="features-grid">
-          {FEATURES.map(({ Icon, title, desc }) => (
+          {CAPABILITIES.map(({ Icon, title, desc }) => (
             <Card interactive className="feature-card" key={title}>
               <div className="feature-icon">
                 <Icon size={22} />
@@ -247,10 +377,10 @@ export function LandingPageView() {
 
       <section className="landing-section" style={{ paddingTop: 0 }}>
         <div className="section-header">
-          <Badge tone="primary">Use Cases</Badge>
+          <Badge tone="primary">Use cases</Badge>
           <h2 className="section-title">Built for how you actually spend</h2>
           <p className="section-subtitle">
-            Wobblio adapts to your lifestyle — household, travel, or local savings hunting.
+            Whether you’re running a household, travelling on a budget, hunting deals, or splitting a dinner.
           </p>
         </div>
         <div className="use-cases-grid">
@@ -267,6 +397,34 @@ export function LandingPageView() {
             </Card>
           ))}
         </div>
+      </section>
+
+      <section className="landing-section" style={{ paddingTop: 0 }}>
+        <Card className="price-engine">
+          <div className="price-engine-copy">
+            <Badge tone="primary">Anti-inflation price engine</Badge>
+            <h2 className="price-engine-title">See which store raised which price.</h2>
+            <p className="price-engine-caption">
+              Real prices from real receipts in your area — including the in-store promos no website
+              lists. Watch each item move, store by store, over six months.
+            </p>
+            <div className="price-engine-legend">
+              <span className="pe-legend-item">
+                <span className="pe-dot" style={{ background: 'var(--danger)' }} /> SuperCenter · +14%
+              </span>
+              <span className="pe-legend-item">
+                <span className="pe-dot" style={{ background: 'var(--brand)' }} /> MarktPlein · flat
+              </span>
+            </div>
+            <Badge tone="warning">
+              Comparisons unlock as your area’s data grows — every scan makes it smarter.
+            </Badge>
+          </div>
+          <div className="price-engine-figure">
+            <div className="price-engine-product">Lavazza Coffee 250g · Eindhoven region</div>
+            <PriceEngineChart />
+          </div>
+        </Card>
       </section>
 
       <section className="landing-section" style={{ paddingTop: 0, textAlign: 'center' }}>
@@ -300,8 +458,8 @@ export function LandingPageView() {
         </div>
         <div className="pricing-grid">
           <Card className="pricing-card">
-            <h3 className="pricing-title">Standard</h3>
-            <p className="pricing-desc">Perfect for basic receipt tracking.</p>
+            <h3 className="pricing-title">Free</h3>
+            <p className="pricing-desc">Genuinely usable — not a crippled trial.</p>
             <div className="pricing-price">
               <span className="pricing-currency">€</span>
               <span className="pricing-amount">0</span>
@@ -309,39 +467,48 @@ export function LandingPageView() {
             </div>
             <ul className="pricing-features">
               <li>
-                <Check size={16} /> 10 scans per month
+                <Check size={16} /> 3 scans per week
               </li>
               <li>
-                <Check size={16} /> Standard AI ingestion
+                <Check size={16} /> Up to 3 shopping lists
               </li>
               <li>
-                <Check size={16} /> Single-user workspace
+                <Check size={16} /> Basic reports — totals by category
+              </li>
+              <li>
+                <Check size={16} /> Personal price history
               </li>
             </ul>
             <Link href={SIGNUP_URL} className="btn btn--outline">
-              Get started
+              Get started free
             </Link>
           </Card>
           <Card className="pricing-card premium">
-            <h3 className="pricing-title">Household Pro</h3>
-            <p className="pricing-desc">Complete sync for active families.</p>
+            <h3 className="pricing-title">Premium</h3>
+            <p className="pricing-desc">The full price-intelligence suite for households.</p>
             <div className="pricing-price">
               <span className="pricing-currency">€</span>
-              <span className="pricing-amount">{billing === 'annual' ? '6.58' : '8'}</span>
-              <span className="pricing-period">/mo{billing === 'annual' ? ', billed yearly' : ''}</span>
+              <span className="pricing-amount">{billing === 'annual' ? '25' : '2.50'}</span>
+              <span className="pricing-period">{billing === 'annual' ? '/yr · 2 months free' : '/mo'}</span>
             </div>
             <ul className="pricing-features">
               <li>
-                <Check size={16} /> Unlimited scans
+                <Check size={16} /> Households — up to 5 members, pooled scans
               </li>
               <li>
-                <Check size={16} /> Shared household pool
+                <Check size={16} /> Budgets with 85% &amp; 100% alerts
               </li>
               <li>
-                <Check size={16} /> List optimizer &amp; store comparisons
+                <Check size={16} /> Bill splitting &amp; WhatsApp export
               </li>
               <li>
-                <Check size={16} /> WhatsApp reports &amp; exports
+                <Check size={16} /> Price comparison &amp; route optimizer
+              </li>
+              <li>
+                <Check size={16} /> Multi-currency harmonization
+              </li>
+              <li>
+                <Check size={16} /> Weekly AI savings advisor
               </li>
             </ul>
             <Link
@@ -349,10 +516,14 @@ export function LandingPageView() {
               className="btn btn--primary"
               onClick={() => track('signup_start')}
             >
-              Upgrade now
+              Go Premium
             </Link>
           </Card>
         </div>
+        <p className="pricing-footnote">
+          Cancel anytime. Subscriptions are handled on the web — no app-store markup baked into your
+          price.
+        </p>
       </section>
 
       <section className="landing-section" style={{ paddingTop: 0 }}>
