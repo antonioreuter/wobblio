@@ -1,0 +1,264 @@
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - complementary [ref=e5]:
+      - link "Wobblio" [ref=e6] [cursor=pointer]:
+        - /url: /dashboard
+        - img "Wobblio" [ref=e7]
+      - navigation "App navigation" [ref=e10]:
+        - link "Dashboard" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e12]
+          - text: Dashboard
+        - link "Invoices" [ref=e17] [cursor=pointer]:
+          - /url: /invoices
+          - img [ref=e18]
+          - text: Invoices
+        - link "Awaiting Check" [ref=e20] [cursor=pointer]:
+          - /url: /review
+          - img [ref=e21]
+          - text: Awaiting Check
+        - link "Price Trends" [ref=e24] [cursor=pointer]:
+          - /url: /reports
+          - img [ref=e25]
+          - text: Price Trends
+        - link "Shopping Lists" [ref=e28] [cursor=pointer]:
+          - /url: /lists
+          - img [ref=e29]
+          - text: Shopping Lists
+        - link "Budgets" [ref=e33] [cursor=pointer]:
+          - /url: /budgets
+          - img [ref=e34]
+          - text: Budgets
+        - link "Household" [ref=e37] [cursor=pointer]:
+          - /url: /household
+          - img [ref=e38]
+          - text: Household
+        - link "Settings" [ref=e43] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e44]
+          - text: Settings
+    - complementary [ref=e47]:
+      - generic [ref=e48]:
+        - link [ref=e49] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e50]
+        - button [ref=e53] [cursor=pointer]:
+          - img [ref=e54]
+      - navigation [ref=e57]:
+        - link [ref=e58] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e59]
+          - generic [ref=e64]: Dashboard
+        - link [ref=e65] [cursor=pointer]:
+          - /url: /invoices
+          - img [ref=e66]
+          - generic [ref=e68]: Invoices
+        - link [ref=e69] [cursor=pointer]:
+          - /url: /review
+          - img [ref=e70]
+          - generic [ref=e73]: Awaiting Check
+        - link [ref=e74] [cursor=pointer]:
+          - /url: /reports
+          - img [ref=e75]
+          - generic [ref=e78]: Price Trends
+        - link [ref=e79] [cursor=pointer]:
+          - /url: /lists
+          - img [ref=e80]
+          - generic [ref=e84]: Shopping Lists
+        - link [ref=e85] [cursor=pointer]:
+          - /url: /budgets
+          - img [ref=e86]
+          - generic [ref=e89]: Budgets
+        - link [ref=e90] [cursor=pointer]:
+          - /url: /household
+          - img [ref=e91]
+          - generic [ref=e96]: Household
+        - link [ref=e97] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e98]
+          - generic [ref=e101]: Settings
+    - generic [ref=e102]:
+      - banner [ref=e103]:
+        - heading "Dashboard" [level=1] [ref=e105]
+        - search [ref=e106]:
+          - img
+          - searchbox "Search invoices" [active] [ref=e107]: albert
+        - generic [ref=e108]:
+          - generic "Invoices processed this week" [ref=e109]:
+            - img [ref=e111]
+            - generic [ref=e114]:
+              - generic [ref=e115]: Invoices this week
+              - generic [ref=e116]:
+                - strong [ref=e117]: "9"
+                - text: / 15
+          - button "Switch to light mode" [ref=e300] [cursor=pointer]:
+            - img [ref=e301]
+          - generic [ref=e123]:
+            - generic [ref=e124]:
+              - img [ref=e125]
+              - text: Premium
+            - button "Account menu" [ref=e127] [cursor=pointer]:
+              - generic "Premium" [ref=e128]: QW
+      - generic [ref=e129]:
+        - heading "Your Everyday Savings" [level=2] [ref=e130]
+        - paragraph [ref=e131]: Overview of your household expenses and price trends.
+        - generic [ref=e132]:
+          - generic [ref=e307]:
+            - generic [ref=e308]: Spent This Month
+            - generic [ref=e309]: €642.30
+            - generic [ref=e310]: ↓ 11.8% vs €728.42 last month
+          - generic [ref=e311]:
+            - generic [ref=e312]: Needs Check
+            - generic [ref=e313]: 3 items
+            - generic [ref=e314]: 1 receipt needs verification
+          - generic [ref=e315]:
+            - generic [ref=e316]: Processed This Month
+            - generic [ref=e317]: "24"
+            - generic [ref=e318]: receipts scanned in June
+        - generic [ref=e145]:
+          - generic [ref=e146]:
+            - generic [ref=e147]:
+              - generic [ref=e148]:
+                - generic [ref=e149]: Spending by Category
+                - generic [ref=e150]: June 2026
+              - paragraph [ref=e151]:
+                - text: How your
+                - strong [ref=e152]: €642.30
+                - text: broke down across expense types.
+              - generic [ref=e153]:
+                - generic [ref=e154]:
+                  - generic [ref=e155]: €249
+                  - 'generic "Groceries: €248.60" [ref=e156]'
+                  - generic [ref=e157]: Groceries
+                - generic [ref=e158]:
+                  - generic [ref=e159]: €162
+                  - 'generic "Bar & Restaurants: €162.40" [ref=e160]'
+                  - generic [ref=e161]: Bar & Restaurants
+                - generic [ref=e162]:
+                  - generic [ref=e163]: €98
+                  - 'generic "Transport: €98.20" [ref=e164]'
+                  - generic [ref=e165]: Transport
+                - generic [ref=e166]:
+                  - generic [ref=e167]: €75
+                  - 'generic "Drugstore: €74.80" [ref=e168]'
+                  - generic [ref=e169]: Drugstore
+                - generic [ref=e170]:
+                  - generic [ref=e171]: €58
+                  - 'generic "Others: €58.30" [ref=e172]'
+                  - generic [ref=e173]: Others
+            - generic [ref=e174]:
+              - generic [ref=e175]:
+                - generic [ref=e176]: Recent Invoices
+                - generic [ref=e177]:
+                  - button "Refresh" [ref=e178] [cursor=pointer]:
+                    - img [ref=e180]
+                    - text: Refresh
+                  - link "View all" [ref=e183] [cursor=pointer]:
+                    - /url: /invoices
+                    - text: View all
+                    - img [ref=e184]
+              - table [ref=e187]:
+                - rowgroup [ref=e188]:
+                  - row "Merchant Category Date Status Total Actions" [ref=e189]:
+                    - columnheader "Merchant" [ref=e190]
+                    - columnheader "Category" [ref=e191]
+                    - columnheader "Date" [ref=e192]
+                    - columnheader "Status" [ref=e193]
+                    - columnheader "Total" [ref=e194]
+                    - columnheader "Actions" [ref=e195]
+                - rowgroup [ref=e196]:
+                  - row "Albert Heijn Groceries 12 Jun 2026 Processed €8.00 Share invoice Delete invoice" [ref=e319] [cursor=pointer]:
+                    - cell "Albert Heijn" [ref=e320]:
+                      - generic [ref=e321]:
+                        - generic "Albert Heijn" [ref=e323]:
+                          - img [ref=e324]
+                        - generic [ref=e326]: Albert Heijn
+                    - cell "Groceries" [ref=e327]
+                    - cell "12 Jun 2026" [ref=e328]
+                    - cell "Processed" [ref=e329]:
+                      - generic [ref=e330]: Processed
+                    - cell "€8.00" [ref=e331]
+                    - cell "Share invoice Delete invoice" [ref=e332]:
+                      - generic [ref=e333]:
+                        - button "Share invoice" [ref=e334]:
+                          - img [ref=e335]
+                        - button "Delete invoice" [ref=e341]:
+                          - img [ref=e342]
+                  - row "Dirk van den Broek Bar & Restaurants 11 Jun 2026 Needs Review €15.37 Share invoice Delete invoice" [ref=e345] [cursor=pointer]:
+                    - cell "Dirk van den Broek" [ref=e346]:
+                      - generic [ref=e347]:
+                        - generic "Dirk van den Broek" [ref=e349]:
+                          - img [ref=e350]
+                        - generic [ref=e352]: Dirk van den Broek
+                    - cell "Bar & Restaurants" [ref=e353]
+                    - cell "11 Jun 2026" [ref=e354]
+                    - cell "Needs Review" [ref=e355]:
+                      - generic [ref=e356]: Needs Review
+                    - cell "€15.37" [ref=e357]
+                    - cell "Share invoice Delete invoice" [ref=e358]:
+                      - generic [ref=e359]:
+                        - button "Share invoice" [ref=e360]:
+                          - img [ref=e361]
+                        - button "Delete invoice" [ref=e367]:
+                          - img [ref=e368]
+                  - row "Restaurante Cantinho Transport 9 Jun 2026 Auto Parsed €22.74 Share invoice Delete invoice" [ref=e371] [cursor=pointer]:
+                    - cell "Restaurante Cantinho" [ref=e372]:
+                      - generic [ref=e373]:
+                        - generic "Restaurante Cantinho" [ref=e375]:
+                          - img [ref=e376]
+                        - generic [ref=e378]: Restaurante Cantinho
+                    - cell "Transport" [ref=e379]
+                    - cell "9 Jun 2026" [ref=e380]
+                    - cell "Auto Parsed" [ref=e381]:
+                      - generic [ref=e382]: Auto Parsed
+                    - cell "€22.74" [ref=e383]
+                    - cell "Share invoice Delete invoice" [ref=e384]:
+                      - generic [ref=e385]:
+                        - button "Share invoice" [ref=e386]:
+                          - img [ref=e387]
+                        - button "Delete invoice" [ref=e393]:
+                          - img [ref=e394]
+                  - row "Jumbo Oostpoort Drugstore 6 Jun 2026 Processed €30.11 Share invoice Delete invoice" [ref=e397] [cursor=pointer]:
+                    - cell "Jumbo Oostpoort" [ref=e398]:
+                      - generic [ref=e399]:
+                        - generic "Jumbo Oostpoort" [ref=e401]:
+                          - img [ref=e402]
+                        - generic [ref=e404]: Jumbo Oostpoort
+                    - cell "Drugstore" [ref=e405]
+                    - cell "6 Jun 2026" [ref=e406]
+                    - cell "Processed" [ref=e407]:
+                      - generic [ref=e408]: Processed
+                    - cell "€30.11" [ref=e409]
+                    - cell "Share invoice Delete invoice" [ref=e410]:
+                      - generic [ref=e411]:
+                        - button "Share invoice" [ref=e412]:
+                          - img [ref=e413]
+                        - button "Delete invoice" [ref=e419]:
+                          - img [ref=e420]
+          - generic [ref=e257]:
+            - generic [ref=e258] [cursor=pointer]:
+              - img [ref=e260]
+              - heading "Upload New Receipt" [level=3] [ref=e263]
+              - paragraph [ref=e264]: Drag and drop a receipt (PNG, JPG, PDF), or browse files
+              - paragraph [ref=e265]: Location metadata removed · compressed client-side.
+            - generic [ref=e266]:
+              - generic [ref=e268]: Category Budgets
+              - paragraph [ref=e269]:
+                - strong [ref=e270]: 4 budgets
+                - text: tracked ·
+                - strong [ref=e271]: 1 over budget
+              - generic [ref=e273]:
+                - generic [ref=e274]: Groceries
+                - generic [ref=e275]: 76%
+              - generic [ref=e280]:
+                - generic [ref=e281]: Bar & Restaurants
+                - generic [ref=e282]: 104%
+              - generic [ref=e287]:
+                - generic [ref=e288]: Transport
+                - generic [ref=e289]: 51%
+              - generic [ref=e294]:
+                - generic [ref=e295]: Drugstore
+                - generic [ref=e296]: 88%
+  - button "Open Next.js Dev Tools" [ref=e428] [cursor=pointer]:
+    - img [ref=e429]
+  - alert [ref=e432]

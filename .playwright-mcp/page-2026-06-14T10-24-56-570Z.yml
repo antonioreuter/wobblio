@@ -1,0 +1,218 @@
+- generic [ref=e4]:
+  - complementary [ref=e5]:
+    - link "Wobblio" [ref=e6] [cursor=pointer]:
+      - /url: /dashboard
+      - img "Wobblio" [ref=e7]
+    - navigation "App navigation" [ref=e10]:
+      - link "Dashboard" [ref=e11] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e12]
+        - text: Dashboard
+      - link "Invoices" [ref=e17] [cursor=pointer]:
+        - /url: /invoices
+        - img [ref=e18]
+        - text: Invoices
+      - link "Awaiting Check" [ref=e20] [cursor=pointer]:
+        - /url: /review
+        - img [ref=e21]
+        - text: Awaiting Check
+      - link "Price Trends" [ref=e24] [cursor=pointer]:
+        - /url: /reports
+        - img [ref=e25]
+        - text: Price Trends
+      - link "Shopping Lists" [ref=e28] [cursor=pointer]:
+        - /url: /lists
+        - img [ref=e29]
+        - text: Shopping Lists
+      - link "Budgets" [ref=e33] [cursor=pointer]:
+        - /url: /budgets
+        - img [ref=e34]
+        - text: Budgets
+      - link "Household" [ref=e37] [cursor=pointer]:
+        - /url: /household
+        - img [ref=e38]
+        - text: Household
+      - link "Settings" [ref=e43] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e44]
+        - text: Settings
+  - complementary [ref=e47]:
+    - generic [ref=e48]:
+      - link [ref=e49] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e50]
+      - button [ref=e53] [cursor=pointer]:
+        - img [ref=e54]
+    - navigation [ref=e57]:
+      - link [ref=e58] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e59]
+        - generic [ref=e64]: Dashboard
+      - link [ref=e65] [cursor=pointer]:
+        - /url: /invoices
+        - img [ref=e66]
+        - generic [ref=e68]: Invoices
+      - link [ref=e69] [cursor=pointer]:
+        - /url: /review
+        - img [ref=e70]
+        - generic [ref=e73]: Awaiting Check
+      - link [ref=e74] [cursor=pointer]:
+        - /url: /reports
+        - img [ref=e75]
+        - generic [ref=e78]: Price Trends
+      - link [ref=e79] [cursor=pointer]:
+        - /url: /lists
+        - img [ref=e80]
+        - generic [ref=e84]: Shopping Lists
+      - link [ref=e85] [cursor=pointer]:
+        - /url: /budgets
+        - img [ref=e86]
+        - generic [ref=e89]: Budgets
+      - link [ref=e90] [cursor=pointer]:
+        - /url: /household
+        - img [ref=e91]
+        - generic [ref=e96]: Household
+      - link [ref=e97] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e98]
+        - generic [ref=e101]: Settings
+  - generic [ref=e102]:
+    - banner [ref=e103]:
+      - heading "Dashboard" [level=1] [ref=e105]
+      - search [ref=e106]:
+        - img
+        - searchbox "Search invoices" [ref=e107]
+      - generic [ref=e108]:
+        - generic "Invoices processed this week" [ref=e109]:
+          - img [ref=e111]
+          - generic [ref=e114]:
+            - generic [ref=e115]: Invoices this week
+            - generic [ref=e116]:
+              - strong [ref=e117]: "9"
+              - text: / 15
+        - button "Upload" [ref=e120] [cursor=pointer]:
+          - img [ref=e121]
+          - generic [ref=e124]: Upload
+        - button "Switch to dark mode" [ref=e125] [cursor=pointer]:
+          - img [ref=e126]
+        - generic [ref=e128]:
+          - generic [ref=e129]:
+            - img [ref=e130]
+            - text: Premium
+          - button "Account menu" [ref=e132] [cursor=pointer]:
+            - generic "Premium" [ref=e133]: QW
+    - generic [ref=e135]:
+      - heading "Your Everyday Savings" [level=2] [ref=e136]
+      - paragraph [ref=e137]: Overview of your household expenses and price trends.
+      - generic [ref=e155]:
+        - generic [ref=e156]:
+          - generic [ref=e157]:
+            - generic [ref=e158]: Spend over time
+            - generic [ref=e159]:
+              - generic [ref=e160]: Last 6 months
+              - button "Show data table" [ref=e161] [cursor=pointer]:
+                - img [ref=e162]
+                - text: Show data table
+          - paragraph [ref=e164]:
+            - strong [ref=e165]: €4228.27
+            - text: across the last 6 months · June is month-to-date.
+          - img "Total spend over the last 6 months, from €712.40 in Jan to €642.30 month-to-date in Jun. Toggle the data table for exact figures." [ref=e167]:
+            - generic [ref=e169]: €597
+            - generic [ref=e171]: €642
+            - generic [ref=e173]: €687
+            - generic [ref=e175]: €732
+            - generic [ref=e177]: €777
+            - generic [ref=e178]: Jan
+            - generic [ref=e179]: Feb
+            - generic [ref=e180]: Mar
+            - generic [ref=e181]: Apr
+            - generic [ref=e182]: May
+            - generic [ref=e183]: Jun
+        - generic [ref=e188]:
+          - generic [ref=e190]: Category Budgets
+          - paragraph [ref=e191]:
+            - strong [ref=e192]: 4 budgets
+            - text: tracked ·
+            - strong [ref=e193]: 1 over budget
+          - generic [ref=e194]:
+            - generic [ref=e195]:
+              - generic [ref=e196]: Groceries
+              - generic [ref=e197]: 76%
+            - progressbar "Groceries 76%" [ref=e198]
+          - generic [ref=e201]:
+            - generic [ref=e202]:
+              - generic [ref=e203]: Bar & Restaurants
+              - generic [ref=e204]:
+                - img [ref=e205]
+                - text: 104% over
+            - progressbar "Bar & Restaurants 104%, over" [ref=e207]
+          - generic [ref=e210]:
+            - generic [ref=e211]:
+              - generic [ref=e212]: Transport
+              - generic [ref=e213]: 51%
+            - progressbar "Transport 51%" [ref=e214]
+          - generic [ref=e217]:
+            - generic [ref=e218]:
+              - generic [ref=e219]: Drugstore
+              - generic [ref=e220]:
+                - img [ref=e221]
+                - text: 88% near limit
+            - progressbar "Drugstore 88%, near limit" [ref=e223]
+          - link "View all budgets" [ref=e226] [cursor=pointer]:
+            - /url: /budgets
+            - text: View all budgets
+            - img [ref=e227]
+      - generic [ref=e229]:
+        - generic [ref=e230]:
+          - generic [ref=e231]: Recent Invoices
+          - generic [ref=e232]:
+            - button "Refresh invoices" [ref=e233] [cursor=pointer]:
+              - img [ref=e235]
+              - text: Refresh
+            - link "View all" [ref=e238] [cursor=pointer]:
+              - /url: /invoices
+              - text: View all
+              - img [ref=e239]
+        - table [ref=e242]:
+          - rowgroup [ref=e243]:
+            - row "Merchant Category Date Status Tags Total Actions" [ref=e244]:
+              - columnheader "Merchant" [ref=e245]
+              - columnheader "Category" [ref=e246]
+              - columnheader "Date" [ref=e247]
+              - columnheader "Status" [ref=e248]
+              - columnheader "Tags" [ref=e249]
+              - columnheader "Total" [ref=e250]
+              - columnheader "Actions" [ref=e251]
+          - rowgroup [ref=e252]:
+            - row [ref=e253] [cursor=pointer]:
+              - cell [ref=e254]
+              - cell [ref=e258]
+              - cell [ref=e260]
+              - cell [ref=e262]
+              - cell [ref=e264]
+              - cell [ref=e266]
+              - cell [ref=e268]
+            - row [ref=e270] [cursor=pointer]:
+              - cell [ref=e271]
+              - cell [ref=e275]
+              - cell [ref=e277]
+              - cell [ref=e279]
+              - cell [ref=e281]
+              - cell [ref=e283]
+              - cell [ref=e285]
+            - row [ref=e287] [cursor=pointer]:
+              - cell [ref=e288]
+              - cell [ref=e292]
+              - cell [ref=e294]
+              - cell [ref=e296]
+              - cell [ref=e298]
+              - cell [ref=e300]
+              - cell [ref=e302]
+            - row [ref=e304] [cursor=pointer]:
+              - cell [ref=e305]
+              - cell [ref=e309]
+              - cell [ref=e311]
+              - cell [ref=e313]
+              - cell [ref=e315]
+              - cell [ref=e317]
+              - cell [ref=e319]

@@ -1,0 +1,273 @@
+- generic [ref=e4]:
+  - complementary [ref=e5]:
+    - link "Wobblio" [ref=e6] [cursor=pointer]:
+      - /url: /dashboard
+      - img "Wobblio" [ref=e7]
+    - navigation "App navigation" [ref=e10]:
+      - link "Dashboard" [ref=e11] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e12]
+        - text: Dashboard
+      - link "Invoices" [ref=e17] [cursor=pointer]:
+        - /url: /invoices
+        - img [ref=e18]
+        - text: Invoices
+      - link "Awaiting Check" [ref=e20] [cursor=pointer]:
+        - /url: /review
+        - img [ref=e21]
+        - text: Awaiting Check
+      - link "Price Trends" [ref=e24] [cursor=pointer]:
+        - /url: /reports
+        - img [ref=e25]
+        - text: Price Trends
+      - link "Shopping Lists" [ref=e28] [cursor=pointer]:
+        - /url: /lists
+        - img [ref=e29]
+        - text: Shopping Lists
+      - link "Budgets" [ref=e33] [cursor=pointer]:
+        - /url: /budgets
+        - img [ref=e34]
+        - text: Budgets
+      - link "Household" [ref=e37] [cursor=pointer]:
+        - /url: /household
+        - img [ref=e38]
+        - text: Household
+      - link "Settings" [ref=e43] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e44]
+        - text: Settings
+  - complementary [ref=e47]:
+    - generic [ref=e48]:
+      - link [ref=e49] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e50]
+      - button [ref=e53] [cursor=pointer]:
+        - img [ref=e54]
+    - navigation [ref=e57]:
+      - link [ref=e58] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e59]
+        - generic [ref=e64]: Dashboard
+      - link [ref=e65] [cursor=pointer]:
+        - /url: /invoices
+        - img [ref=e66]
+        - generic [ref=e68]: Invoices
+      - link [ref=e69] [cursor=pointer]:
+        - /url: /review
+        - img [ref=e70]
+        - generic [ref=e73]: Awaiting Check
+      - link [ref=e74] [cursor=pointer]:
+        - /url: /reports
+        - img [ref=e75]
+        - generic [ref=e78]: Price Trends
+      - link [ref=e79] [cursor=pointer]:
+        - /url: /lists
+        - img [ref=e80]
+        - generic [ref=e84]: Shopping Lists
+      - link [ref=e85] [cursor=pointer]:
+        - /url: /budgets
+        - img [ref=e86]
+        - generic [ref=e89]: Budgets
+      - link [ref=e90] [cursor=pointer]:
+        - /url: /household
+        - img [ref=e91]
+        - generic [ref=e96]: Household
+      - link [ref=e97] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e98]
+        - generic [ref=e101]: Settings
+  - generic [ref=e102]:
+    - banner [ref=e103]:
+      - heading "Invoices" [level=1] [ref=e105]
+      - search [ref=e106]:
+        - img
+        - searchbox "Search invoices" [ref=e107]
+      - generic [ref=e108]:
+        - generic "Invoices processed this week" [ref=e109]:
+          - img [ref=e111]
+          - generic [ref=e114]:
+            - generic [ref=e115]: Invoices this week
+            - generic [ref=e116]:
+              - strong [ref=e117]: "9"
+              - text: / 15
+        - button "Upload" [ref=e120] [cursor=pointer]:
+          - img [ref=e121]
+          - generic [ref=e124]: Upload
+        - button "Switch to dark mode" [ref=e125] [cursor=pointer]:
+          - img [ref=e126]
+        - generic [ref=e128]:
+          - generic [ref=e129]:
+            - img [ref=e130]
+            - text: Premium
+          - button "Account menu" [ref=e132] [cursor=pointer]:
+            - generic "Premium" [ref=e133]: QW
+    - generic [ref=e135]:
+      - paragraph [ref=e136]: View, filter and manage all your scanned receipts.
+      - generic [ref=e137]:
+        - generic [ref=e138]:
+          - img [ref=e139]
+          - generic [ref=e142]: Filter invoices
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]: Expense category
+            - generic [ref=e146]:
+              - generic:
+                - img
+              - combobox [ref=e147] [cursor=pointer]:
+                - option "All categories" [selected]
+                - option "Groceries"
+                - option "Bar & Restaurants"
+                - option "Transport"
+                - option "Drugstore"
+                - option "Others"
+              - generic:
+                - img
+          - generic [ref=e148]:
+            - generic [ref=e149]: Merchant
+            - generic [ref=e150]:
+              - generic:
+                - img
+              - combobox [ref=e151] [cursor=pointer]:
+                - option "All merchants" [selected]
+                - option "Albert Heijn"
+                - option "AH To Go"
+                - option "Jumbo Oostpoort"
+                - option "Dirk van den Broek"
+                - option "Lidl"
+                - option "Tokomania"
+                - option "Restaurante Cantinho"
+              - generic:
+                - img
+          - generic [ref=e152]:
+            - generic [ref=e153]: Date range
+            - generic [ref=e154]:
+              - generic:
+                - img
+              - combobox [ref=e155] [cursor=pointer]:
+                - option "Last 30 days"
+                - option "This month"
+                - option "Last 3 months" [selected]
+                - option "Custom range"
+              - generic:
+                - img
+          - generic [ref=e156]:
+            - generic [ref=e157]: Status
+            - generic [ref=e158]:
+              - generic:
+                - img
+              - combobox [ref=e159] [cursor=pointer]:
+                - option "Any status" [selected]
+                - option "Processed"
+                - option "Needs Review"
+                - option "Auto Parsed"
+              - generic:
+                - img
+        - generic [ref=e160]:
+          - generic [ref=e161]: Tags
+          - generic [ref=e162]:
+            - button "dinner" [ref=e163] [cursor=pointer]
+            - button "weekly" [ref=e164] [cursor=pointer]
+            - button "commute" [ref=e165] [cursor=pointer]
+            - button "pantry" [ref=e166] [cursor=pointer]
+            - button "treat" [ref=e167] [cursor=pointer]
+            - button "household" [ref=e168] [cursor=pointer]
+            - button "fuel" [ref=e169] [cursor=pointer]
+            - button "organic" [ref=e170] [cursor=pointer]
+        - generic [ref=e171]:
+          - generic [ref=e172]:
+            - img [ref=e173]
+            - text: "Maximum range: 3 months."
+          - generic [ref=e176]:
+            - button "Clear filters" [ref=e177] [cursor=pointer]:
+              - img [ref=e178]
+              - text: Clear filters
+            - button "Search" [ref=e181] [cursor=pointer]:
+              - img [ref=e182]
+              - text: Search
+      - generic [ref=e185]:
+        - generic [ref=e186]:
+          - generic [ref=e187]:
+            - text: All invoices
+            - generic [ref=e188]: "42"
+          - generic [ref=e189]: Showing 8 of 42
+        - table [ref=e191]:
+          - rowgroup [ref=e192]:
+            - row "Merchant Category Date Status Tags Total Actions" [ref=e193]:
+              - columnheader "Merchant" [ref=e194]
+              - columnheader "Category" [ref=e195]
+              - columnheader "Date" [ref=e196]
+              - columnheader "Status" [ref=e197]
+              - columnheader "Tags" [ref=e198]
+              - columnheader "Total" [ref=e199]
+              - columnheader "Actions" [ref=e200]
+          - rowgroup [ref=e201]:
+            - row [ref=e202] [cursor=pointer]:
+              - cell [ref=e203]
+              - cell [ref=e207]
+              - cell [ref=e209]
+              - cell [ref=e211]
+              - cell [ref=e213]
+              - cell [ref=e215]
+              - cell [ref=e217]
+            - row [ref=e219] [cursor=pointer]:
+              - cell [ref=e220]
+              - cell [ref=e224]
+              - cell [ref=e226]
+              - cell [ref=e228]
+              - cell [ref=e230]
+              - cell [ref=e232]
+              - cell [ref=e234]
+            - row [ref=e236] [cursor=pointer]:
+              - cell [ref=e237]
+              - cell [ref=e241]
+              - cell [ref=e243]
+              - cell [ref=e245]
+              - cell [ref=e247]
+              - cell [ref=e249]
+              - cell [ref=e251]
+            - row [ref=e253] [cursor=pointer]:
+              - cell [ref=e254]
+              - cell [ref=e258]
+              - cell [ref=e260]
+              - cell [ref=e262]
+              - cell [ref=e264]
+              - cell [ref=e266]
+              - cell [ref=e268]
+            - row [ref=e270] [cursor=pointer]:
+              - cell [ref=e271]
+              - cell [ref=e275]
+              - cell [ref=e277]
+              - cell [ref=e279]
+              - cell [ref=e281]
+              - cell [ref=e283]
+              - cell [ref=e285]
+            - row [ref=e287] [cursor=pointer]:
+              - cell [ref=e288]
+              - cell [ref=e292]
+              - cell [ref=e294]
+              - cell [ref=e296]
+              - cell [ref=e298]
+              - cell [ref=e300]
+              - cell [ref=e302]
+            - row [ref=e304] [cursor=pointer]:
+              - cell [ref=e305]
+              - cell [ref=e309]
+              - cell [ref=e311]
+              - cell [ref=e313]
+              - cell [ref=e315]
+              - cell [ref=e317]
+              - cell [ref=e319]
+            - row [ref=e321] [cursor=pointer]:
+              - cell [ref=e322]
+              - cell [ref=e326]
+              - cell [ref=e328]
+              - cell [ref=e330]
+              - cell [ref=e332]
+              - cell [ref=e334]
+              - cell [ref=e336]
+        - button "Load 8 more" [ref=e339] [cursor=pointer]:
+          - img [ref=e340]
+          - text: Load 8 more
+        - generic [ref=e342]:
+          - img [ref=e343]
+          - text: Your data is private and secure.

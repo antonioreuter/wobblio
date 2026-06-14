@@ -1,0 +1,205 @@
+- generic [ref=e4]:
+  - complementary [ref=e5]:
+    - link "Wobblio" [ref=e6] [cursor=pointer]:
+      - /url: /dashboard
+      - img "Wobblio" [ref=e7]
+    - navigation "App navigation" [ref=e10]:
+      - link "Dashboard" [ref=e11] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e12]
+        - text: Dashboard
+      - link "Invoices" [ref=e17] [cursor=pointer]:
+        - /url: /invoices
+        - img [ref=e18]
+        - text: Invoices
+      - link "Awaiting Check" [ref=e20] [cursor=pointer]:
+        - /url: /review
+        - img [ref=e21]
+        - text: Awaiting Check
+      - link "Price Trends" [ref=e24] [cursor=pointer]:
+        - /url: /reports
+        - img [ref=e25]
+        - text: Price Trends
+      - link "Shopping Lists" [ref=e28] [cursor=pointer]:
+        - /url: /lists
+        - img [ref=e29]
+        - text: Shopping Lists
+      - link "Budgets" [ref=e33] [cursor=pointer]:
+        - /url: /budgets
+        - img [ref=e34]
+        - text: Budgets
+      - link "Household" [ref=e37] [cursor=pointer]:
+        - /url: /household
+        - img [ref=e38]
+        - text: Household
+      - link "Settings" [ref=e43] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e44]
+        - text: Settings
+  - complementary [ref=e47]:
+    - generic [ref=e48]:
+      - link [ref=e49] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e50]
+      - button [ref=e53] [cursor=pointer]:
+        - img [ref=e54]
+    - navigation [ref=e57]:
+      - link [ref=e58] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e59]
+        - generic [ref=e64]: Dashboard
+      - link [ref=e65] [cursor=pointer]:
+        - /url: /invoices
+        - img [ref=e66]
+        - generic [ref=e68]: Invoices
+      - link [ref=e69] [cursor=pointer]:
+        - /url: /review
+        - img [ref=e70]
+        - generic [ref=e73]: Awaiting Check
+      - link [ref=e74] [cursor=pointer]:
+        - /url: /reports
+        - img [ref=e75]
+        - generic [ref=e78]: Price Trends
+      - link [ref=e79] [cursor=pointer]:
+        - /url: /lists
+        - img [ref=e80]
+        - generic [ref=e84]: Shopping Lists
+      - link [ref=e85] [cursor=pointer]:
+        - /url: /budgets
+        - img [ref=e86]
+        - generic [ref=e89]: Budgets
+      - link [ref=e90] [cursor=pointer]:
+        - /url: /household
+        - img [ref=e91]
+        - generic [ref=e96]: Household
+      - link [ref=e97] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e98]
+        - generic [ref=e101]: Settings
+  - generic [ref=e102]:
+    - banner [ref=e103]:
+      - heading "Dashboard" [level=1] [ref=e105]
+      - search [ref=e106]:
+        - img
+        - searchbox "Search invoices" [ref=e107]
+      - generic [ref=e108]:
+        - generic "Invoices processed this week" [ref=e109]:
+          - img [ref=e111]
+          - generic [ref=e114]:
+            - generic [ref=e115]: Invoices this week
+            - generic [ref=e116]:
+              - strong [ref=e117]: "9"
+              - text: / 15
+        - generic [ref=e120]:
+          - generic [ref=e121]:
+            - img [ref=e122]
+            - text: Premium
+          - button "Account menu" [ref=e124] [cursor=pointer]:
+            - generic "Premium" [ref=e125]: QW
+    - generic [ref=e126]:
+      - heading "Your Everyday Savings" [level=2] [ref=e127]
+      - paragraph [ref=e128]: Overview of your household expenses and price trends.
+      - generic [ref=e142]:
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - generic [ref=e146]: Spending by Category
+              - generic [ref=e147]: June 2026
+            - paragraph [ref=e148]:
+              - text: How your
+              - strong [ref=e149]: €642.30
+              - text: broke down across expense types.
+            - generic [ref=e150]:
+              - generic [ref=e151]:
+                - generic [ref=e152]: €249
+                - 'generic "Groceries: €248.60" [ref=e153]'
+                - generic [ref=e154]: Groceries
+              - generic [ref=e155]:
+                - generic [ref=e156]: €162
+                - 'generic "Bar & Restaurants: €162.40" [ref=e157]'
+                - generic [ref=e158]: Bar & Restaurants
+              - generic [ref=e159]:
+                - generic [ref=e160]: €98
+                - 'generic "Transport: €98.20" [ref=e161]'
+                - generic [ref=e162]: Transport
+              - generic [ref=e163]:
+                - generic [ref=e164]: €75
+                - 'generic "Drugstore: €74.80" [ref=e165]'
+                - generic [ref=e166]: Drugstore
+              - generic [ref=e167]:
+                - generic [ref=e168]: €58
+                - 'generic "Others: €58.30" [ref=e169]'
+                - generic [ref=e170]: Others
+          - generic [ref=e171]:
+            - generic [ref=e172]:
+              - generic [ref=e173]: Recent Invoices
+              - generic [ref=e174]:
+                - button "Refresh" [ref=e175] [cursor=pointer]:
+                  - img [ref=e177]
+                  - text: Refresh
+                - link "View all" [ref=e180] [cursor=pointer]:
+                  - /url: /invoices
+                  - text: View all
+                  - img [ref=e181]
+            - table [ref=e184]:
+              - rowgroup [ref=e185]:
+                - row "Merchant Category Date Status Total Actions" [ref=e186]:
+                  - columnheader "Merchant" [ref=e187]
+                  - columnheader "Category" [ref=e188]
+                  - columnheader "Date" [ref=e189]
+                  - columnheader "Status" [ref=e190]
+                  - columnheader "Total" [ref=e191]
+                  - columnheader "Actions" [ref=e192]
+              - rowgroup [ref=e193]:
+                - row [ref=e194] [cursor=pointer]:
+                  - cell [ref=e195]
+                  - cell [ref=e199]
+                  - cell [ref=e201]
+                  - cell [ref=e203]
+                  - cell [ref=e205]
+                  - cell [ref=e207]
+                - row [ref=e209] [cursor=pointer]:
+                  - cell [ref=e210]
+                  - cell [ref=e214]
+                  - cell [ref=e216]
+                  - cell [ref=e218]
+                  - cell [ref=e220]
+                  - cell [ref=e222]
+                - row [ref=e224] [cursor=pointer]:
+                  - cell [ref=e225]
+                  - cell [ref=e229]
+                  - cell [ref=e231]
+                  - cell [ref=e233]
+                  - cell [ref=e235]
+                  - cell [ref=e237]
+                - row [ref=e239] [cursor=pointer]:
+                  - cell [ref=e240]
+                  - cell [ref=e244]
+                  - cell [ref=e246]
+                  - cell [ref=e248]
+                  - cell [ref=e250]
+                  - cell [ref=e252]
+        - generic [ref=e254]:
+          - generic [ref=e255] [cursor=pointer]:
+            - img [ref=e257]
+            - heading "Upload New Receipt" [level=3] [ref=e260]
+            - paragraph [ref=e261]: Drag and drop a receipt (PNG, JPG, PDF), or browse files
+            - paragraph [ref=e262]: Location metadata removed · compressed client-side.
+          - generic [ref=e263]:
+            - generic [ref=e265]: Category Budgets
+            - paragraph [ref=e266]:
+              - strong [ref=e267]: 4 budgets
+              - text: tracked ·
+              - strong [ref=e268]: 1 over budget
+            - generic [ref=e270]:
+              - generic [ref=e271]: Groceries
+              - generic [ref=e272]: 76%
+            - generic [ref=e277]:
+              - generic [ref=e278]: Bar & Restaurants
+              - generic [ref=e279]: 104%
+            - generic [ref=e284]:
+              - generic [ref=e285]: Transport
+              - generic [ref=e286]: 51%
+            - generic [ref=e291]:
+              - generic [ref=e292]: Drugstore
+              - generic [ref=e293]: 88%
