@@ -1,4 +1,6 @@
-import type { CSSProperties } from 'react'
+'use client'
+
+import { useEffect, useState, type CSSProperties } from 'react'
 
 type Tone = 'success' | 'warning' | 'danger'
 
@@ -8,6 +10,8 @@ export interface ProgressBarProps {
   showThreshold?: boolean
   style?: CSSProperties
   className?: string
+  /** Grow the fill from 0 on mount (disabled automatically under reduced-motion via CSS). */
+  animate?: boolean
   /** Accessible description announced by screen readers, e.g. "Bar & Restaurants 104%, over". */
   ariaLabel?: string
 }
@@ -18,10 +22,25 @@ const FILL: Record<Tone, string> = {
   danger: 'var(--danger)',
 }
 
-export function ProgressBar({ value = 0, tone, showThreshold = true, style, className, ariaLabel }: ProgressBarProps) {
+export function ProgressBar({
+  value = 0,
+  tone,
+  showThreshold = true,
+  style,
+  className,
+  animate = false,
+  ariaLabel,
+}: ProgressBarProps) {
   const pct = Math.max(0, Math.min(100, value))
   const auto: Tone = pct >= 85 ? 'danger' : pct >= 75 ? 'warning' : 'success'
   const fill = FILL[tone ?? auto]
+
+  const [width, setWidth] = useState(animate ? 0 : pct)
+  useEffect(() => {
+    if (!animate) return
+    const id = requestAnimationFrame(() => setWidth(pct))
+    return () => cancelAnimationFrame(id)
+  }, [animate, pct])
 
   return (
     <div
@@ -42,12 +61,12 @@ export function ProgressBar({ value = 0, tone, showThreshold = true, style, clas
       }}
     >
       <div
+        className="pb-fill"
         style={{
           height: '100%',
-          width: `${pct}%`,
+          width: `${width}%`,
           background: fill,
           borderRadius: 'var(--radius-pill)',
-          transition: 'width 0.8s var(--ease-out)',
         }}
       />
       {showThreshold && (
