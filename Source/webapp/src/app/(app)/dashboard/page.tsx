@@ -82,6 +82,13 @@ export default function DashboardPage() {
                 delta={`${SCANS_USED} of ${SCANS_LIMIT} used this week`}
                 tone={scansLeft <= 3 ? 'warning' : 'neutral'}
               />
+              <MetricCard
+                className="metric-ultrawide"
+                label="Top Merchant"
+                value="Albert Heijn"
+                delta="€248.60 this month"
+                tone="neutral"
+              />
             </>
           )}
       </div>

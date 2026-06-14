@@ -22,7 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <WorkspaceProvider>
               <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
               {SANDBOX_ENABLED && <RlsWarningBanner />}
-              {children}
+              <div className="app-canvas">{children}</div>
             </WorkspaceProvider>
           </div>
         </div>

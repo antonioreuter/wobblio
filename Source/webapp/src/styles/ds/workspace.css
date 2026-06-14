@@ -1409,6 +1409,22 @@
 }
 .user-menu-item:hover { background: var(--glass-highlight); }
 
+/* ---- Ultrawide containment + density tiers ---- */
+.app-canvas {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+}
+/* Fifth stat card only earns its keep once there's room for it. */
+.metric-ultrawide { display: none; }
+/* Keep the area chart from going sparse/stretched on wide panels. */
+.chart-wrap { max-width: 960px; }
+
+@media (min-width: 1920px) {
+  .app-canvas { max-width: 1600px; }
+  .metric-ultrawide { display: block; }
+}
+
 /* ---- Responsive ---- */
 @media (max-width: 1080px) {
   .dash-row { grid-template-columns: 1fr; }

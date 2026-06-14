@@ -1,6 +1,6 @@
 # Dashboard Responsive Overhaul — Implementation Plan
 
-> **Status:** Approved, not started. Last updated 2026-06-14.
+> **Status:** All 5 PRs implemented (unmerged) on stacked `feat/responsive-pr1…pr5` branches. One sub-item deferred (persistent drawer, PR 5). Last updated 2026-06-14.
 > **Branch:** `feat/new-design` (create `feat/responsive-pr<N>` per PR below).
 > **Related:** `LAYOUT_REVIEW.md` (raw findings), `dashboard-desktop.png`, `dashboard-mobile.png` (baseline screenshots at repo root).
 
@@ -137,6 +137,7 @@ Source/webapp/src/styles/ds/workspace.css                     — drawer styles,
 - Theme runtime preferences persistence beyond what `theme-toggle-button` already does.
 - PWA install prompt (consider after PR 5 if mobile-web usage warrants it).
 - Tailwind utility-class migration (the project deliberately uses hand-rolled CSS; that's a separate decision).
+- **Persistent docked inspection drawer at ≥1600px (PR 5 item 3) — deferred.** `invoice-drawer.tsx` renders via `createPortal` to `document.body` as an overlay, and `WorkspaceProvider` (which owns it) wraps the whole app. Docking it as a 360px right column on `/invoices` requires moving it into the page's layout flow and reflowing the list — a render-model change, not the CSS-only media-query toggle the plan assumed. It's independent of the ultrawide containment goal, so it should be its own follow-up PR. Also note: PR 5 item 2's "reveal the hidden confidence-dot column" was skipped because `InvoiceTable` has no confidence column (status badge already carries that signal).
 
 ---
 
@@ -150,6 +151,6 @@ Update this section as each PR lands. Format: status · branch · merge commit/P
 | 2 — Topbar refit          | 🟡 Implemented (unmerged) | `feat/responsive-pr2` | — | Wordmark removed; global search (`/invoices?q=`), shared `ds/ThemeToggle` lifted into topbar + site-header. Fixed a theme-toggle hydration mismatch (mounted guard). Search hidden ≤768. Verified light+dark at 1440, mobile 390. |
 | 3 — Budget bar a11y       | 🟡 Implemented (unmerged) | `feat/responsive-pr3` | — | Budget % now paired with icon + label ("104% over" / "88% near limit"); ProgressBar exposes role=progressbar + aria-label so SR announces "Bar & Restaurants 104%, over". tabular-nums added to `.budget-meta .pct`. Verified light + dark at 1440. NOTE: visible icon+label lives in the dashboard budget row (where the % renders), not inside the 8px ProgressBar; ProgressBar got the ARIA. |
 | 4 — Dashboard restructure | 🟡 Implemented (unmerged) | `feat/responsive-pr4` | — | 4 stat cards (MTD · vs last month · budget health · scans remaining); new `SpendOverTimeChart` (6-mo area, MTD dot, data-table toggle for a11y) in 2/3, Category Budgets promoted to 1/3 with "View all budgets →"; Recent Invoices full-width; ghost icon Refresh. Upload moved to a topbar action (WorkspaceProvider lifted to wrap TopBar). dash-row now exact 2fr/1fr. Verified 1440 + 390; lint + 12 tests green. NOTE: topbar Upload uses the existing native file picker (scanReceipt), not a bespoke modal; theme toggle hidden ≤640 to fit the mobile bar. |
-| 5 — Ultrawide + density   | ⬜ Pending | — | — | Depends on PR 4 (stat row, drawer) |
+| 5 — Ultrawide + density   | 🟡 Implemented (unmerged) | `feat/responsive-pr5` | — | `.app-canvas` caps content at 1440px (→1600 at ≥1920), centered; 5th stat card "Top Merchant" revealed only ≥1920; chart-wrap capped at 960. Verified 1440/1920/2560 — content stays bounded, only background grows. SKIPPED: confidence-dot column reveal (no such column exists in InvoiceTable). DEFERRED: persistent docked drawer at ≥1600 — the drawer is portaled to body as an overlay, so docking needs a render-model + /invoices layout change, not the CSS-only toggle the plan assumed; orthogonal to the containment goal. See note below. |
 
 **Legend:** ⬜ pending · 🟡 in progress · ✅ merged · ❌ blocked (note reason)
