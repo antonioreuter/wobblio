@@ -148,7 +148,7 @@ Update this section as each PR lands. Format: status · branch · merge commit/P
 |----|--------|--------|-----------|-------|
 | 1 — Mobile foundation     | 🟡 Implemented (unmerged) | `feat/responsive-pr1` | — | Rail→drawer, table→cards, topbar compaction + avatar menu (incl. visible PREMIUM chip). Verified 390/640/768/1440; lint + 12 unit tests green. Avatar dropdown built here (PR2 item 4 satisfied early). |
 | 2 — Topbar refit          | 🟡 Implemented (unmerged) | `feat/responsive-pr2` | — | Wordmark removed; global search (`/invoices?q=`), shared `ds/ThemeToggle` lifted into topbar + site-header. Fixed a theme-toggle hydration mismatch (mounted guard). Search hidden ≤768. Verified light+dark at 1440, mobile 390. |
-| 3 — Budget bar a11y       | ⬜ Pending | — | — | Can ship anytime; no dependency |
+| 3 — Budget bar a11y       | 🟡 Implemented (unmerged) | `feat/responsive-pr3` | — | Budget % now paired with icon + label ("104% over" / "88% near limit"); ProgressBar exposes role=progressbar + aria-label so SR announces "Bar & Restaurants 104%, over". tabular-nums added to `.budget-meta .pct`. Verified light + dark at 1440. NOTE: visible icon+label lives in the dashboard budget row (where the % renders), not inside the 8px ProgressBar; ProgressBar got the ARIA. |
 | 4 — Dashboard restructure | ⬜ Pending | — | — | Depends on PR 1 (table cards reused) |
 | 5 — Ultrawide + density   | ⬜ Pending | — | — | Depends on PR 4 (stat row, drawer) |
 

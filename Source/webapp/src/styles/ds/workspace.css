@@ -391,7 +391,7 @@
 .budget-meta {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
   font-size: 13px;
 }
@@ -402,7 +402,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.budget-meta .pct { font-family: var(--font-display); font-weight: 700; flex-shrink: 0; }
+.budget-meta .pct {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 
 /* ---- Empty table / footer ---- */
 .table-empty {

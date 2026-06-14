@@ -8,6 +8,8 @@ export interface ProgressBarProps {
   showThreshold?: boolean
   style?: CSSProperties
   className?: string
+  /** Accessible description announced by screen readers, e.g. "Bar & Restaurants 104%, over". */
+  ariaLabel?: string
 }
 
 const FILL: Record<Tone, string> = {
@@ -16,7 +18,7 @@ const FILL: Record<Tone, string> = {
   danger: 'var(--danger)',
 }
 
-export function ProgressBar({ value = 0, tone, showThreshold = true, style, className }: ProgressBarProps) {
+export function ProgressBar({ value = 0, tone, showThreshold = true, style, className, ariaLabel }: ProgressBarProps) {
   const pct = Math.max(0, Math.min(100, value))
   const auto: Tone = pct >= 85 ? 'danger' : pct >= 75 ? 'warning' : 'success'
   const fill = FILL[tone ?? auto]
@@ -24,6 +26,11 @@ export function ProgressBar({ value = 0, tone, showThreshold = true, style, clas
   return (
     <div
       className={className}
+      role="progressbar"
+      aria-valuenow={Math.round(pct)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={ariaLabel}
       style={{
         position: 'relative',
         width: '100%',

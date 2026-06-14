@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowRight, RotateCw, Upload } from 'lucide-react'
+import { AlertCircle, AlertTriangle, ArrowRight, RotateCw, Upload } from 'lucide-react'
 import { Button, Card, MetricCard, ProgressBar } from '@/components/ds'
 import {
   BUDGETS,
@@ -10,6 +10,13 @@ import {
   SPEND,
   useWorkspace,
 } from '@/components/workspace'
+
+// Pairs budget meaning with an icon + label so it is never conveyed by color alone.
+function budgetStatus(pct: number): { icon: typeof AlertTriangle; label: string } | null {
+  if (pct > 100) return { icon: AlertTriangle, label: 'over' }
+  if (pct >= 85) return { icon: AlertCircle, label: 'near limit' }
+  return null
+}
 
 function SpendChart() {
   return (
@@ -174,13 +181,22 @@ export default function DashboardPage() {
             </p>
             {BUDGETS.map((b) => {
               const tone = budgetColor(b.pct)
+              const status = budgetStatus(b.pct)
+              const StatusIcon = status?.icon
               return (
                 <div className="budget-item" key={b.name}>
                   <div className="budget-meta">
                     <span className="name">{b.name}</span>
-                    <span className="pct" style={{ color: `var(--${tone})` }}>{b.pct}%</span>
+                    <span className="pct" style={{ color: `var(--${tone})` }}>
+                      {StatusIcon && <StatusIcon size={13} aria-hidden="true" />}
+                      {b.pct}%{status ? ` ${status.label}` : ''}
+                    </span>
                   </div>
-                  <ProgressBar value={Math.min(b.pct, 100)} tone={tone} />
+                  <ProgressBar
+                    value={Math.min(b.pct, 100)}
+                    tone={tone}
+                    ariaLabel={`${b.name} ${b.pct}%${status ? `, ${status.label}` : ''}`}
+                  />
                 </div>
               )
             })}
