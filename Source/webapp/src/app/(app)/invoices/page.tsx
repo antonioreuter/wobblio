@@ -231,6 +231,8 @@ export default function InvoicesPage() {
           invoices={shown}
           loading={loading}
           skeletonRows={8}
+          animateRows
+          staggerStart={Math.max(0, visible - PAGE_SIZE)}
           onOpen={setOpenInvoice}
           onRequestDelete={setConfirmDelete}
           onShare={setShareTarget}

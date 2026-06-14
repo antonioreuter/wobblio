@@ -1,5 +1,6 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { ReceiptText, Share2, Trash2 } from 'lucide-react'
 import { Badge, MerchantIcon, Tag } from '@/components/ds'
 import { eur, fmtDate, type Invoice } from './invoice-data'
@@ -8,6 +9,10 @@ interface InvoiceTableProps {
   invoices: Invoice[]
   loading?: boolean
   skeletonRows?: number
+  /** Cascade rows in on mount; only newly-rendered rows animate. */
+  animateRows?: boolean
+  /** Index where the latest batch begins, so each page cascades from 0 with no leading pause. */
+  staggerStart?: number
   onOpen?: (inv: Invoice) => void
   onRequestDelete?: (inv: Invoice) => void
   onShare?: (inv: Invoice) => void
@@ -17,6 +22,8 @@ export function InvoiceTable({
   invoices,
   loading = false,
   skeletonRows = 5,
+  animateRows = false,
+  staggerStart = 0,
   onOpen,
   onRequestDelete,
   onShare,
@@ -54,9 +61,11 @@ export function InvoiceTable({
               </tr>
             ))}
           {!loading &&
-            invoices.map((inv) => (
+            invoices.map((inv, i) => (
               <tr
                 key={inv.id}
+                className={animateRows ? 'inv-row-in' : undefined}
+                style={animateRows ? ({ ['--row-i']: Math.max(0, i - staggerStart) } as CSSProperties) : undefined}
                 onClick={() => onOpen?.(inv)}
                 data-testid={`invoice-row-${inv.id}`}
               >
