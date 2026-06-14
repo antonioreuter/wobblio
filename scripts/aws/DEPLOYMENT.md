@@ -54,15 +54,19 @@ cd ../shared-infra
 cd ../wobblio
 ```
 
-This creates:
-- PostgreSQL role `wobblio_app`
-- Database `wobblio_dev` owned by `wobblio_app`
-- Secrets Manager secret `shared/db/wobblio`
-- SSM parameter `/shared/db/wobblio/secret-arn`
+This creates (the secret/param are named after the database, so dev and prod stay isolated):
+- PostgreSQL role `wobblio_dev_app`
+- Database `wobblio_dev` owned by `wobblio_dev_app`
+- Secrets Manager secret `shared/db/wobblio_dev`
+- SSM parameter `/shared/db/wobblio_dev/secret-arn`
+
+> **Stage convention:** prod uses `shared/db/wobblio` + `/shared/db/wobblio/secret-arn`;
+> every non-prod stage uses the underscore-suffixed form `shared/db/wobblio_<stage>`
+> (e.g. `wobblio_dev`). The deploy/bootstrap scripts resolve the right one from `$STAGE`.
 
 Verify:
 ```bash
-aws ssm get-parameter --name /shared/db/wobblio/secret-arn \
+aws ssm get-parameter --name /shared/db/wobblio_dev/secret-arn \
   --profile reuterAdmin --region eu-west-1 --output text
 ```
 
@@ -260,9 +264,12 @@ scripts/aws/deploy.sh --stage ${STAGE} --skip-migrations
 ```bash
 export STAGE=dev  # or: prod
 
+# Stage-aware secret pointer: prod → wobblio, else → wobblio_<stage>
+DB_SECRET_PARAM=$([ "$STAGE" = prod ] && echo /shared/db/wobblio/secret-arn || echo /shared/db/wobblio_${STAGE}/secret-arn)
+
 # Retrieve DATABASE_URL from Secrets Manager
 SECRET_ARN=$(aws ssm get-parameter \
-  --name /shared/db/wobblio/secret-arn \
+  --name "$DB_SECRET_PARAM" \
   --profile reuterAdmin --region eu-west-1 \
   --query Parameter.Value --output text)
 
@@ -399,8 +406,8 @@ aws cloudfront list-distributions --profile reuterAdmin \
 |---|---|
 | `HostedZone not found` during CDK synth | Route53 hosted zone `wobblio.com` missing. Create it first. |
 | ACM cert stuck in `PENDING_VALIDATION` | Route53 DNS validation CNAME not created yet. Wait up to 30 min. |
-| `Parameter /shared/db/wobblio/secret-arn not found` | Run onboarding: `cd ../shared-infra && ./scripts/onboard-app.sh wobblio wobblio_prod` |
-| Lambda `ECONNREFUSED` or timeout to RDS | Verify Secrets Manager secret exists: `aws secretsmanager get-secret-value --secret-id shared/db/wobblio --profile reuterAdmin` |
+| `Parameter /shared/db/wobblio[_<stage>]/secret-arn not found` | Run onboarding from `shared-infra`: `./scripts/onboard-app.sh wobblio wobblio_<stage>` (e.g. `wobblio_dev` for dev, `wobblio_prod` for prod) |
+| Lambda `ECONNREFUSED` or timeout to RDS | Verify the stage secret exists: `aws secretsmanager get-secret-value --secret-id shared/db/wobblio_dev --profile reuterAdmin` (prod: `shared/db/wobblio`) |
 | CloudFront 403 on all pages | Re-deploy WebStack: `cdk deploy WobblioWebStack-${STAGE} --profile reuterAdmin` |
 | `migrate:up` fails: `role wobblio_app does not exist` | Re-run onboarding from `shared-infra` |
 | `CREATE EXTENSION "vector"` fails | PostgreSQL must be ≥ 15.2. Check: `psql "$DATABASE_URL" -c "SHOW server_version;"` |

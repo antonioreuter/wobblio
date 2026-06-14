@@ -68,6 +68,15 @@ export AWS_DEFAULT_REGION="$AWS_REGION"
 export CDK_DEFAULT_REGION="$AWS_REGION"
 export STAGE
 
+# Stage-aware shared-DB secret pointer. Prod uses the canonical name; every other
+# stage uses an underscore-suffixed alias (e.g. /shared/db/wobblio_dev/secret-arn)
+# so dev migrations never touch the prod database.
+if [[ "$STAGE" == "prod" ]]; then
+  DB_SECRET_PARAM="/shared/db/wobblio/secret-arn"
+else
+  DB_SECRET_PARAM="/shared/db/wobblio_${STAGE}/secret-arn"
+fi
+
 START_TIME=$(date +%s)
 
 # ── Pre-flight checks ─────────────────────────────────────────────────────────
@@ -89,11 +98,11 @@ ok "AWS credentials valid"
 
 # Verify shared DB SSM param exists
 aws ssm get-parameter \
-  --name /shared/db/wobblio/secret-arn \
+  --name "$DB_SECRET_PARAM" \
   --profile "$AWS_PROFILE" --region "$AWS_REGION" \
   > /dev/null 2>&1 \
-  || fail "/shared/db/wobblio/secret-arn not found. Run onboard-app.sh wobblio wobblio_prod from shared-infra first."
-ok "Shared DB credentials present"
+  || fail "$DB_SECRET_PARAM not found. Run onboard-app.sh wobblio wobblio_${STAGE} from shared-infra first."
+ok "Shared DB credentials present ($DB_SECRET_PARAM)"
 
 # Verify Route53 hosted zone
 HZ_ID=$(aws route53 list-hosted-zones \
@@ -170,7 +179,7 @@ if [[ $SKIP_MIGRATIONS -eq 0 ]]; then
   step "Database migrations"
 
   SECRET_ARN=$(aws ssm get-parameter \
-    --name /shared/db/wobblio/secret-arn \
+    --name "$DB_SECRET_PARAM" \
     --profile "$AWS_PROFILE" --region "$AWS_REGION" \
     --query Parameter.Value --output text)
 
@@ -208,7 +217,7 @@ NEXT_PUBLIC_SITE_URL=https://${APP_DOMAIN}
 EOF
   info "Written .env.production"
 
-  info "Building Next.js static export..."
+  info "Building Next.js app (OpenNext SSR bundle)..."
   (cd "$WEBAPP_DIR" && npm run build)
   ok "Webapp built → Source/webapp/out/"
 

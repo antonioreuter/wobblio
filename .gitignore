@@ -7,6 +7,9 @@ web_modules/
 **/.next/
 out/
 
+# OpenNext build output (cdk-nextjs-standalone)
+**/.open-next/
+
 # CDK build output
 cdk.out/
 cdk.context.json
@@ -28,6 +31,8 @@ obj/
 .env.production.local
 *.env.local
 .env*.local
+# Generated per-deploy by scripts/aws/deploy.sh
+.env.production
 
 # Debug and performance logs
 npm-debug.log*

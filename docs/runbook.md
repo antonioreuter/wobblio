@@ -34,7 +34,7 @@ Wobblio is a cloud-native personal fiscal management utility. Receipt photograph
 
 | Layer | Technology |
 |---|---|
-| Web frontend | Next.js (static export) + Tailwind CSS |
+| Web frontend | Next.js (OpenNext SSR via `cdk-nextjs-standalone`) + Tailwind CSS |
 | Mobile | Flutter — backlog, not yet implemented |
 | Backend compute | AWS Lambda (Node.js 24, ARM64), API Gateway REST |
 | Messaging | Amazon SQS (ingestion + analytics) |
@@ -673,9 +673,11 @@ NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 EOF
 
-npm run build   # Outputs static export to Source/webapp/out/
+npm run build   # next build → .next/
 
 cd ../infra
+# The WobblioWebStack deploy runs the OpenNext build (cdk-nextjs-standalone) and
+# ships the SSR Lambdas + S3 assets + CloudFront distribution.
 npx cdk deploy WobblioWebStack-${STAGE} \
   --profile reuterAdmin --require-approval never
 ```

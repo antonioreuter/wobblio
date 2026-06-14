@@ -115,10 +115,12 @@ if [[ $SKIP_DB -eq 0 ]]; then
 
   # Resolve DB Name
   if [[ -z "$DB_NAME" ]]; then
-    # Determine SSM parameter name for secret ARN
+    # Determine SSM parameter name for secret ARN. Non-prod stages use an
+    # underscore-suffixed alias (e.g. /shared/db/wobblio_dev/secret-arn) so dev
+    # extension installs target the dev database, not prod.
     PARAM_NAME="/shared/db/wobblio/secret-arn"
     if [[ "$STAGE" != "prod" ]]; then
-      ALT_PARAM="/shared/db/wobblio-${STAGE}/secret-arn"
+      ALT_PARAM="/shared/db/wobblio_${STAGE}/secret-arn"
       if aws ssm get-parameter --name "$ALT_PARAM" >/dev/null 2>&1; then
         PARAM_NAME="$ALT_PARAM"
       fi

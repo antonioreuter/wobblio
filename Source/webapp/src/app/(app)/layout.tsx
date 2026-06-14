@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { auth } from '@/auth'
 import { AuthSessionProvider } from '@/components/providers/auth-session-provider'
 import { SessionTimeoutGuard } from '@/components/auth/session-timeout-guard'
@@ -10,6 +11,17 @@ const SANDBOX_ENABLED = process.env.NEXT_PUBLIC_SANDBOX_MODE === 'true'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
+
+  // Server-side authorization gate. Route protection must not depend on the
+  // Edge middleware alone: behind CloudFront/OpenNext the middleware redirect
+  // is not a reliable boundary, and every page below renders without requiring
+  // a session, so a missing/expired session would otherwise leave the
+  // authenticated app fully open. Redirect to /login when there is no valid
+  // session (no user, or a failed silent Cognito refresh).
+  if (!session?.user || session.error === 'RefreshAccessTokenError') {
+    redirect('/login')
+  }
+
   const userRole = session?.user?.role ?? 'STANDARD'
   const userName = session?.user?.name ?? ''
   const userEmail = session?.user?.email ?? ''

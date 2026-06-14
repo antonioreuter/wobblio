@@ -95,6 +95,8 @@ export class WobblioWebStack extends Stack {
       { id: 'AwsSolutions-CFR2', reason: 'WAF integration deferred to Epic 12 security controls' },
       { id: 'AwsSolutions-CFR3', reason: 'CloudFront access logging deferred to Epic 15 observability' },
       { id: 'AwsSolutions-CFR4', reason: 'TLS 1.2+ is the CloudFront default; viewer policy enforced by cdk-nextjs-standalone' },
+      { id: 'AwsSolutions-CFR7', reason: 'cdk-nextjs-standalone wires CloudFront to its S3 asset origin via a construct-managed origin access identity; the assets bucket blocks all public access' },
+      { id: 'AwsSolutions-SQS3', reason: 'OpenNext ISR revalidation queue is a CDK-managed internal component of cdk-nextjs-standalone; a failed revalidation only serves slightly stale content, so no DLQ is provisioned by the construct' },
     ]);
 
     NagSuppressions.addResourceSuppressions(certArnReader, [
