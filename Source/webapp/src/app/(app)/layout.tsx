@@ -1,5 +1,5 @@
 import { auth } from '@/auth'
-import { LeftNav } from '@/components/ui/left-nav'
+import { LeftNav, LeftNavDrawer, NavDrawerProvider } from '@/components/ui/left-nav'
 import { TopBar } from '@/components/ui/top-bar'
 import { RlsWarningBanner } from '@/components/ui/top-bar/rls-warning-banner'
 import { WorkspaceProvider } from '@/components/workspace'
@@ -14,14 +14,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="workspace">
-      <div className="app-shell" data-surface="calm">
-        <LeftNav userRole={userRole} />
-        <div className="app-body">
-          <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
-          {SANDBOX_ENABLED && <RlsWarningBanner />}
-          <WorkspaceProvider>{children}</WorkspaceProvider>
+      <NavDrawerProvider>
+        <div className="app-shell" data-surface="calm">
+          <LeftNav userRole={userRole} />
+          <LeftNavDrawer userRole={userRole} />
+          <div className="app-body">
+            <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
+            {SANDBOX_ENABLED && <RlsWarningBanner />}
+            <WorkspaceProvider>{children}</WorkspaceProvider>
+          </div>
         </div>
-      </div>
+      </NavDrawerProvider>
     </div>
   )
 }

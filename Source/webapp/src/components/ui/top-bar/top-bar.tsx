@@ -2,9 +2,9 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Crown, ReceiptText } from 'lucide-react'
-import { Avatar } from '@/components/ds'
-import { SignOutButton } from './sign-out-button'
+import { Menu, ReceiptText } from 'lucide-react'
+import { useNavDrawer } from '@/components/ui/left-nav'
+import { UserMenu } from './user-menu'
 
 interface TopBarProps {
   usageUsed?: number
@@ -37,12 +37,22 @@ export function TopBar({
   userPlan = 'Premium',
 }: TopBarProps) {
   const pathname = usePathname() ?? '/dashboard'
+  const { toggleDrawer } = useNavDrawer()
   const title = deriveTitle(pathname)
   const pct = Math.max(0, Math.min(100, (usageUsed / Math.max(1, usageLimit)) * 100))
 
   return (
     <header className="app-topbar">
       <div className="topbar-left">
+        <button
+          type="button"
+          className="topbar-hamburger"
+          onClick={toggleDrawer}
+          aria-label="Open navigation menu"
+          data-testid="nav-hamburger"
+        >
+          <Menu size={20} />
+        </button>
         <Link href="/dashboard" className="topbar-brand" aria-label="Wobblio home">
           <span className="topbar-wordmark">
             Wobblio<span>.</span>
@@ -69,15 +79,7 @@ export function TopBar({
             </div>
           </div>
         </div>
-        <div className="user-chip" data-testid="topbar-user">
-          <Avatar initials={userInitials} aria-label={userPlan} />
-          <div className="user-meta">
-            <span className="user-plan">
-              <Crown size={10} /> {userPlan}
-            </span>
-          </div>
-        </div>
-        <SignOutButton />
+        <UserMenu userInitials={userInitials} userPlan={userPlan} />
       </div>
     </header>
   )

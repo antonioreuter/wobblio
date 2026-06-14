@@ -60,22 +60,22 @@ export function InvoiceTable({
                 onClick={() => onOpen?.(inv)}
                 data-testid={`invoice-row-${inv.id}`}
               >
-                <td>
+                <td className="cell-merchant">
                   <div className="merchant-cell">
                     <span className="m-icon"><MerchantIcon merchant={inv.merchant} /></span>{' '}
                     <span className="m-name">{inv.merchant}</span>
                   </div>
                 </td>
-                <td className="col-cat">{inv.category}</td>
-                <td>{fmtDate(inv.dateISO)}</td>
-                <td><Badge tone={inv.status[0]}>{inv.status[1]}</Badge></td>
-                <td className="col-tags">
+                <td className="col-cat cell-cat">{inv.category}</td>
+                <td className="cell-date">{fmtDate(inv.dateISO)}</td>
+                <td className="cell-status"><Badge tone={inv.status[0]}>{inv.status[1]}</Badge></td>
+                <td className="col-tags cell-tags">
                   <div className="tag-row">
                     {inv.tags.map((t) => <Tag key={t}>{t}</Tag>)}
                   </div>
                 </td>
-                <td className="num">{eur(inv.total)}</td>
-                <td>
+                <td className="num cell-total">{eur(inv.total)}</td>
+                <td className="cell-actions">
                   <div className="row-actions">
                     <button
                       type="button"
