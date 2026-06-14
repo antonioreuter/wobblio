@@ -98,7 +98,6 @@ export default function InvoicesPage() {
 
   return (
     <div className="pane">
-      <h2 className="pane-title">Invoices</h2>
       <p className="pane-subtitle">View, filter and manage all your scanned receipts.</p>
 
       <Card className="panel filter-card">

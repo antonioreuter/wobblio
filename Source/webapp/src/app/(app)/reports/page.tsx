@@ -83,7 +83,6 @@ export default function ReportsPage() {
 
   return (
     <div className="pane">
-      <h2 className="pane-title">Price Trends</h2>
       <p className="pane-subtitle">
         Compare an item across local stores over time — one line per store. Track up to {MAX_PRODUCTS} products.
       </p>

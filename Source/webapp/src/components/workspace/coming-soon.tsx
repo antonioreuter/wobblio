@@ -7,7 +7,6 @@ interface ComingSoonProps {
 export function ComingSoon({ page }: ComingSoonProps) {
   return (
     <div className="pane" data-testid="coming-soon">
-      <h2 className="pane-title">{page}</h2>
       <p className="pane-subtitle">This view will land once the backend wires in.</p>
       <div className="glass" style={{ padding: 48, textAlign: 'center', marginTop: 24 }}>
         <div
