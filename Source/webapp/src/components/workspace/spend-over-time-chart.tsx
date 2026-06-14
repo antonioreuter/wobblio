@@ -103,19 +103,22 @@ export function SpendOverTimeChart() {
             {data.map((d, i) => (
               <text key={d.month} x={x(i)} y={H - 12} className="chart-xlabel">{d.month}</text>
             ))}
-            <polygon points={areaPts} fill="url(#spendArea)" />
+            <polygon className="spend-area" points={areaPts} fill="url(#spendArea)" />
             <polyline
+              className="spend-line"
               fill="none"
               stroke="var(--brand)"
               strokeWidth="2.5"
               strokeLinejoin="round"
               strokeLinecap="round"
+              pathLength={1}
               points={linePts}
             />
             {hover !== null && (
               <line x1={x(hover)} y1={padT} x2={x(hover)} y2={padT + plotH} className="chart-cross" />
             )}
-            {/* MTD emphasis dot, always shown */}
+            {/* MTD emphasis dot with a soft pulsing halo */}
+            <circle className="mtd-halo" cx={x(mtdIndex)} cy={y(data[mtdIndex].total)} r="4.5" fill="var(--brand)" />
             <circle cx={x(mtdIndex)} cy={y(data[mtdIndex].total)} r="4.5" fill="var(--brand)" />
             {hover !== null && hover !== mtdIndex && (
               <circle

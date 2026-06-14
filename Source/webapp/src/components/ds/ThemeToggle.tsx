@@ -20,11 +20,32 @@ export function ThemeToggle({ className = 'btn-icon', testId = 'theme-toggle' }:
   // mismatch, then swap to the real state once mounted.
   const isDark = mounted && resolvedTheme === 'dark'
 
+  const toggle = () => {
+    const next = isDark ? 'light' : 'dark'
+    const reduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    const startViewTransition = (document as Document & {
+      startViewTransition?: (cb: () => void) => void
+    }).startViewTransition
+
+    // Cross-fade the whole page when supported; the data-theme flip happens
+    // synchronously inside the transition so it's captured in the snapshot.
+    if (startViewTransition && !reduced) {
+      startViewTransition.call(document, () => {
+        document.documentElement.setAttribute('data-theme', next)
+        setTheme(next)
+      })
+      return
+    }
+    setTheme(next)
+  }
+
   return (
     <button
       type="button"
       className={className}
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      onClick={toggle}
       aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
       data-testid={testId}
     >

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { AlertCircle, AlertTriangle, ArrowRight, RotateCw } from 'lucide-react'
-import { Card, MetricCard, ProgressBar } from '@/components/ds'
+import { AnimatedNumber, Card, MetricCard, Money, ProgressBar } from '@/components/ds'
 import {
   BUDGETS,
   budgetColor,
@@ -60,13 +60,13 @@ export default function DashboardPage() {
             <>
               <MetricCard
                 label="Spent This Month"
-                value="€642.30"
+                value={<Money amount={642.3} animate />}
                 delta="June, month to date"
                 tone="neutral"
               />
               <MetricCard
                 label="vs Last Month"
-                value="↓ 11.8%"
+                value={<AnimatedNumber value={11.8} decimals={1} prefix="↓ " suffix="%" />}
                 delta="−€86.12 from €728.42"
                 tone="success"
               />
@@ -78,7 +78,7 @@ export default function DashboardPage() {
               />
               <MetricCard
                 label="Scans Remaining"
-                value={`${scansLeft} left`}
+                value={<AnimatedNumber value={scansLeft} suffix=" left" />}
                 delta={`${SCANS_USED} of ${SCANS_LIMIT} used this week`}
                 tone={scansLeft <= 3 ? 'warning' : 'neutral'}
               />
@@ -117,12 +117,14 @@ export default function DashboardPage() {
                   <span className="name">{b.name}</span>
                   <span className="pct" style={{ color: `var(--${tone})` }}>
                     {StatusIcon && <StatusIcon size={13} aria-hidden="true" />}
-                    {b.pct}%{status ? ` ${status.label}` : ''}
+                    <AnimatedNumber value={b.pct} suffix="%" />
+                    {status ? ` ${status.label}` : ''}
                   </span>
                 </div>
                 <ProgressBar
                   value={Math.min(b.pct, 100)}
                   tone={tone}
+                  animate
                   ariaLabel={`${b.name} ${b.pct}%${status ? `, ${status.label}` : ''}`}
                 />
               </div>
