@@ -1,4 +1,6 @@
 import { auth } from '@/auth'
+import { AuthSessionProvider } from '@/components/providers/auth-session-provider'
+import { SessionTimeoutGuard } from '@/components/auth/session-timeout-guard'
 import { LeftNav, LeftNavDrawer, NavDrawerProvider } from '@/components/ui/left-nav'
 import { TopBar } from '@/components/ui/top-bar'
 import { RlsWarningBanner } from '@/components/ui/top-bar/rls-warning-banner'
@@ -14,21 +16,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const userInitials = deriveInitials(userName, userEmail)
 
   return (
-    <div className="workspace">
-      <NavDrawerProvider>
-        <div className="app-shell" data-surface="calm">
-          <LeftNav userRole={userRole} />
-          <LeftNavDrawer userRole={userRole} />
-          <div className="app-body">
-            <WorkspaceProvider>
-              <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
-              {SANDBOX_ENABLED && <RlsWarningBanner />}
-              <div className="app-canvas">{children}</div>
-            </WorkspaceProvider>
+    <AuthSessionProvider session={session}>
+      <div className="workspace">
+        <NavDrawerProvider>
+          <div className="app-shell" data-surface="calm">
+            <LeftNav userRole={userRole} />
+            <LeftNavDrawer userRole={userRole} />
+            <div className="app-body">
+              <WorkspaceProvider>
+                <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
+                {SANDBOX_ENABLED && <RlsWarningBanner />}
+                <div className="app-canvas">{children}</div>
+              </WorkspaceProvider>
+            </div>
           </div>
-        </div>
-      </NavDrawerProvider>
-    </div>
+        </NavDrawerProvider>
+      </div>
+      <SessionTimeoutGuard />
+    </AuthSessionProvider>
   )
 }
 

@@ -15,6 +15,10 @@ declare module 'next-auth' {
       role: string
       status: string
     }
+    // Set to 'RefreshAccessTokenError' when silent Cognito refresh fails
+    // (refresh token expired after 30d or revoked). The client guard reads
+    // this to force a sign-out + redirect to the landing page.
+    error?: string
   }
   interface JWT {
     sub: string
@@ -22,6 +26,10 @@ declare module 'next-auth' {
     name: string
     role: string
     status: string
+    accessToken?: string
+    refreshToken?: string
+    accessTokenExpires?: number
+    error?: string
   }
 }
 
@@ -58,7 +66,8 @@ function buildLocalCredentialsProvider() {
           }),
         )
 
-        const idToken = result.AuthenticationResult?.IdToken
+        const auth = result.AuthenticationResult
+        const idToken = auth?.IdToken
         if (!idToken) return null
 
         const payload = JSON.parse(
@@ -71,6 +80,11 @@ function buildLocalCredentialsProvider() {
           name: payload['custom:full_name'] ?? payload.name ?? '',
           role: payload['custom:role'] ?? 'STANDARD',
           status: payload['custom:status'] ?? 'ACTIVE',
+          // Carry Cognito tokens so the jwt callback can persist them for
+          // silent refresh. ExpiresIn is seconds-from-now.
+          accessToken: auth.AccessToken,
+          refreshToken: auth.RefreshToken,
+          accessTokenExpires: Date.now() + (auth.ExpiresIn ?? 3600) * 1000,
         }
       } catch {
         return null
@@ -79,8 +93,68 @@ function buildLocalCredentialsProvider() {
   })
 }
 
+// Renew the Cognito access token using the stored refresh token.
+// Uses fetch (not @aws-sdk) so it stays Edge-runtime safe — auth.ts is
+// imported by middleware.ts, which runs on the Edge. On any failure the
+// token is flagged so the client guard signs the user out.
+async function refreshCognitoTokens(token: Record<string, unknown>) {
+  // Local dev (cognito-local) has no Hosted-UI token endpoint — extend the
+  // access-token window locally so "Stay logged in" works against the emulator.
+  if (process.env.COGNITO_ENDPOINT) {
+    return { ...token, accessTokenExpires: Date.now() + 3600 * 1000, error: undefined }
+  }
+
+  const domain = process.env.COGNITO_DOMAIN
+  const refreshToken = token.refreshToken as string | undefined
+
+  if (!domain || !refreshToken) {
+    return { ...token, error: 'RefreshAccessTokenError' }
+  }
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: process.env.COGNITO_CLIENT_ID!,
+      refresh_token: refreshToken,
+    })
+    if (process.env.COGNITO_CLIENT_SECRET) {
+      body.set('client_secret', process.env.COGNITO_CLIENT_SECRET)
+    }
+
+    const res = await fetch(`https://${domain}/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+    if (!res.ok) throw new Error(`token endpoint ${res.status}`)
+
+    const refreshed = (await res.json()) as {
+      access_token: string
+      expires_in: number
+      refresh_token?: string
+    }
+
+    return {
+      ...token,
+      accessToken: refreshed.access_token,
+      accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
+      // Cognito does not rotate the refresh token here; keep the existing one.
+      refreshToken: refreshed.refresh_token ?? refreshToken,
+      error: undefined,
+    }
+  } catch {
+    return { ...token, error: 'RefreshAccessTokenError' }
+  }
+}
+
 const nextAuth = NextAuth({
   trustHost: true,
+  session: {
+    strategy: 'jwt',
+    // Cookie lifetime tracks the Cognito refresh token (30d). The 30-min idle
+    // logout is enforced client-side by the SessionTimeoutGuard, not here.
+    maxAge: 30 * 24 * 60 * 60,
+  },
   cookies: {
     sessionToken: {
       options: {
@@ -103,13 +177,22 @@ const nextAuth = NextAuth({
     signIn: '/login',
   },
   callbacks: {
-    async jwt({ token, user, account, profile }) {
+    async jwt({ token, user, account, profile, trigger }) {
       if (account && user) {
         token.sub = user.id ?? token.sub
         token.email = user.email ?? token.email ?? ''
         token.name = (user as { name?: string }).name ?? token.name ?? ''
         token.role = (user as { role?: string }).role ?? 'STANDARD'
         token.status = (user as { status?: string }).status ?? 'ACTIVE'
+
+        // Persist Cognito tokens for silent refresh. OIDC sign-ins expose them
+        // on `account`; local credentials sign-ins carry them on `user`.
+        const u = user as Record<string, unknown>
+        token.accessToken = (account.access_token as string) ?? u.accessToken
+        token.refreshToken = (account.refresh_token as string) ?? u.refreshToken
+        token.accessTokenExpires = account.expires_at
+          ? account.expires_at * 1000
+          : (u.accessTokenExpires as number | undefined)
 
         // On first sign-in, ensure the user exists in app_user.
         // Covers: production OIDC sign-ins and local credentials sign-ins.
@@ -127,6 +210,18 @@ const nextAuth = NextAuth({
         token.role = p['custom:role'] ?? token.role ?? 'STANDARD'
         token.status = p['custom:status'] ?? token.status ?? 'ACTIVE'
       }
+
+      // Access token still valid — nothing to do.
+      const expires = token.accessTokenExpires as number | undefined
+      if (expires && Date.now() < expires && trigger !== 'update') {
+        return token
+      }
+
+      // Expired, or the client asked to extend the session ("Stay logged in").
+      // Refresh only when we actually hold a Cognito refresh token.
+      if (token.refreshToken) {
+        return refreshCognitoTokens(token as Record<string, unknown>)
+      }
       return token
     },
     session({ session, token }) {
@@ -135,6 +230,7 @@ const nextAuth = NextAuth({
       session.user.name = (token.name as string) ?? ''
       session.user.role = (token.role as string) ?? 'STANDARD'
       session.user.status = (token.status as string) ?? 'ACTIVE'
+      session.error = token.error as string | undefined
       return session
     },
   },
