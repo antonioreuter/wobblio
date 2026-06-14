@@ -19,9 +19,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <LeftNav userRole={userRole} />
           <LeftNavDrawer userRole={userRole} />
           <div className="app-body">
-            <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
-            {SANDBOX_ENABLED && <RlsWarningBanner />}
-            <WorkspaceProvider>{children}</WorkspaceProvider>
+            <WorkspaceProvider>
+              <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
+              {SANDBOX_ENABLED && <RlsWarningBanner />}
+              {children}
+            </WorkspaceProvider>
           </div>
         </div>
       </NavDrawerProvider>

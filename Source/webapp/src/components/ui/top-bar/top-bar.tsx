@@ -1,9 +1,10 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { Menu, ReceiptText } from 'lucide-react'
+import { Menu, ReceiptText, Upload } from 'lucide-react'
 import { ThemeToggle } from '@/components/ds'
 import { useNavDrawer } from '@/components/ui/left-nav'
+import { useWorkspace } from '@/components/workspace'
 import { TopBarSearch } from './topbar-search'
 import { UserMenu } from './user-menu'
 
@@ -39,6 +40,7 @@ export function TopBar({
 }: TopBarProps) {
   const pathname = usePathname() ?? '/dashboard'
   const { toggleDrawer } = useNavDrawer()
+  const { scanReceipt } = useWorkspace()
   const title = deriveTitle(pathname)
   const pct = Math.max(0, Math.min(100, (usageUsed / Math.max(1, usageLimit)) * 100))
 
@@ -76,7 +78,16 @@ export function TopBar({
             </div>
           </div>
         </div>
-        <ThemeToggle />
+        <button
+          type="button"
+          className="btn btn--primary topbar-upload"
+          onClick={scanReceipt}
+          data-testid="topbar-upload"
+        >
+          <Upload size={15} />
+          <span className="topbar-upload-label">Upload</span>
+        </button>
+        <ThemeToggle className="btn-icon topbar-theme" />
         <UserMenu userInitials={userInitials} userPlan={userPlan} />
       </div>
     </header>

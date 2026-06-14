@@ -87,6 +87,17 @@ export const SPEND: Array<[string, number, number]> = [
   ['Others', 58.3, 35],
 ]
 
+// Trailing 6 months of total spend; the final point (June) is the current MTD
+// figure (€642.30) and May matches the "vs €728.42 last month" delta.
+export const SPEND_OVER_TIME: Array<{ month: string; total: number }> = [
+  { month: 'Jan', total: 712.4 },
+  { month: 'Feb', total: 689.15 },
+  { month: 'Mar', total: 754.8 },
+  { month: 'Apr', total: 701.2 },
+  { month: 'May', total: 728.42 },
+  { month: 'Jun', total: 642.3 },
+]
+
 export const BUDGETS: Array<{ name: string; pct: number }> = [
   { name: 'Groceries', pct: 76 },
   { name: 'Bar & Restaurants', pct: 104 },

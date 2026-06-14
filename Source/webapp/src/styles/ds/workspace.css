@@ -199,7 +199,7 @@
 }
 .dash-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.7fr);
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
   gap: 20px;
   align-items: start;
 }
@@ -208,6 +208,18 @@
 .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .panel-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .panel-actions { display: flex; align-items: center; gap: 8px; }
+.panel-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand);
+  text-decoration: none;
+}
+.panel-footer-link:hover { text-decoration: underline; }
+.chart-data-table { margin-top: 6px; }
 
 .app-table { width: 100%; border-collapse: collapse; text-align: left; }
 .app-table th {
@@ -1245,6 +1257,17 @@
   border: 1px solid var(--glass-border);
 }
 
+/* ---- Topbar upload action ---- */
+.topbar-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  font-size: 13px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ---- Topbar hamburger (mobile drawer trigger) ---- */
 .topbar-hamburger {
   display: none;
@@ -1405,6 +1428,7 @@
   .app-rail { display: none; }
   .topbar-hamburger { display: inline-flex; }
   .app-topbar { flex-wrap: nowrap; padding: 10px 14px; gap: 10px; }
+  .topbar-left { flex-shrink: 0; }
   .search-wrap { display: none; }
 }
 @media (max-width: 640px) {
@@ -1414,4 +1438,7 @@
   .usage-label,
   .usage-bar { display: none; }
   .usage-count { font-size: 13px; }
+  .topbar-upload-label { display: none; }
+  .topbar-upload { width: 44px; height: 44px; padding: 0; justify-content: center; }
+  .topbar-theme { display: none; }
 }
