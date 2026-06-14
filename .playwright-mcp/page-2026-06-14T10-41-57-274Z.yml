@@ -1,0 +1,185 @@
+- generic [ref=e4]:
+  - complementary [ref=e5]:
+    - link "Wobblio" [ref=e6] [cursor=pointer]:
+      - /url: /dashboard
+      - img "Wobblio" [ref=e7]
+    - navigation "App navigation" [ref=e10]:
+      - link "Dashboard" [ref=e11] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e12]
+        - text: Dashboard
+      - link "Invoices" [ref=e17] [cursor=pointer]:
+        - /url: /invoices
+        - img [ref=e18]
+        - text: Invoices
+      - link "Awaiting Check" [ref=e20] [cursor=pointer]:
+        - /url: /review
+        - img [ref=e21]
+        - text: Awaiting Check
+      - link "Price Trends" [ref=e24] [cursor=pointer]:
+        - /url: /reports
+        - img [ref=e25]
+        - text: Price Trends
+      - link "Shopping Lists" [ref=e28] [cursor=pointer]:
+        - /url: /lists
+        - img [ref=e29]
+        - text: Shopping Lists
+      - link "Budgets" [ref=e33] [cursor=pointer]:
+        - /url: /budgets
+        - img [ref=e34]
+        - text: Budgets
+      - link "Household" [ref=e37] [cursor=pointer]:
+        - /url: /household
+        - img [ref=e38]
+        - text: Household
+      - link "Settings" [ref=e43] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e44]
+        - text: Settings
+  - complementary [ref=e47]:
+    - generic [ref=e48]:
+      - link [ref=e49] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e50]
+      - button [ref=e53] [cursor=pointer]:
+        - img [ref=e54]
+    - navigation [ref=e57]:
+      - link [ref=e58] [cursor=pointer]:
+        - /url: /dashboard
+        - img [ref=e59]
+        - generic [ref=e64]: Dashboard
+      - link [ref=e65] [cursor=pointer]:
+        - /url: /invoices
+        - img [ref=e66]
+        - generic [ref=e68]: Invoices
+      - link [ref=e69] [cursor=pointer]:
+        - /url: /review
+        - img [ref=e70]
+        - generic [ref=e73]: Awaiting Check
+      - link [ref=e74] [cursor=pointer]:
+        - /url: /reports
+        - img [ref=e75]
+        - generic [ref=e78]: Price Trends
+      - link [ref=e79] [cursor=pointer]:
+        - /url: /lists
+        - img [ref=e80]
+        - generic [ref=e84]: Shopping Lists
+      - link [ref=e85] [cursor=pointer]:
+        - /url: /budgets
+        - img [ref=e86]
+        - generic [ref=e89]: Budgets
+      - link [ref=e90] [cursor=pointer]:
+        - /url: /household
+        - img [ref=e91]
+        - generic [ref=e96]: Household
+      - link [ref=e97] [cursor=pointer]:
+        - /url: /settings
+        - img [ref=e98]
+        - generic [ref=e101]: Settings
+  - generic [ref=e102]:
+    - banner [ref=e103]:
+      - heading "Price Trends" [level=1] [ref=e105]
+      - search [ref=e106]:
+        - img
+        - searchbox "Search invoices" [ref=e107]
+      - generic [ref=e108]:
+        - generic "Invoices processed this week" [ref=e109]:
+          - img [ref=e111]
+          - generic [ref=e114]:
+            - generic [ref=e115]: Invoices this week
+            - generic [ref=e116]:
+              - strong [ref=e117]: "9"
+              - text: / 15
+        - button "Upload" [ref=e120] [cursor=pointer]:
+          - img [ref=e121]
+          - generic [ref=e124]: Upload
+        - button "Switch to dark mode" [ref=e125] [cursor=pointer]:
+          - img [ref=e126]
+        - generic [ref=e128]:
+          - generic [ref=e129]:
+            - img [ref=e130]
+            - text: Premium
+          - button "Account menu" [ref=e132] [cursor=pointer]:
+            - generic "Premium" [ref=e133]: QW
+    - generic [ref=e135]:
+      - paragraph [ref=e136]: Compare an item across local stores over time — one line per store. Track up to 3 products.
+      - generic [ref=e137]:
+        - generic [ref=e138]:
+          - img [ref=e139]
+          - generic [ref=e142]: Filter price trends
+        - generic [ref=e143]:
+          - generic [ref=e145]:
+            - generic [ref=e146]: Find a product
+            - generic [ref=e147]:
+              - generic:
+                - img
+              - textbox "Type a product name…" [ref=e148]
+          - generic [ref=e149]:
+            - generic [ref=e150]: Date range
+            - generic [ref=e151]:
+              - generic:
+                - img
+              - combobox [ref=e152] [cursor=pointer]:
+                - option "Last 30 days"
+                - option "This month"
+                - option "Last 3 months" [selected]
+                - option "Custom range"
+              - generic:
+                - img
+        - generic [ref=e154]:
+          - generic [ref=e155]: Selected products (1/3)
+          - generic [ref=e157]:
+            - text: Milk
+            - generic [ref=e158]: 3 stores
+            - button "Remove Organic Whole Milk 1L" [ref=e159] [cursor=pointer]: ✕
+        - generic [ref=e160]:
+          - generic [ref=e161]:
+            - img [ref=e162]
+            - text: 3 lines · max range 3 months
+          - generic [ref=e165]:
+            - button "Clear filters" [ref=e166] [cursor=pointer]:
+              - img [ref=e167]
+              - text: Clear filters
+            - button "Search" [ref=e170] [cursor=pointer]:
+              - img [ref=e171]
+              - text: Search
+      - generic [ref=e174]:
+        - generic [ref=e175]:
+          - generic [ref=e176]: Price per unit
+          - generic [ref=e177]: Last 3 months
+        - img "Price timeline" [ref=e179]:
+          - generic [ref=e181]: €0.97
+          - generic [ref=e183]: €1.08
+          - generic [ref=e185]: €1.19
+          - generic [ref=e187]: €1.30
+          - generic [ref=e189]: €1.41
+          - generic [ref=e190]: 14 Mar
+          - generic [ref=e191]: 28 Mar
+          - generic [ref=e192]: 11 Apr
+          - generic [ref=e193]: 25 Apr
+          - generic [ref=e194]: 9 May
+          - generic [ref=e195]: 23 May
+          - generic [ref=e196]: 6 Jun
+          - generic [ref=e197]: 13 Jun
+        - generic [ref=e202]:
+          - generic [ref=e205]:
+            - generic [ref=e206]:
+              - text: Milk ·
+              - strong [ref=e207]: AH
+            - generic [ref=e208]:
+              - text: €1.30
+              - generic [ref=e209]: ▲ 0.8%
+          - generic [ref=e212]:
+            - generic [ref=e213]:
+              - text: Milk ·
+              - strong [ref=e214]: Jumbo
+            - generic [ref=e215]:
+              - text: €1.22
+              - generic [ref=e216]: ▲ 1.7%
+          - generic [ref=e219]:
+            - generic [ref=e220]:
+              - text: Milk ·
+              - strong [ref=e221]: Lidl
+            - generic [ref=e222]:
+              - text: €1.09
+              - generic [ref=e223]: ▲ 1.9%

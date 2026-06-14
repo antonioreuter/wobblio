@@ -1,102 +1,158 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect } from 'react'
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import type { LucideIcon } from 'lucide-react'
 import {
+  CheckSquare,
   LayoutDashboard,
+  LineChart,
   ReceiptText,
-  BarChart3,
-  ShoppingCart,
-  Wallet,
-  Users,
   Settings,
-  Shield,
-  Menu,
+  ShoppingCart,
+  Terminal,
+  Users,
+  Wallet,
   X,
 } from 'lucide-react'
-import { NavItem } from '@/components/ui/nav-item'
-import { cn } from '@/lib/cn'
+import { WobblioLogo } from '@/components/ds'
+import { useNavDrawer } from './nav-drawer-context'
 
 interface LeftNavProps {
   userRole?: string
-  className?: string
 }
 
-const navItems: { href: string; icon: LucideIcon; label: string }[] = [
+interface NavItem {
+  href: string
+  icon: typeof LayoutDashboard
+  label: string
+  ariaLabel?: string
+}
+
+const PRIMARY_NAV: NavItem[] = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/invoices', icon: ReceiptText, label: 'Invoices' },
-  { href: '/reports', icon: BarChart3, label: 'Reports' },
+  { href: '/review', icon: CheckSquare, label: 'Awaiting Check' },
+  { href: '/reports', icon: LineChart, label: 'Price Trends' },
   { href: '/lists', icon: ShoppingCart, label: 'Shopping Lists' },
   { href: '/budgets', icon: Wallet, label: 'Budgets' },
   { href: '/household', icon: Users, label: 'Household' },
+  { href: '/settings', icon: Settings, label: 'Settings' },
 ]
 
-export function LeftNav({ userRole, className }: LeftNavProps) {
+const ADMIN_NAV: NavItem = {
+  href: '/admin',
+  icon: Terminal,
+  label: 'Console',
+  ariaLabel: 'Admin',
+}
+
+function NavLinks({
+  userRole,
+  variant,
+  onNavigate,
+}: {
+  userRole?: string
+  variant: 'rail' | 'drawer'
+  onNavigate?: () => void
+}) {
   const pathname = usePathname() ?? ''
-  const [collapsed, setCollapsed] = useState(false)
+  const items = userRole === 'ADMIN' ? [...PRIMARY_NAV, ADMIN_NAV] : PRIMARY_NAV
 
   return (
-    <nav
-      className={cn(
-        'flex h-full flex-col border-r border-[#e2e8f0] bg-white transition-all dark:border-[#334155] dark:bg-[#111827]',
-        collapsed ? 'w-14' : 'w-60',
-        className
-      )}
-      aria-label="Main navigation"
-    >
-      {/* Header */}
-      <div
-        className={cn(
-          'flex h-14 items-center border-b border-[#e2e8f0] px-3 dark:border-[#334155]',
-          collapsed ? 'justify-center' : 'justify-between'
-        )}
-      >
-        {!collapsed && (
-          <span className="text-base font-bold text-[#0d9488]">Wobblio</span>
-        )}
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          className="rounded p-1 text-[#64748b] hover:text-[#0f172a] dark:text-[#94a3b8] dark:hover:text-[#f1f5f9]"
-          aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
-        >
-          {collapsed ? <Menu size={18} strokeWidth={1.5} /> : <X size={18} strokeWidth={1.5} />}
-        </button>
-      </div>
-
-      {/* Nav items */}
-      <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
-        {navItems.map(({ href, icon, label }) => (
-          <NavItem
+    <>
+      {items.map(({ href, icon: Icon, label, ariaLabel }) => {
+        const isActive = pathname.startsWith(href)
+        const testId = `nav-${href.slice(1)}`
+        if (variant === 'drawer') {
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`drawer-nav-btn ${isActive ? 'active' : ''}`}
+              aria-label={ariaLabel ?? label}
+              data-testid={testId}
+              onClick={onNavigate}
+            >
+              <Icon size={20} />
+              <span>{label}</span>
+            </Link>
+          )
+        }
+        return (
+          <Link
             key={href}
             href={href}
-            icon={icon}
-            label={label}
-            active={pathname.startsWith(href)}
-            collapsed={collapsed}
-          />
-        ))}
-      </div>
+            className={`rail-btn has-tip ${isActive ? 'active' : ''}`}
+            data-tip={label}
+            aria-label={ariaLabel ?? label}
+            data-testid={testId}
+          >
+            <Icon size={20} />
+          </Link>
+        )
+      })}
+    </>
+  )
+}
 
-      {/* Bottom items */}
-      <div className="flex flex-col gap-0.5 border-t border-[#e2e8f0] p-2 dark:border-[#334155]">
-        <NavItem
-          href="/settings"
-          icon={Settings}
-          label="Settings"
-          active={pathname.startsWith('/settings')}
-          collapsed={collapsed}
-        />
-        {userRole === 'ADMIN' && (
-          <NavItem
-            href="/admin"
-            icon={Shield}
-            label="Admin"
-            active={pathname.startsWith('/admin')}
-            collapsed={collapsed}
-          />
-        )}
-      </div>
-    </nav>
+export function LeftNav({ userRole }: LeftNavProps) {
+  return (
+    <aside className="app-rail">
+      <Link href="/dashboard" className="rail-logo" aria-label="Wobblio">
+        <WobblioLogo size={30} />
+      </Link>
+      <nav className="rail-menu" aria-label="App navigation">
+        <NavLinks userRole={userRole} variant="rail" />
+      </nav>
+    </aside>
+  )
+}
+
+export function LeftNavDrawer({ userRole }: LeftNavProps) {
+  const { open, closeDrawer } = useNavDrawer()
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeDrawer()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, closeDrawer])
+
+  return (
+    <>
+      <div
+        className={`app-rail-backdrop ${open ? 'open' : ''}`}
+        onClick={closeDrawer}
+        aria-hidden="true"
+      />
+      <aside
+        className={`app-rail-drawer ${open ? 'open' : ''}`}
+        aria-label="App navigation"
+        aria-hidden={!open}
+        inert={!open}
+        data-testid="nav-drawer"
+      >
+        <div className="drawer-head">
+          <Link href="/dashboard" className="rail-logo" aria-label="Wobblio" onClick={closeDrawer}>
+            <WobblioLogo size={28} />
+          </Link>
+          <button
+            type="button"
+            className="drawer-close"
+            onClick={closeDrawer}
+            aria-label="Close navigation menu"
+            data-testid="nav-drawer-close"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        <nav className="drawer-menu" aria-label="App navigation">
+          <NavLinks userRole={userRole} variant="drawer" onNavigate={closeDrawer} />
+        </nav>
+      </aside>
+    </>
   )
 }

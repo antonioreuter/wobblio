@@ -1,11 +1,21 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Inter, Outfit } from 'next/font/google'
 import { ThemeProvider } from '@/components/providers/theme-provider'
+import { SandboxProvider } from '@/components/providers/sandbox-provider'
+import { AuroraBackground } from '@/components/ds'
 import './globals.css'
+
+const SANDBOX_ENABLED = process.env.NEXT_PUBLIC_SANDBOX_MODE === 'true'
 
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
+  display: 'swap',
+})
+
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-outfit',
   display: 'swap',
 })
 
@@ -16,9 +26,21 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${outfit.variable}`} suppressHydrationWarning>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {SANDBOX_ENABLED ? (
+            <SandboxProvider>
+              <AuroraBackground />
+              <div className="kit">{children}</div>
+            </SandboxProvider>
+          ) : (
+            <>
+              <AuroraBackground />
+              <div className="kit">{children}</div>
+            </>
+          )}
+        </ThemeProvider>
       </body>
     </html>
   )

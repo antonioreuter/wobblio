@@ -105,7 +105,7 @@ When the first 2–3 tests are GREEN, propose more tests as the code reveals new
 ### Completion
 
 When requirements are met:
-1. Run the full test suite.
+1. Run the full test suite via `/automatic-test-runner` (routes by changed file type).
 2. Report: tests passed, files changed, commits made.
 
 ---
@@ -173,7 +173,7 @@ Cycle: spawn watcher → wait → run tests → read context → display results
 
 1. **No production code without a failing test.**
 2. **Baby steps.** One behavior per test. One assertion per test.
-3. **Commit each RED-GREEN-REFACTOR cycle.** Use `/commit`.
+3. **Commit each RED-GREEN-REFACTOR cycle.** Run `/automatic-test-runner` first, then `/commit`.
 4. **Reproduce before fixing.** Bug? Demonstrate the failure first.
 
 ## Phase-scoped rules

@@ -1,0 +1,36 @@
+/* ==========================================================================
+   Wobblio · Spacing, Radius & Layout Tokens
+   ========================================================================== */
+:root {
+  /* Spacing scale (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* Corner radii */
+  --radius-sm:   6px;   /* tags, chips, small badges */
+  --radius-md:   8px;   /* inputs / list rows / merchant badge */
+  --radius-lg:   12px;  /* buttons, dropzones */
+  --radius-xl:   16px;  /* glass cards */
+  --radius-2xl:  20px;  /* app shell */
+  --radius-pill: 9999px;
+
+  /* Control sizing */
+  --control-height: 44px;     /* min touch target */
+  --control-height-sm: 34px;
+  --icon-button: 42px;
+
+  /* Layout widths */
+  --container-max: 1200px;
+  --container-wide: 1300px;
+  --app-max: 1560px;
+  --rail-width: 80px;
+}

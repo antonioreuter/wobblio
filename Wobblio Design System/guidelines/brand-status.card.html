@@ -1,0 +1,16 @@
+<!-- @dsCard group="Brand" viewport="700x150" name="Status System" subtitle="How tone maps to parse / budget states" -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:26px 28px; background:var(--bg-color); font-family:var(--font-body); }
+  .row { display:flex; align-items:center; gap:14px; padding:8px 0; }
+  .desc { font-size:12.5px; color:var(--text-secondary); }
+  .desc b { color:var(--text-primary); font-weight:600; }
+</style></head>
+<body>
+  <div class="row"><span class="badge badge--success">Processed</span><span class="desc"><b>Teal</b> — confirmed parse, under budget, safe state</span></div>
+  <div class="row"><span class="badge badge--warning">Needs Review</span><span class="desc"><b>Amber</b> — low-confidence extraction, approaching 85% budget</span></div>
+  <div class="row"><span class="badge badge--danger">Over Budget</span><span class="desc"><b>Coral</b> — critical alert, RLS bypass, over limit</span></div>
+  <div class="row"><span class="badge badge--primary">Auto Parsed</span><span class="desc"><b>Indigo</b> — brand / informational / primary action</span></div>
+</body></html>

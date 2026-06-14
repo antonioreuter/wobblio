@@ -1,0 +1,22 @@
+<!-- @dsCard group="Colors" viewport="700x180" name="Brand & Accent" subtitle="Indigo brand + teal / amber / coral semantics" -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:24px; background:var(--bg-color); }
+  .swatches { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .sw { border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--glass-border); }
+  .chip { height:64px; }
+  .meta { padding:10px 12px; background:var(--glass-bg); }
+  .name { font-family:var(--font-display); font-weight:700; font-size:13px; color:var(--text-primary); }
+  .hex { font-size:11px; color:var(--text-muted); font-variant-numeric:tabular-nums; margin-top:2px; }
+  .role { font-size:10.5px; color:var(--text-secondary); margin-top:4px; }
+</style></head>
+<body>
+<div class="swatches">
+  <div class="sw"><div class="chip" style="background:#6366f1"></div><div class="meta"><div class="name">Electric Indigo</div><div class="hex">#6366F1</div><div class="role">Brand · primary action</div></div></div>
+  <div class="sw"><div class="chip" style="background:#0d9488"></div><div class="meta"><div class="name">Aurora Teal</div><div class="hex">#0D9488</div><div class="role">Success · under budget</div></div></div>
+  <div class="sw"><div class="chip" style="background:#f59e0b"></div><div class="meta"><div class="name">Warm Amber</div><div class="hex">#F59E0B</div><div class="role">Warning · needs review</div></div></div>
+  <div class="sw"><div class="chip" style="background:#f43f5e"></div><div class="meta"><div class="name">Sunset Coral</div><div class="hex">#F43F5E</div><div class="role">Danger · over limit</div></div></div>
+</div>
+</body></html>

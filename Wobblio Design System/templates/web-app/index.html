@@ -1,0 +1,87 @@
+<!-- @template name="Wobblio Web App" description="Obsidian Aurora marketing landing + workspace dashboard, fully interactive" -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wobblio — Web App</title>
+<link rel="stylesheet" href="./kit.css">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="./ds-base.js"></script>
+</head>
+<body>
+<div class="aurora-bg"><div class="blob blob-1"></div><div class="blob blob-2"></div><div class="blob blob-3"></div></div>
+<div id="root"></div>
+<script type="text/babel" src="./kit-icons.jsx"></script>
+<script type="text/babel" src="./tweaks-panel.jsx"></script>
+<script type="text/babel" src="./kit-landing.jsx"></script>
+<script type="text/babel" src="./kit-login.jsx"></script>
+<script type="text/babel" src="./kit-register.jsx"></script>
+<script type="text/babel" src="./kit-verify.jsx"></script>
+<script type="text/babel" src="./kit-workspace.jsx"></script>
+<script type="text/babel">
+window.addEventListener('load', () => {
+  const NS = window.WobblioDesignSystem_6a8d64;
+  if (!NS) { console.error('Wobblio bundle not loaded'); return; }
+  const { WobblioLogo: AppLogo } = NS;
+  const AI = window.WobblioIcons;
+
+  function App() {
+    const [view, setView] = React.useState('home');
+    const [theme, setTheme] = React.useState('dark');
+    const [authed, setAuthed] = React.useState(false);
+    const [authView, setAuthView] = React.useState('login');
+    const [pendingEmail, setPendingEmail] = React.useState('');
+    const [t, setTweak] = useTweaks({ confirmPassword: true, birthdate: true, country: true, language: true });
+    React.useEffect(() => { document.documentElement.setAttribute('data-theme', theme); }, [theme]);
+    const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
+    return (
+      <div className="kit">
+        <header className="site-header"><div className="site-header-inner">
+          <a className="brand" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none' }} href="#" onClick={(e)=>{e.preventDefault();setView('home');}}>
+            <AppLogo size={42}/>
+            <span style={{ fontFamily:'var(--font-display)', fontSize:23, fontWeight:800, letterSpacing:'-0.5px', color:'var(--text-primary)' }}>wobbl<span style={{color:'var(--brand)'}}>io</span></span>
+          </a>
+          <nav className="site-nav-group">
+            {view === 'home' && !authed && (
+              <div className="auth-cta">
+                <button className="btn btn--text" onClick={() => { setAuthView('login'); setView('app'); }}>Log in</button>
+                <button className="btn btn--primary" style={{ padding:'9px 18px' }} onClick={() => { setAuthView('register'); setView('app'); }}>Get started</button>
+              </div>
+            )}
+            {authed && (
+              <button className="btn open-ws-btn" style={{ padding:'9px 18px' }} onClick={() => setView('app')}>Open workspace</button>
+            )}
+            <button className="btn-icon" onClick={toggleTheme} title="Toggle theme">{theme==='dark'?<AI.sun/>:<AI.moon/>}</button>
+          </nav>
+        </div></header>
+        {view === 'home'
+          ? <window.WobblioLanding onStart={() => { setAuthView('register'); setView('app'); }} onLogin={() => { setAuthView('login'); setView('app'); }}/>
+          : authed
+            ? <window.WobblioWorkspace theme={theme} onToggleTheme={toggleTheme} onSignOut={()=>{setAuthed(false);setAuthView('login');}}/>
+            : authView === 'register'
+              ? <window.WobblioRegister onSignUp={(email)=>{setPendingEmail(email);setAuthView('verify');}} onBack={()=>setAuthView('login')} fields={t}/>
+              : authView === 'verify'
+                ? <window.WobblioVerify email={pendingEmail} onVerified={()=>setAuthed(true)} onBack={()=>setAuthView('register')}/>
+                : <window.WobblioLogin onSignIn={()=>setAuthed(true)} onRegister={()=>setAuthView('register')}/>}
+        <footer className="site-footer"><div className="site-footer-inner">
+          <span className="footer-copy">© 2026 Wobblio · Eindhoven, NL · Built on AWS</span>
+          <div className="footer-links"><a href="#">Privacy</a><a href="#">GDPR</a><a href="#">Terms</a></div>
+        </div></footer>
+        <TweaksPanel>
+          <TweakSection label="Register form fields" />
+          <TweakToggle label="Confirm password" value={t.confirmPassword} onChange={(v) => setTweak('confirmPassword', v)} />
+          <TweakToggle label="Date of birth" value={t.birthdate} onChange={(v) => setTweak('birthdate', v)} />
+          <TweakToggle label="Country + currency" value={t.country} onChange={(v) => setTweak('country', v)} />
+          <TweakToggle label="Preferred language" value={t.language} onChange={(v) => setTweak('language', v)} />
+        </TweaksPanel>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+});
+</script>
+</body>
+</html>

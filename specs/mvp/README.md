@@ -15,23 +15,25 @@ Based on the v2.4 engineering & product specification. Files are numbered by bui
 
 ## Spec Index
 
-- [00 — Design System & Wireframes](./00-design-system-wireframes.md)
-- [01 — Local Development Sandbox](./01-local-development-sandbox.md)
-- [02 — Infrastructure, Database & RLS](./02-infrastructure-database-rls.md)
-- [02b — Deployment & Hosting](./02b-deployment-hosting.md)
-- [03 — Observability Foundation](./03-observability-foundation.md)
-- [04 — Authentication & Waitlist](./04-authentication-waitlist.md)
-- [05 — Billing & Stripe](./05-billing-stripe.md)
-- [06 — Landing Page & Marketing Site](./06-landing-page-marketing.md)
-- [07 — Core Ingestion Pipeline](./07-core-ingestion-pipeline.md)
-- [08 — Data Intelligence Layer](./08-data-intelligence-layer.md)
-- [09 — Households](./09-households.md)
-- [10 — Budgets, Shopping Lists & Route Optimizer](./10-budgets-shopping-lists-optimizer.md)
-- [11 — Bill Splitting, FX & Reporting](./11-bill-splitting-fx-reporting.md)
-- [12 — Admin Console](./12-admin-console.md)
-- [13 — Security Controls](./13-security-controls.md)
-- [14 — GDPR & Data Lifecycle](./14-gdpr-data-lifecycle.md)
-- [15 — Observability, KPIs & Analytics](./15-observability-kpis-analytics.md)
+| Status | Spec |
+|---|---|
+| ✅ Done | [00 — Design System & Wireframes](./00-design-system-wireframes.md) |
+| ✅ Done | [01 — Local Development Sandbox](./01-local-development-sandbox.md) |
+| ✅ Done | [02 — Infrastructure, Database & RLS](./02-infrastructure-database-rls.md) |
+| ✅ Done | [02b — Deployment & Hosting](./02b-deployment-hosting.md) |
+| ✅ Done | [03 — Observability Foundation](./03-observability-foundation.md) |
+| ✅ Done | [04 — Authentication & Waitlist](./04-authentication-waitlist.md) |
+| ✅ Done | [05 — Billing & Stripe](./05-billing-stripe.md) |
+| ✅ Done | [06 — Landing Page & Marketing Site](./06-landing-page-marketing.md) |
+| ⬜ Next | [07 — Core Ingestion Pipeline](./07-core-ingestion-pipeline.md) |
+| ⬜ | [08 — Data Intelligence Layer](./08-data-intelligence-layer.md) |
+| ⬜ | [09 — Households](./09-households.md) |
+| ⬜ | [10 — Budgets, Shopping Lists & Route Optimizer](./10-budgets-shopping-lists-optimizer.md) |
+| ⬜ | [11 — Bill Splitting, FX & Reporting](./11-bill-splitting-fx-reporting.md) |
+| ⬜ | [12 — Admin Console](./12-admin-console.md) |
+| ⬜ | [13 — Security Controls](./13-security-controls.md) |
+| ⬜ | [14 — GDPR & Data Lifecycle](./14-gdpr-data-lifecycle.md) |
+| ⬜ | [15 — Observability, KPIs & Analytics](./15-observability-kpis-analytics.md) |
 
 ## Key Architectural Decisions
 

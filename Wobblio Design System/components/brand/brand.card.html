@@ -1,0 +1,53 @@
+<!-- @dsCard group="Components" viewport="700x240" name="Logo, Merchant Icons & Avatar" subtitle="Brand mark + retailer badges" -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  body { margin: 0; padding: 28px; background: var(--bg-color); }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; margin-bottom: 24px; }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); font-weight: 600; width: 100%; margin-bottom: 2px; font-family: var(--font-body); }
+  .chip { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+const { WobblioLogo, MerchantIcon, Avatar } = window.WobblioDesignSystem_6a8d64;
+const merchants = ['Albert Heijn','AH To Go','Jumbo','Dirk','Lidl','Tokomania','Restaurante Cantinho'];
+function Demo() {
+  return (
+    <div>
+      <div className="row">
+        <span className="label">Logo</span>
+        <WobblioLogo size={40} />
+        <WobblioLogo size={30} withWordmark />
+      </div>
+      <div className="row">
+        <span className="label">Merchant icons</span>
+        {merchants.map(m => (
+          <div className="chip" key={m}>
+            <MerchantIcon merchant={m} size={36} />
+            <span>{m}</span>
+          </div>
+        ))}
+      </div>
+      <div className="row" style={{marginBottom:0}}>
+        <span className="label">Avatars</span>
+        <Avatar initials="AR" size={44} />
+        <Avatar initials="MJ" size={36} />
+        <Avatar initials="KL" size={30} />
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<Demo/>);
+</script>
+</body>
+</html>

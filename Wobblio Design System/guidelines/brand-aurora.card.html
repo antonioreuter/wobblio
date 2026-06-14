@@ -1,0 +1,18 @@
+<!-- @dsCard group="Brand" viewport="700x200" name="Aurora Background" subtitle="Radial blob glow over deep space" -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; height:200px; background:var(--bg-color); overflow:hidden; position:relative; font-family:var(--font-body); }
+  .b { position:absolute; border-radius:50%; filter:blur(70px); }
+  .b1 { width:240px; height:240px; background:var(--blob-gradient-1); top:-70px; right:40px; }
+  .b2 { width:200px; height:200px; background:var(--blob-gradient-2); bottom:-90px; left:60px; }
+  .b3 { width:260px; height:160px; background:var(--blob-gradient-3); top:40%; left:45%; transform:translate(-50%,-50%); }
+  .cap { position:absolute; bottom:18px; left:24px; z-index:2; }
+  .cap h4 { font-family:var(--font-display); color:var(--text-primary); font-size:15px; margin:0 0 4px; }
+  .cap p { color:var(--text-secondary); font-size:12px; margin:0; max-width:360px; }
+</style></head>
+<body>
+  <div class="b b1"></div><div class="b b2"></div><div class="b b3"></div>
+  <div class="cap"><h4>Indigo · Teal · Coral blobs</h4><p>Soft 120px-blurred radial gradients drift slowly behind glass. They sit at z-0 and never receive pointer events.</p></div>
+</body></html>

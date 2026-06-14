@@ -1,0 +1,19 @@
+<!-- @dsCard group="Spacing" viewport="700x160" name="Corner Radii" subtitle="6 → 20px + pill" -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:24px 28px; background:var(--bg-color); display:flex; gap:20px; flex-wrap:wrap; }
+  .col { display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .box { width:70px; height:54px; background:var(--glass-bg); border:1px solid var(--glass-hover-border); }
+  .n { font-size:11px; color:var(--text-secondary); font-weight:600; }
+  .v { font-size:10px; color:var(--text-muted); }
+</style></head>
+<body>
+  <div class="col"><div class="box" style="border-radius:6px"></div><div class="n">sm</div><div class="v">6px · tags</div></div>
+  <div class="col"><div class="box" style="border-radius:8px"></div><div class="n">md</div><div class="v">8px · inputs</div></div>
+  <div class="col"><div class="box" style="border-radius:12px"></div><div class="n">lg</div><div class="v">12px · buttons</div></div>
+  <div class="col"><div class="box" style="border-radius:16px"></div><div class="n">xl</div><div class="v">16px · cards</div></div>
+  <div class="col"><div class="box" style="border-radius:20px"></div><div class="n">2xl</div><div class="v">20px · shell</div></div>
+  <div class="col"><div class="box" style="border-radius:9999px; width:54px"></div><div class="n">pill</div><div class="v">badges</div></div>
+</body></html>

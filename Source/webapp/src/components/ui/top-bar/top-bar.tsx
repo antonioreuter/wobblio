@@ -1,68 +1,94 @@
 'use client'
 
-import { Search, Sun, Moon, User } from 'lucide-react'
-import { useTheme } from '@/components/providers/theme-provider'
-import { cn } from '@/lib/cn'
+import { usePathname } from 'next/navigation'
+import { Menu, ReceiptText, Upload } from 'lucide-react'
+import { ThemeToggle } from '@/components/ds'
+import { useNavDrawer } from '@/components/ui/left-nav'
+import { useWorkspace } from '@/components/workspace'
+import { TopBarSearch } from './topbar-search'
+import { UserMenu } from './user-menu'
 
 interface TopBarProps {
-  quotaUsed?: number
-  quotaLimit?: number
-  className?: string
+  usageUsed?: number
+  usageLimit?: number
+  userInitials?: string
+  userPlan?: string
 }
 
-export function TopBar({ quotaUsed = 0, quotaLimit = 10, className }: TopBarProps) {
-  const { resolvedTheme, setTheme } = useTheme()
+const ROUTE_TITLES: Record<string, string> = {
+  '/dashboard': 'Dashboard',
+  '/invoices': 'Invoices',
+  '/review': 'Awaiting Check',
+  '/reports': 'Price Trends',
+  '/lists': 'Shopping Lists',
+  '/budgets': 'Budgets',
+  '/household': 'Household',
+  '/settings': 'Settings',
+  '/admin': 'Console',
+}
+
+function deriveTitle(pathname: string): string {
+  const match = Object.keys(ROUTE_TITLES).find((p) => pathname.startsWith(p))
+  return match ? ROUTE_TITLES[match] : 'Workspace'
+}
+
+export function TopBar({
+  usageUsed = 0,
+  usageLimit = 15,
+  userInitials = 'AR',
+  userPlan = 'Premium',
+}: TopBarProps) {
+  const pathname = usePathname() ?? '/dashboard'
+  const { toggleDrawer } = useNavDrawer()
+  const { scanReceipt } = useWorkspace()
+  const title = deriveTitle(pathname)
+  const pct = Math.max(0, Math.min(100, (usageUsed / Math.max(1, usageLimit)) * 100))
 
   return (
-    <header
-      className={cn(
-        'flex h-14 shrink-0 items-center gap-4 border-b border-[#e2e8f0] bg-white px-4 dark:border-[#334155] dark:bg-[#111827]',
-        className
-      )}
-    >
-      {/* Global search */}
-      <div className="relative flex-1 max-w-md">
-        <Search
-          size={14}
-          strokeWidth={1.5}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]"
-          aria-hidden
-        />
-        <input
-          type="search"
-          placeholder="Search invoices, merchants, products…"
-          className="h-8 w-full rounded-full border border-[#e2e8f0] bg-[#f8fafc] pl-8 pr-3 text-sm text-[#0f172a] placeholder:text-[#64748b] focus:border-[#0d9488] focus:outline-none focus:ring-1 focus:ring-[#0d9488]/30 dark:border-[#334155] dark:bg-[#1e293b] dark:text-[#f1f5f9] dark:placeholder:text-[#94a3b8]"
-          aria-label="Search invoices, merchants, products"
-        />
+    <header className="app-topbar">
+      <div className="topbar-left">
+        <button
+          type="button"
+          className="topbar-hamburger"
+          onClick={toggleDrawer}
+          aria-label="Open navigation menu"
+          data-testid="nav-hamburger"
+        >
+          <Menu size={20} />
+        </button>
+        <h1 className="topbar-title" data-testid="topbar-title">
+          {title}
+        </h1>
       </div>
-
-      <div className="ml-auto flex items-center gap-3">
-        {/* Quota chip */}
-        <span className="inline-flex items-center rounded-full border border-[#0d9488]/30 bg-[#ccfbf1] px-2.5 py-1 text-xs font-medium text-[#0d9488]">
-          {quotaUsed}/{quotaLimit} scans
-        </span>
-
-        {/* Theme toggle */}
+      <TopBarSearch />
+      <div className="topbar-right">
+        <div className="usage-chip" data-testid="topbar-usage" title="Invoices processed this week">
+          <span className="usage-icon">
+            <ReceiptText size={16} />
+          </span>
+          <div className="usage-meta">
+            <div className="usage-top">
+              <span className="usage-label">Invoices this week</span>
+              <span className="usage-count">
+                <strong>{usageUsed}</strong> / {usageLimit}
+              </span>
+            </div>
+            <div className="usage-bar">
+              <div className="usage-fill" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        </div>
         <button
-          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-          className="rounded-full p-1.5 text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a] dark:text-[#94a3b8] dark:hover:bg-[#1e293b] dark:hover:text-[#f1f5f9]"
-          aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
+          type="button"
+          className="btn btn--primary topbar-upload"
+          onClick={scanReceipt}
+          data-testid="topbar-upload"
         >
-          {resolvedTheme === 'dark' ? (
-            <Sun size={16} strokeWidth={1.5} aria-hidden />
-          ) : (
-            <Moon size={16} strokeWidth={1.5} aria-hidden />
-          )}
+          <Upload size={15} />
+          <span className="topbar-upload-label">Upload</span>
         </button>
-
-        {/* Avatar */}
-        <button
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0d9488] text-white"
-          aria-label="Open user menu"
-          aria-haspopup="menu"
-        >
-          <User size={14} strokeWidth={1.5} aria-hidden />
-        </button>
+        <ThemeToggle className="btn-icon topbar-theme" />
+        <UserMenu userInitials={userInitials} userPlan={userPlan} />
       </div>
     </header>
   )

@@ -1,121 +1,174 @@
 'use client'
 
-import { StatCard } from '@/components/ui/stat-card'
-import { DataTable, type Column } from '@/components/ui/data-table'
-import { ConfidenceBadge } from '@/components/ui/confidence-badge'
-import { CategoryChip } from '@/components/ui/category-chip'
-import { Money } from '@/components/ui/money'
-import { EmptyState } from '@/components/ui/empty-state'
-import { ReceiptText } from 'lucide-react'
+import Link from 'next/link'
+import { AlertCircle, AlertTriangle, ArrowRight, RotateCw } from 'lucide-react'
+import { Card, MetricCard, ProgressBar } from '@/components/ds'
+import {
+  BUDGETS,
+  budgetColor,
+  InvoiceTable,
+  SpendOverTimeChart,
+  useWorkspace,
+} from '@/components/workspace'
 
-interface InvoiceRow {
-  id: string
-  date: string
-  merchant: string
-  category: string
-  categoryColor: string
-  total: number
-  status: 'confirmed' | 'auto' | 'low'
+const SCANS_USED = 9
+const SCANS_LIMIT = 15
+
+// Pairs budget meaning with an icon + label so it is never conveyed by color alone.
+function budgetStatus(pct: number): { icon: typeof AlertTriangle; label: string } | null {
+  if (pct > 100) return { icon: AlertTriangle, label: 'over' }
+  if (pct >= 85) return { icon: AlertCircle, label: 'near limit' }
+  return null
 }
 
-const MOCK_INVOICES: InvoiceRow[] = [
-  {
-    id: '1',
-    date: '2026-06-11',
-    merchant: 'Albert Heijn',
-    category: 'Groceries',
-    categoryColor: '#0d9488',
-    total: 47.85,
-    status: 'confirmed',
-  },
-  {
-    id: '2',
-    date: '2026-06-10',
-    merchant: 'Praxis',
-    category: 'Home & Garden',
-    categoryColor: '#7c3aed',
-    total: 124.0,
-    status: 'auto',
-  },
-  {
-    id: '3',
-    date: '2026-06-09',
-    merchant: 'Vapiano',
-    category: 'Dining',
-    categoryColor: '#ea580c',
-    total: 38.5,
-    status: 'low',
-  },
-]
-
-const COLUMNS: Column<InvoiceRow>[] = [
-  { key: 'date', header: 'Date' },
-  { key: 'merchant', header: 'Merchant' },
-  {
-    key: 'category',
-    header: 'Category',
-    render: (row) => <CategoryChip label={row.category} color={row.categoryColor} />,
-  },
-  {
-    key: 'total',
-    header: 'Total',
-    numeric: true,
-    render: (row) => <Money amount={row.total} size="secondary" />,
-  },
-  {
-    key: 'status',
-    header: 'Status',
-    render: (row) => <ConfidenceBadge confidence={row.status} />,
-  },
-]
-
 export default function DashboardPage() {
+  const {
+    invoices,
+    loading,
+    refreshing,
+    refresh,
+    setOpenInvoice,
+    setConfirmDelete,
+    setShareTarget,
+  } = useWorkspace()
+
+  const over = BUDGETS.filter((b) => b.pct > 100).length
+  const near = BUDGETS.filter((b) => b.pct >= 85 && b.pct <= 100).length
+  const onTrack = BUDGETS.filter((b) => b.pct < 85).length
+  const budgetTone = over > 0 ? 'danger' : near > 0 ? 'warning' : 'success'
+  const budgetValue = over > 0 ? `${over} over` : near > 0 ? `${near} near limit` : 'On track'
+  const scansLeft = Math.max(0, SCANS_LIMIT - SCANS_USED)
+
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="text-[24px] font-bold text-[#0f172a] dark:text-[#f1f5f9]">Dashboard</h1>
+    <div className="pane">
+      <h2 className="pane-title">Your Everyday Savings</h2>
+      <p className="pane-subtitle">Overview of your household expenses and price trends.</p>
 
-      {/* Stat card row */}
-      <div className="flex flex-wrap gap-4">
-        <StatCard label="Month-to-date spend" amount={1284.5} delta={8.3} deltaLabel="vs May" />
-        <StatCard label="Δ vs last month" amount={98.5} delta={8.3} deltaLabel="more" />
-        <StatCard label="Budget health" value="68%" delta={-5.2} deltaLabel="vs last month" />
-        <StatCard label="Scans remaining" value="3" />
+      <div className="metrics-row">
+        {loading
+          ? [0, 1, 2, 3].map((i) => (
+              <div className="glass" style={{ padding: 'var(--space-5)' }} key={i}>
+                <span className="sk sk-line" style={{ width: 90, height: 11 }} />
+                <span
+                  className="sk sk-line"
+                  style={{ width: 120, height: 26, margin: '12px 0 8px' }}
+                />
+                <span className="sk sk-line" style={{ width: 140, height: 10 }} />
+              </div>
+            ))
+          : (
+            <>
+              <MetricCard
+                label="Spent This Month"
+                value="€642.30"
+                delta="June, month to date"
+                tone="neutral"
+              />
+              <MetricCard
+                label="vs Last Month"
+                value="↓ 11.8%"
+                delta="−€86.12 from €728.42"
+                tone="success"
+              />
+              <MetricCard
+                label="Budget Health"
+                value={budgetValue}
+                delta={`${onTrack} on track · ${near} near limit · ${over} over`}
+                tone={budgetTone}
+              />
+              <MetricCard
+                label="Scans Remaining"
+                value={`${scansLeft} left`}
+                delta={`${SCANS_USED} of ${SCANS_LIMIT} used this week`}
+                tone={scansLeft <= 3 ? 'warning' : 'neutral'}
+              />
+              <MetricCard
+                className="metric-ultrawide"
+                label="Top Merchant"
+                value="Albert Heijn"
+                delta="€248.60 this month"
+                tone="neutral"
+              />
+            </>
+          )}
       </div>
 
-      {/* Charts placeholder */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="col-span-2 flex h-48 items-center justify-center rounded-[12px] border border-dashed border-[#e2e8f0] text-sm text-[#64748b] dark:border-[#334155] dark:text-[#94a3b8]">
-          Spend-over-time area chart
-        </div>
-        <div className="flex h-48 items-center justify-center rounded-[12px] border border-dashed border-[#e2e8f0] text-sm text-[#64748b] dark:border-[#334155] dark:text-[#94a3b8]">
-          Category donut
-        </div>
-      </div>
+      <div className="dash-row">
+        <SpendOverTimeChart />
 
-      {/* Recent invoices */}
-      <div className="rounded-[12px] border border-[#e2e8f0] bg-white dark:border-[#334155] dark:bg-[#111827]">
-        <div className="flex items-center justify-between border-b border-[#e2e8f0] px-4 py-3 dark:border-[#334155]">
-          <p className="text-sm font-semibold text-[#0f172a] dark:text-[#f1f5f9]">
-            Recent Invoices
+        <Card className="panel budget-tones">
+          <div className="panel-header" style={{ marginBottom: 4 }}>
+            <span className="panel-title">Category Budgets</span>
+          </div>
+          <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 18 }}>
+            <strong style={{ color: 'var(--text-primary)' }}>{BUDGETS.length} budgets</strong>{' '}
+            tracked ·{' '}
+            <strong style={{ color: over ? 'var(--danger)' : 'var(--success)' }}>
+              {over} over budget
+            </strong>
           </p>
-          <a href="/invoices" className="text-xs text-[#0d9488] hover:underline">
-            See all
-          </a>
-        </div>
-        <DataTable
-          columns={COLUMNS}
-          rows={MOCK_INVOICES}
-          emptyState={
-            <EmptyState
-              icon={ReceiptText}
-              heading="No invoices yet"
-              body="Scan your first receipt to see your spending here."
-              ctaLabel="Scan receipt"
-              onCta={() => {}}
-            />
-          }
-        />
+          {BUDGETS.map((b) => {
+            const tone = budgetColor(b.pct)
+            const status = budgetStatus(b.pct)
+            const StatusIcon = status?.icon
+            return (
+              <div className="budget-item" key={b.name}>
+                <div className="budget-meta">
+                  <span className="name">{b.name}</span>
+                  <span className="pct" style={{ color: `var(--${tone})` }}>
+                    {StatusIcon && <StatusIcon size={13} aria-hidden="true" />}
+                    {b.pct}%{status ? ` ${status.label}` : ''}
+                  </span>
+                </div>
+                <ProgressBar
+                  value={Math.min(b.pct, 100)}
+                  tone={tone}
+                  ariaLabel={`${b.name} ${b.pct}%${status ? `, ${status.label}` : ''}`}
+                />
+              </div>
+            )
+          })}
+          <Link href="/budgets" className="panel-footer-link" data-testid="dashboard-view-budgets">
+            View all budgets <ArrowRight size={14} />
+          </Link>
+        </Card>
       </div>
+
+      <Card className="panel" style={{ padding: 0, marginTop: 20 }}>
+        <div className="panel-header" style={{ padding: '20px 24px 0' }}>
+          <span className="panel-title">Recent Invoices</span>
+          <div className="panel-actions">
+            <button
+              type="button"
+              className="btn-icon has-tip has-tip--bottom"
+              data-tip="Refresh"
+              aria-label="Refresh invoices"
+              onClick={refresh}
+              data-testid="dashboard-refresh"
+            >
+              <span className={`refresh-ico ${refreshing ? 'spin' : ''}`} style={{ display: 'flex' }}>
+                <RotateCw size={15} />
+              </span>
+            </button>
+            <Link
+              href="/invoices"
+              className="btn btn--primary"
+              style={{ padding: '6px 14px', fontSize: 12.5 }}
+              data-testid="dashboard-view-all"
+            >
+              View all <ArrowRight size={14} />
+            </Link>
+          </div>
+        </div>
+        <InvoiceTable
+          invoices={invoices.slice(0, 4)}
+          loading={loading}
+          skeletonRows={4}
+          onOpen={setOpenInvoice}
+          onRequestDelete={setConfirmDelete}
+          onShare={setShareTarget}
+        />
+      </Card>
     </div>
   )
 }

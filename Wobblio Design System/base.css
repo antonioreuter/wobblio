@@ -1,0 +1,174 @@
+/* ==========================================================================
+   Wobblio · Base elements & core utility classes
+   Reusable primitives shared by specimen cards, UI kits and prototypes.
+   ========================================================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.4s var(--ease-out), color 0.4s var(--ease-out);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  margin: 0;
+}
+
+p { margin: 0; color: var(--text-secondary); }
+
+a { color: var(--brand); text-decoration: none; }
+
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* ---- Premium polish: selection, scrollbars, focus ---------------------- */
+::selection { background: var(--brand-glow); color: var(--text-primary); }
+* { scrollbar-width: thin; scrollbar-color: var(--glass-border) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); background-clip: padding-box; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+button, a, input, select, [role="button"] { -webkit-tap-highlight-color: transparent; }
+
+/* ---- Aurora background ------------------------------------------------- */
+.aurora-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--bg-color);
+  transition: background-color 0.4s var(--ease-out);
+}
+.aurora-bg .blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.85;
+}
+.aurora-bg .blob-1 {
+  width: 650px; height: 650px;
+  background: var(--blob-gradient-1);
+  top: -200px; right: -100px;
+  animation: wobblioBlob 15s ease-in-out infinite alternate;
+}
+.aurora-bg .blob-2 {
+  width: 500px; height: 500px;
+  background: var(--blob-gradient-2);
+  bottom: 10%; left: -150px;
+  animation: wobblioBlob 18s ease-in-out infinite alternate-reverse;
+}
+.aurora-bg .blob-3 {
+  width: 700px; height: 400px;
+  background: var(--blob-gradient-3);
+  top: 45%; left: 45%;
+  transform: translate(-50%, -50%);
+  filter: blur(140px);
+}
+@keyframes wobblioBlob {
+  0%   { transform: translateY(0) scale(1); }
+  100% { transform: translateY(30px) scale(1.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aurora-bg .blob { animation: none; }
+}
+
+/* ---- Glass surface ----------------------------------------------------- */
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: var(--blur-glass);
+  -webkit-backdrop-filter: var(--blur-glass);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--card-shadow);
+  transition: var(--transition-glass);
+}
+.glass:hover { border-color: var(--glass-hover-border); }
+.glass-interactive:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--card-shadow), var(--shadow-brand-glow);
+}
+
+/* ---- Badge / pill ------------------------------------------------------ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-body);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.badge--primary { background: var(--brand-glow);   color: var(--brand);   border: 1px solid rgba(99,102,241,0.2); }
+.badge--success { background: var(--success-glow); color: var(--success); border: 1px solid rgba(13,148,136,0.2); }
+.badge--warning { background: var(--warning-glow); color: var(--warning); border: 1px solid rgba(245,158,11,0.2); }
+.badge--danger  { background: var(--danger-glow);  color: var(--danger);  border: 1px solid rgba(244,63,94,0.2); }
+
+/* ---- Buttons ----------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  border-radius: var(--radius-lg);
+  padding: 11px 24px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+  outline: none;
+  text-decoration: none;
+}
+.btn--primary {
+  background: var(--brand);
+  color: #ffffff;
+  box-shadow: 0 4px 20px -2px var(--brand-glow);
+}
+.btn--primary:hover {
+  background: var(--brand-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px -1px var(--brand-glow);
+}
+.btn--outline {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--glass-border);
+}
+.btn--outline:hover { background: var(--glass-highlight); border-color: var(--text-secondary); }
+.btn--text { background: transparent; color: var(--text-secondary); padding: 8px 16px; }
+.btn--text:hover { color: var(--text-primary); }
+.btn--lg { padding: 14px 28px; font-size: var(--text-lg); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.btn-icon {
+  width: var(--icon-button);
+  height: var(--icon-button);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text-primary);
+}
+.btn-icon:hover { border-color: var(--brand); color: var(--brand); transform: scale(1.05); }

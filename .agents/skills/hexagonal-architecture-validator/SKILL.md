@@ -13,7 +13,7 @@ This skill automates checking that core business logic is kept decoupled from in
 ## How to Use
 Run the validation script using npm inside the backend directory:
 ```bash
-npm run validate:hexagonal
+cd Source/backend && npm run skill:hexagonal-architecture-validator
 ```
 
 ## Details

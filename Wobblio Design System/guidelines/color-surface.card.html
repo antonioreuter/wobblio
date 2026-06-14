@@ -1,0 +1,21 @@
+<!-- @dsCard group="Colors" viewport="700x170" name="Surfaces & Glass" subtitle="Deep space base + frosted glass tokens" -->
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head><meta charset="UTF-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin:0; padding:24px; background:var(--bg-color); }
+  .swatches { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .sw { border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--glass-border); }
+  .chip { height:64px; display:flex; align-items:center; justify-content:center; }
+  .meta { padding:10px 12px; background:var(--glass-bg); }
+  .name { font-family:var(--font-display); font-weight:700; font-size:13px; color:var(--text-primary); }
+  .hex { font-size:11px; color:var(--text-muted); margin-top:2px; }
+</style></head>
+<body>
+<div class="swatches">
+  <div class="sw"><div class="chip" style="background:#05060b"></div><div class="meta"><div class="name">Deep Space</div><div class="hex">#05060B · app bg</div></div></div>
+  <div class="sw"><div class="chip glass" style="border-radius:0"></div><div class="meta"><div class="name">Obsidian Glass</div><div class="hex">rgba(13,17,30,.72)</div></div></div>
+  <div class="sw"><div class="chip" style="background:var(--glass-bg); border-bottom:1px solid var(--glass-border)"><span style="width:80%;height:1px;background:var(--glass-border)"></span></div><div class="meta"><div class="name">Glass Border</div><div class="hex">rgba(255,255,255,.07)</div></div></div>
+  <div class="sw"><div class="chip" style="background:#f1f5f9"></div><div class="meta"><div class="name">Solar Light</div><div class="hex">#F1F5F9 · light bg</div></div></div>
+</div>
+</body></html>
