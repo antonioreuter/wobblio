@@ -6,7 +6,7 @@ export function SiteFooter() {
     <footer className="site-footer">
       <div className="site-footer-inner">
         <span className="footer-copy">
-          © {year} Wobblio · Eindhoven, NL · Built on AWS
+          © {year} Wobblio · Eindhoven, NL
         </span>
         <div className="footer-links">
           <Link href="/privacy">Privacy</Link>

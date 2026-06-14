@@ -13,11 +13,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const session = await auth()
 
   // Server-side authorization gate. Route protection must not depend on the
-  // Edge middleware alone: behind CloudFront/OpenNext the middleware redirect
-  // is not a reliable boundary, and every page below renders without requiring
-  // a session, so a missing/expired session would otherwise leave the
-  // authenticated app fully open. Redirect to /login when there is no valid
-  // session (no user, or a failed silent Cognito refresh).
+  // Edge middleware alone, which is not a reliable boundary in every deploy
+  // target; every page below renders without requiring a session, so a
+  // missing/expired session would otherwise leave the authenticated app fully
+  // open. Redirect to /login when there is no valid session (no user, or a
+  // failed silent token refresh).
   if (!session?.user || session.error === 'RefreshAccessTokenError') {
     redirect('/login')
   }
