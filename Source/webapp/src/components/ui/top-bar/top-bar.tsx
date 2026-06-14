@@ -1,9 +1,10 @@
 'use client'
 
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Menu, ReceiptText } from 'lucide-react'
+import { ThemeToggle } from '@/components/ds'
 import { useNavDrawer } from '@/components/ui/left-nav'
+import { TopBarSearch } from './topbar-search'
 import { UserMenu } from './user-menu'
 
 interface TopBarProps {
@@ -53,15 +54,11 @@ export function TopBar({
         >
           <Menu size={20} />
         </button>
-        <Link href="/dashboard" className="topbar-brand" aria-label="Wobblio home">
-          <span className="topbar-wordmark">
-            Wobblio<span>.</span>
-          </span>
-        </Link>
         <h1 className="topbar-title" data-testid="topbar-title">
           {title}
         </h1>
       </div>
+      <TopBarSearch />
       <div className="topbar-right">
         <div className="usage-chip" data-testid="topbar-usage" title="Invoices processed this week">
           <span className="usage-icon">
@@ -79,6 +76,7 @@ export function TopBar({
             </div>
           </div>
         </div>
+        <ThemeToggle />
         <UserMenu userInitials={userInitials} userPlan={userPlan} />
       </div>
     </header>

@@ -1,6 +1,5 @@
 import Link from 'next/link'
-import { WobblioLogo } from '@/components/ds'
-import { ThemeToggleButton } from './theme-toggle-button'
+import { ThemeToggle, WobblioLogo } from '@/components/ds'
 
 type Variant = 'landing' | 'auth' | 'app'
 
@@ -20,7 +19,7 @@ export function SiteHeader({ variant }: SiteHeaderProps) {
         </Link>
         <nav className="site-nav-group">
           <SiteHeaderActions variant={variant} />
-          <ThemeToggleButton />
+          <ThemeToggle testId="header-theme-toggle" />
         </nav>
       </div>
     </header>

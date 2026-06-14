@@ -146,8 +146,8 @@ Update this section as each PR lands. Format: status · branch · merge commit/P
 
 | PR | Status | Branch | Commit/PR | Notes |
 |----|--------|--------|-----------|-------|
-| 1 — Mobile foundation     | 🟡 In progress | `feat/responsive-pr1` | — | Rail→drawer, table→cards, topbar compaction + avatar menu done. Verified at 390/640/768; lint + 12 unit tests green. Avatar dropdown built here (PR2 item 4 already satisfied). |
-| 2 — Topbar refit          | ⬜ Pending | — | — | Wordmark still present (kept for PR2 removal); search + theme toggle still to add |
+| 1 — Mobile foundation     | 🟡 Implemented (unmerged) | `feat/responsive-pr1` | — | Rail→drawer, table→cards, topbar compaction + avatar menu (incl. visible PREMIUM chip). Verified 390/640/768/1440; lint + 12 unit tests green. Avatar dropdown built here (PR2 item 4 satisfied early). |
+| 2 — Topbar refit          | 🟡 Implemented (unmerged) | `feat/responsive-pr2` | — | Wordmark removed; global search (`/invoices?q=`), shared `ds/ThemeToggle` lifted into topbar + site-header. Fixed a theme-toggle hydration mismatch (mounted guard). Search hidden ≤768. Verified light+dark at 1440, mobile 390. |
 | 3 — Budget bar a11y       | ⬜ Pending | — | — | Can ship anytime; no dependency |
 | 4 — Dashboard restructure | ⬜ Pending | — | — | Depends on PR 1 (table cards reused) |
 | 5 — Ultrawide + density   | ⬜ Pending | — | — | Depends on PR 4 (stat row, drawer) |
