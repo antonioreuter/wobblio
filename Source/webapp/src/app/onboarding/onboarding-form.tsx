@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { signOut, useSession } from 'next-auth/react'
+import { useSession } from 'next-auth/react'
+import { federatedSignOut } from '@/lib/federated-sign-out'
 import { Cake, Check, ChevronDown, Globe, Languages, User, Wallet } from 'lucide-react'
 import { Button } from '@/components/ds/Button'
 import { Input } from '@/components/ds/Input'
@@ -173,7 +174,7 @@ export function OnboardingForm() {
             type="button"
             variant="primary"
             style={{ width: '100%' }}
-            onClick={() => signOut({ callbackUrl: '/login' })}
+            onClick={() => void federatedSignOut()}
             data-testid="onboarding-reauth"
           >
             Sign in again

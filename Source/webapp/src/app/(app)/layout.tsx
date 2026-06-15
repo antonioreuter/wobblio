@@ -18,10 +18,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Edge middleware alone, which is not a reliable boundary in every deploy
   // target; every page below renders without requiring a session, so a
   // missing/expired session would otherwise leave the authenticated app fully
-  // open. Redirect to /login when there is no valid session (no user, or a
-  // failed silent token refresh).
-  if (!session?.user || session.error === 'RefreshAccessTokenError') {
+  // open. Redirect to /login when there is no session at all.
+  if (!session?.user) {
     redirect('/login')
+  }
+
+  // A failed silent token refresh (Cognito refresh token expired/revoked) cannot
+  // be fixed by bouncing to /login: that auto-re-initiates Hosted-UI sign-in,
+  // which the still-valid Cognito SSO cookie satisfies without a credential
+  // prompt — re-issuing the same unusable session and looping. Force a federated
+  // sign-out instead (clears the NextAuth cookie AND the Cognito SSO cookie) so
+  // re-entry requires a genuine fresh sign-in. Mirrors the zombie-session path
+  // below and the SessionTimeoutGuard's RefreshAccessTokenError handling.
+  if (session.error === 'RefreshAccessTokenError') {
+    return <ForceSignOut />
   }
 
   // Hosted-UI / email-password sign-up only collects credentials; the profile

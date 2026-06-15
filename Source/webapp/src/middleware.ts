@@ -74,5 +74,9 @@ export default auth((req: NextRequest & { auth: unknown }) => {
 })
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon\\.ico).*)'],
+  // Exclude /api/auth/* — these are NextAuth's own routes plus the federated
+  // logout route, which manage their own cookies. Running the auth() wrapper here
+  // rolls (re-issues) the session cookie on the response, which would overwrite
+  // the logout route's cookie-clearing and leave the user signed in.
+  matcher: ['/((?!api/auth|_next/static|_next/image|favicon\\.ico).*)'],
 }

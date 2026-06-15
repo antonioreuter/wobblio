@@ -217,9 +217,15 @@ NEXT_PUBLIC_SITE_URL=https://${APP_DOMAIN}
 EOF
   info "Written .env.production"
 
-  info "Building Next.js app (OpenNext SSR bundle)..."
-  (cd "$WEBAPP_DIR" && npm run build)
-  ok "Webapp built → Source/webapp/out/"
+  # The WobblioWebStack Nextjs construct (cdk-nextjs-standalone) builds the
+  # OpenNext SSR bundle itself during `cdk deploy`. Running `next build` here as
+  # well double-builds into the same .next dir and intermittently triggers the
+  # Next.js 15 "Collecting page data → ENOENT pages-manifest.json" race under
+  # deploy-time load. Wipe stale build output so the construct does a single,
+  # clean build (a leftover dev-mode .next also trips this).
+  info "Cleaning stale webapp build output (.next/.open-next)..."
+  rm -rf "$WEBAPP_DIR/.next" "$WEBAPP_DIR/.open-next"
+  ok "Webapp build output cleaned (OpenNext build runs inside WobblioWebStack)"
 
   step "Deploy WobblioWebCertStack-${STAGE} (ACM cert, us-east-1)"
   (cd "$INFRA_DIR" && npx cdk deploy "WobblioWebCertStack-${STAGE}" \

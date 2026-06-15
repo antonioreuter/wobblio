@@ -66,6 +66,11 @@ export class WobblioWebStack extends Stack {
       // (not NEXT_PUBLIC_*) so it isn't build-time inlined — the OpenNext build
       // otherwise picks up .env.local's localhost value over .env.production.
       API_BASE_URL:         `https://${config.apiDomain}`,
+      // Server-only app origin for routes that must build absolute self-URLs
+      // (federated logout redirect, onboarding self-heal). Same reason as
+      // API_BASE_URL: NEXT_PUBLIC_SITE_URL is build-time inlined and the OpenNext
+      // build bakes .env.local's localhost over .env.production.
+      APP_ORIGIN:           `https://${config.appDomain}`,
       COGNITO_REGION:       this.region,
       COGNITO_USER_POOL_ID: authStack.userPool.userPoolId,
       COGNITO_CLIENT_ID:    authStack.userPoolClientWeb.userPoolClientId,

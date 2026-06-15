@@ -17,9 +17,22 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-  },
+  // Brings up both the webapp and the real local backend handlers. The Docker
+  // stack (Postgres + cognito-local on :9229) and a migrated/seeded DB must
+  // already be running — `make restart && make cognito-init && make migrate`.
+  webServer: [
+    {
+      command: 'npm run dev',
+      url: 'http://localhost:3000',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: 'npm run dev',
+      cwd: '../backend',
+      url: 'http://localhost:3001/waitlist/status',
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+  ],
 })

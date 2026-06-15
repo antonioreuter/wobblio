@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { LogOut } from 'lucide-react'
-import { signOut } from 'next-auth/react'
+import { federatedSignOut } from '@/lib/federated-sign-out'
 import { SignOutConfirmDialog } from './sign-out-confirm-dialog'
 
 export function SignOutButton() {
@@ -22,7 +22,7 @@ export function SignOutButton() {
       </button>
       {confirming && (
         <SignOutConfirmDialog
-          onConfirm={() => signOut({ callbackUrl: '/' })}
+          onConfirm={() => void federatedSignOut()}
           onCancel={() => setConfirming(false)}
         />
       )}

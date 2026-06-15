@@ -234,7 +234,7 @@ const nextAuth = NextAuth({
     signIn: '/login',
   },
   callbacks: {
-    async jwt({ token, user, account, trigger, session }) {
+    async jwt({ token, user, account, trigger }) {
       const isSignIn = Boolean(account && user)
 
       if (account && user) {
@@ -265,18 +265,6 @@ const nextAuth = NextAuth({
         token.name = p.name
         token.role = p.role
         token.status = p.status
-      }
-
-      // Client-driven flip right after onboarding completes, so the gate clears
-      // immediately. Return WITHOUT a token refresh: refreshing here can fail and
-      // set RefreshAccessTokenError, which the app-layout gate reads as
-      // logged-out and bounces the just-onboarded user to /login. Other update()
-      // calls (session extension) carry no `onboarded` and still fall through.
-      if (trigger === 'update' && typeof (session as { onboarded?: boolean })?.onboarded === 'boolean') {
-        token.onboarded = (session as { onboarded: boolean }).onboarded
-        const updatedName = (session as { name?: string }).name
-        if (typeof updatedName === 'string') token.name = updatedName
-        return token
       }
 
       // Access token still valid — nothing to do.
