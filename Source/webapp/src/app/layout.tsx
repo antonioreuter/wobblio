@@ -24,6 +24,13 @@ export const metadata: Metadata = {
   description: 'Cloud-native personal fiscal management',
 }
 
+// Force dynamic rendering app-wide. The middleware applies a per-request
+// nonce CSP (script-src 'nonce-…' 'strict-dynamic'); a nonce makes the browser
+// ignore 'unsafe-inline', so statically-prerendered pages (whose inline scripts
+// carry no runtime nonce) fail to hydrate. Dynamic rendering lets Next.js stamp
+// the request nonce onto its scripts. Required for nonce-based CSP to work.
+export const dynamic = 'force-dynamic'
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${outfit.variable}`} suppressHydrationWarning>

@@ -49,6 +49,10 @@ cognito-init:
 migrate:
 	cd $(INFRA_DIR) && DATABASE_URL=$(DATABASE_URL) npm run migrate:up
 
+## dev-backend: Run the backend API locally on :3001 (parity with the AWS Lambda fleet)
+dev-backend:
+	cd $(BACKEND_DIR) && npm run dev
+
 ## validate: Run hexagonal architecture validator + GDPR security auditor
 validate:
 	@echo "Running hexagonal architecture validator..."

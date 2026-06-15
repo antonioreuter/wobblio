@@ -1,0 +1,72 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e6]:
+        - img "Wobblio" [ref=e7]
+        - generic [ref=e10]: wobblio
+      - heading "Almost there" [level=1] [ref=e11]
+      - paragraph [ref=e12]: A few details so Wobblio speaks your currency and language.
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - generic [ref=e15]: Full name
+          - generic [ref=e16]:
+            - generic:
+              - img
+            - textbox "Full name" [ref=e17]:
+              - /placeholder: Your full name
+              - text: Antonio Reuter
+        - generic [ref=e18]:
+          - generic [ref=e19]: Date of birth
+          - generic [ref=e20]:
+            - generic:
+              - img
+            - textbox "Date of birth" [ref=e21]
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]: Country
+            - generic [ref=e25]:
+              - generic:
+                - img
+              - combobox "Country" [ref=e26] [cursor=pointer]:
+                - option "Brazil"
+                - option "Canada"
+                - option "France"
+                - option "Germany"
+                - option "Italy"
+                - option "Netherlands" [selected]
+                - option "Portugal"
+                - option "Spain"
+                - option "United Kingdom"
+                - option "United States"
+              - generic:
+                - img
+          - generic [ref=e27]:
+            - generic [ref=e28]: Display currency
+            - generic [ref=e29]:
+              - generic:
+                - img
+              - generic [ref=e30]:
+                - generic [ref=e31]: EUR · €
+                - generic [ref=e32]: Auto
+        - generic [ref=e33]:
+          - generic [ref=e34]: Preferred language
+          - generic [ref=e35]:
+            - generic:
+              - img
+            - combobox "Preferred language" [ref=e36] [cursor=pointer]:
+              - option "Nederlands" [selected]
+              - option "English"
+              - option "Français"
+              - option "Deutsch"
+              - option "Italiano"
+              - option "Português (BR)"
+            - generic:
+              - img
+        - generic [ref=e40] [cursor=pointer]: I agree to Wobblio processing my data per the privacy policy (GDPR), including anonymized price contributions to the regional price index.
+        - button "Finish setup" [ref=e41] [cursor=pointer]:
+          - img [ref=e42]
+          - text: Finish setup
+    - paragraph [ref=e44]:
+      - img [ref=e45]
+      - text: Protected by row-level security · GDPR-compliant · EU-hosted
+  - alert [ref=e48]

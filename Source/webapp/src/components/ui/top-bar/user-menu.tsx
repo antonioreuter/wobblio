@@ -1,17 +1,33 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { Crown, LogOut } from 'lucide-react'
-import { signOut } from 'next-auth/react'
+import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { CircleUser, Crown, FlaskConical, LogOut, ShieldCheck } from 'lucide-react'
 import { Avatar } from '@/components/ds'
+import { federatedSignOut } from '@/lib/federated-sign-out'
 import { SignOutConfirmDialog } from './sign-out-confirm-dialog'
 
 interface UserMenuProps {
   userInitials: string
-  userPlan: string
+  userRole: string
 }
 
-export function UserMenu({ userInitials, userPlan }: UserMenuProps) {
+interface RoleBadge {
+  label: string
+  Icon: ComponentType<{ size?: number }>
+  variant: string
+}
+
+// Role badge shown in the top bar. Icon + label always pair (never colour alone)
+// per the design-system accessibility rule. Driven by the DB-sourced role.
+const ROLE_BADGE: Record<string, RoleBadge> = {
+  STANDARD: { label: 'Standard', Icon: CircleUser, variant: 'standard' },
+  PREMIUM: { label: 'Premium', Icon: Crown, variant: 'premium' },
+  TESTER: { label: 'Tester', Icon: FlaskConical, variant: 'tester' },
+  ADMIN: { label: 'Admin', Icon: ShieldCheck, variant: 'admin' },
+}
+
+export function UserMenu({ userInitials, userRole }: UserMenuProps) {
+  const badge = ROLE_BADGE[userRole] ?? ROLE_BADGE.STANDARD
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -34,8 +50,8 @@ export function UserMenu({ userInitials, userPlan }: UserMenuProps) {
 
   return (
     <div className="user-menu" ref={ref}>
-      <span className="plan-chip" data-testid="topbar-plan">
-        <Crown size={11} /> {userPlan}
+      <span className={`plan-chip plan-chip--${badge.variant}`} data-testid="topbar-plan">
+        <badge.Icon size={11} /> {badge.label}
       </span>
       <button
         type="button"
@@ -46,7 +62,7 @@ export function UserMenu({ userInitials, userPlan }: UserMenuProps) {
         aria-label="Account menu"
         data-testid="user-menu-trigger"
       >
-        <Avatar initials={userInitials} aria-label={userPlan} />
+        <Avatar initials={userInitials} aria-label={`${badge.label} account`} />
       </button>
       {open && (
         <div className="user-menu-pop" role="menu" data-testid="user-menu-pop">
@@ -66,7 +82,7 @@ export function UserMenu({ userInitials, userPlan }: UserMenuProps) {
       )}
       {confirming && (
         <SignOutConfirmDialog
-          onConfirm={() => signOut({ callbackUrl: '/' })}
+          onConfirm={() => federatedSignOut()}
           onCancel={() => setConfirming(false)}
         />
       )}

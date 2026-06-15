@@ -14,7 +14,7 @@ describe('UserProvisioningService', () => {
   let sut: UserProvisioningService;
 
   beforeEach(() => {
-    mockUserRepo = { findByCognitoSub: vi.fn(), insertUser: vi.fn(), promoteToPremium: vi.fn() };
+    mockUserRepo = { findByCognitoSub: vi.fn(), insertUser: vi.fn(), promoteToPremium: vi.fn(), getProfile: vi.fn(), completeOnboarding: vi.fn() };
     mockCounter = { tryClaimSlot: vi.fn(), getCurrentCount: vi.fn() };
     mockCap = { getMaxFreeUsersCap: vi.fn() };
     sut = new UserProvisioningService(mockUserRepo, mockCounter, mockCap);

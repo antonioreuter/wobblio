@@ -14,6 +14,7 @@ declare module 'next-auth' {
       name: string
       role: string
       status: string
+      onboarded: boolean
     }
     // Set to 'RefreshAccessTokenError' when silent Cognito refresh fails
     // (refresh token expired after 30d or revoked). The client guard reads
@@ -26,7 +27,11 @@ declare module 'next-auth' {
     name: string
     role: string
     status: string
+    onboarded: boolean
     accessToken?: string
+    // Cognito ID token — forwarded to the API Gateway Cognito authorizer, which
+    // expects an ID token (no OAuth scopes configured on the methods).
+    idToken?: string
     refreshToken?: string
     accessTokenExpires?: number
     error?: string
@@ -77,11 +82,11 @@ function buildLocalCredentialsProvider() {
         return {
           id: payload.sub,
           email: payload.email,
-          name: payload['custom:full_name'] ?? payload.name ?? '',
-          role: payload['custom:role'] ?? 'STANDARD',
-          status: payload['custom:status'] ?? 'ACTIVE',
+          // name/role/status/onboarded are sourced from the database in the jwt
+          // callback — never from Cognito attributes (those go stale in tokens).
           // Carry Cognito tokens so the jwt callback can persist them for
           // silent refresh. ExpiresIn is seconds-from-now.
+          idToken,
           accessToken: auth.AccessToken,
           refreshToken: auth.RefreshToken,
           accessTokenExpires: Date.now() + (auth.ExpiresIn ?? 3600) * 1000,
@@ -130,6 +135,7 @@ async function refreshCognitoTokens(token: Record<string, unknown>) {
 
     const refreshed = (await res.json()) as {
       access_token: string
+      id_token?: string
       expires_in: number
       refresh_token?: string
     }
@@ -137,6 +143,7 @@ async function refreshCognitoTokens(token: Record<string, unknown>) {
     return {
       ...token,
       accessToken: refreshed.access_token,
+      idToken: refreshed.id_token ?? token.idToken,
       accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
       // Cognito does not rotate the refresh token here; keep the existing one.
       refreshToken: refreshed.refresh_token ?? refreshToken,
@@ -144,6 +151,52 @@ async function refreshCognitoTokens(token: Record<string, unknown>) {
     }
   } catch {
     return { ...token, error: 'RefreshAccessTokenError' }
+  }
+}
+
+interface SessionProfile {
+  onboarded: boolean
+  name: string
+  role: string
+  status: string
+}
+
+const DEFAULT_PROFILE: SessionProfile = {
+  onboarded: false,
+  name: '',
+  role: 'STANDARD',
+  status: 'ACTIVE',
+}
+
+// Read the user's profile from the backend — the single source of truth
+// (app_user). name/role/status/onboarded all come from here, never from Cognito
+// attributes. Uses fetch so it stays Edge-runtime safe. Runs only at
+// sign-in/refresh, not per navigation. Defaults (not onboarded) on any error so a
+// transient backend issue keeps the user in onboarding rather than past the gate.
+async function fetchProfile(idToken: string | undefined): Promise<SessionProfile> {
+  if (!idToken) return DEFAULT_PROFILE
+  const apiBase = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL
+  if (!apiBase) return DEFAULT_PROFILE
+
+  try {
+    const res = await fetch(`${apiBase}/me/profile`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    })
+    if (!res.ok) return DEFAULT_PROFILE
+    const p = (await res.json()) as Partial<{
+      onboarded: boolean
+      fullName: string
+      role: string
+      status: string
+    }>
+    return {
+      onboarded: Boolean(p.onboarded),
+      name: p.fullName ?? '',
+      role: p.role ?? 'STANDARD',
+      status: p.status ?? 'ACTIVE',
+    }
+  } catch {
+    return DEFAULT_PROFILE
   }
 }
 
@@ -159,7 +212,11 @@ const nextAuth = NextAuth({
     sessionToken: {
       options: {
         httpOnly: true,
-        sameSite: 'strict',
+        // 'lax' (not 'strict') so the Hosted-UI OAuth return — a cross-site
+        // top-level redirect — carries the session cookie on the landing request.
+        // 'strict' drops it there, which bounces just-signed-in users to /login
+        // and makes local (same-origin credentials) diverge from dev/prod.
+        sameSite: 'lax',
         path: '/',
         secure: process.env.NODE_ENV === 'production',
       },
@@ -177,38 +234,49 @@ const nextAuth = NextAuth({
     signIn: '/login',
   },
   callbacks: {
-    async jwt({ token, user, account, profile, trigger }) {
+    async jwt({ token, user, account, trigger, session }) {
+      const isSignIn = Boolean(account && user)
+
       if (account && user) {
         token.sub = user.id ?? token.sub
         token.email = user.email ?? token.email ?? ''
-        token.name = (user as { name?: string }).name ?? token.name ?? ''
-        token.role = (user as { role?: string }).role ?? 'STANDARD'
-        token.status = (user as { status?: string }).status ?? 'ACTIVE'
 
         // Persist Cognito tokens for silent refresh. OIDC sign-ins expose them
         // on `account`; local credentials sign-ins carry them on `user`.
         const u = user as Record<string, unknown>
         token.accessToken = (account.access_token as string) ?? u.accessToken
+        token.idToken = (account.id_token as string) ?? u.idToken
         token.refreshToken = (account.refresh_token as string) ?? u.refreshToken
         token.accessTokenExpires = account.expires_at
           ? account.expires_at * 1000
           : (u.accessTokenExpires as number | undefined)
 
-        // On first sign-in, ensure the user exists in app_user.
-        // Covers: production OIDC sign-ins and local credentials sign-ins.
-        // The provision endpoint is idempotent (ON CONFLICT DO NOTHING).
-        // Note: provisionUser cannot be called here — auth.ts is imported by middleware
-        // which runs on the Edge runtime (no Node.js built-ins, no pg).
-        // Provisioning is handled by:
-        //   - Local dev: actions.ts registerUser() after AdminConfirmSignUp
-        //   - Production: post-confirmation-hook Lambda (Cognito trigger)
+        // app_user is provisioned out-of-band (local: actions.ts registerUser;
+        // production: post-confirmation-hook Lambda). provisionUser cannot run
+        // here — auth.ts is imported by Edge middleware (no Node built-ins/pg).
       }
-      // OIDC provider: extract custom claims from Cognito ID token profile
-      if (profile) {
-        const p = profile as Record<string, string>
-        token.name = p['custom:full_name'] ?? p.name ?? token.name ?? ''
-        token.role = p['custom:role'] ?? token.role ?? 'STANDARD'
-        token.status = p['custom:status'] ?? token.status ?? 'ACTIVE'
+
+      // The database is the single source of truth for the profile. Read it once
+      // per sign-in and carry name/role/status/onboarded on the token; the route
+      // gates trust the token until the next sign-in/refresh. No Cognito claims.
+      if (isSignIn) {
+        const p = await fetchProfile(token.idToken as string | undefined)
+        token.onboarded = p.onboarded
+        token.name = p.name
+        token.role = p.role
+        token.status = p.status
+      }
+
+      // Client-driven flip right after onboarding completes, so the gate clears
+      // immediately. Return WITHOUT a token refresh: refreshing here can fail and
+      // set RefreshAccessTokenError, which the app-layout gate reads as
+      // logged-out and bounces the just-onboarded user to /login. Other update()
+      // calls (session extension) carry no `onboarded` and still fall through.
+      if (trigger === 'update' && typeof (session as { onboarded?: boolean })?.onboarded === 'boolean') {
+        token.onboarded = (session as { onboarded: boolean }).onboarded
+        const updatedName = (session as { name?: string }).name
+        if (typeof updatedName === 'string') token.name = updatedName
+        return token
       }
 
       // Access token still valid — nothing to do.
@@ -230,6 +298,7 @@ const nextAuth = NextAuth({
       session.user.name = (token.name as string) ?? ''
       session.user.role = (token.role as string) ?? 'STANDARD'
       session.user.status = (token.status as string) ?? 'ACTIVE'
+      session.user.onboarded = Boolean(token.onboarded)
       session.error = token.error as string | undefined
       return session
     },

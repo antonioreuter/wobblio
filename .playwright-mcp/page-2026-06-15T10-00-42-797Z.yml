@@ -1,0 +1,13 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e64]:
+    - generic [ref=e65]:
+      - generic [ref=e67]:
+        - img "Wobblio" [ref=e68]
+        - generic [ref=e71]: wobblio
+      - heading "Almost there" [level=1] [ref=e72]
+      - paragraph [ref=e73]: A few details so Wobblio speaks your currency and language.
+      - status [ref=e74]: Loading your profile…
+    - paragraph [ref=e75]:
+      - img [ref=e76]
+      - text: Protected by row-level security · GDPR-compliant · EU-hosted
+  - alert [ref=e48]: Complete your profile — Wobblio

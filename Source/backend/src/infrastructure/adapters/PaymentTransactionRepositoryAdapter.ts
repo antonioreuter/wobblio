@@ -1,11 +1,11 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type {
   IPaymentTransactionRepository,
   PaymentTransactionRow,
 } from '@core/ports/IPaymentTransactionRepository';
 
 export class PaymentTransactionRepositoryAdapter implements IPaymentTransactionRepository {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool | PoolClient) {}
 
   async upsertByStripeEventId(row: PaymentTransactionRow): Promise<{ inserted: boolean }> {
     const result = await this.pool.query<{ id: string }>(

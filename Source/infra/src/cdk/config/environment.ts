@@ -14,6 +14,9 @@ export interface EnvironmentConfig {
   apiDomain: string;
   /** SSM path where WobblioWebCertStack writes the ACM cert ARN (stage-scoped) */
   webCertSsmPath: string;
+  /** Stage-isolated shared-DB secret ARN param: prod uses the canonical name,
+   *  every other stage an underscore-suffixed alias (e.g. wobblio_dev). */
+  dbSecretParam: string;
   resourceName(base: string): string;
   cdkEnv: { account: string; region: string };
 }
@@ -54,6 +57,9 @@ export function buildEnvironmentConfig(): EnvironmentConfig {
     appDomain,
     apiDomain,
     webCertSsmPath: `/wobblio/web/${stage}/certificate-arn`,
+    dbSecretParam: stage === 'prod'
+      ? '/shared/db/wobblio/secret-arn'
+      : `/shared/db/wobblio_${stage}/secret-arn`,
     resourceName: (base: string) => `wobblio-${base}-${stage}`,
     cdkEnv: { account, region },
   };

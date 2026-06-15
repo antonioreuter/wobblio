@@ -39,7 +39,7 @@ export class WobblioBackendStack extends Stack {
     // ── Shared DB connection env vars (resolved from SSM at deploy time) ─────
     const dbHost      = ssm.StringParameter.valueForStringParameter(this, '/shared/db/endpoint');
     const dbPort      = ssm.StringParameter.valueForStringParameter(this, '/shared/db/port');
-    const dbSecretArn = ssm.StringParameter.valueForStringParameter(this, '/shared/db/wobblio/secret-arn');
+    const dbSecretArn = ssm.StringParameter.valueForStringParameter(this, config.dbSecretParam);
 
     const commonLambdaEnv = {
       STAGE:        config.stage,
@@ -126,7 +126,14 @@ export class WobblioBackendStack extends Stack {
       INGEST_QUEUE_URL:       ingestionQueue.queueUrl,
       BILLING_ARCHIVE_BUCKET: storageStack.billingArchiveBucket.bucketName,
       WEB_APP_URL:            webAppUrl,
+      COGNITO_USER_POOL_ID:   authStack.userPool.userPoolId,
     });
+
+    // Onboarding writes custom:onboarded + profile attributes back to Cognito.
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['cognito-idp:AdminUpdateUserAttributes'],
+      resources: [authStack.userPool.userPoolArn],
+    }));
 
     const ingestionWorkerFn = makeLambda('ingestion-worker', 5, {
       UPLOADS_BUCKET: storageStack.uploadsBucket.bucketName,

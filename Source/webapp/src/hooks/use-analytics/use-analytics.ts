@@ -4,7 +4,9 @@ type FunnelEvent = 'hero_cta_click' | 'pricing_view' | 'signup_start' | 'signup_
 
 export function useAnalytics() {
   function track(event: FunnelEvent) {
-    fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/analytics/events`, {
+    // Same-origin BFF route — resolves the backend base URL server-side at
+    // runtime, so the localhost value never leaks into the client bundle.
+    fetch('/api/analytics/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event }),

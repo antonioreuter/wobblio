@@ -5,15 +5,10 @@ export function useWaitlistStatus() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_BASE_URL
-    if (!base) {
-      setWaitlistActive(false)
-      setLoading(false)
-      return
-    }
-
     let cancelled = false
-    fetch(`${base}/waitlist/status`)
+    // Same-origin BFF route — resolves the backend base URL server-side at
+    // runtime, so the localhost value never leaks into the client bundle.
+    fetch('/api/waitlist/status')
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return

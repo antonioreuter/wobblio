@@ -37,6 +37,13 @@ export class UserDeletedError extends Error {
   }
 }
 
+export class InvalidProfileError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid onboarding profile: ${reason}`);
+    this.name = 'InvalidProfileError';
+  }
+}
+
 export class WaitlistLockedError extends Error {
   constructor(
     readonly position: number,

@@ -36,11 +36,14 @@ export const handler = async (
       new SsmWaitlistCapAdapter(REGION),
     );
 
+    // Seed the display name from the standard `name` attribute (set at sign-up
+    // or supplied by the federated IdP). The rest of the profile is captured in
+    // the onboarding step; onboarded_at stays null until then.
     const profile = {
-      fullName: attrs['custom:full_name'] ?? '',
-      country:  attrs['custom:country']   ?? 'NL',
-      language: attrs['custom:language']  ?? 'nl',
-      currency: attrs['custom:currency']  ?? 'EUR',
+      fullName: attrs.name ?? '',
+      country:  'NL',
+      language: 'nl',
+      currency: 'EUR',
     };
 
     const { status } = await service.provisionUser(cognitoSub, email, profile);

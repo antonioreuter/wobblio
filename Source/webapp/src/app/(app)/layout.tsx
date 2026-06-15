@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/auth'
+import { fetchOnboardingState } from '@/lib/server/onboarding-status'
+import { ForceSignOut } from '@/components/auth/force-sign-out'
 import { AuthSessionProvider } from '@/components/providers/auth-session-provider'
 import { SessionTimeoutGuard } from '@/components/auth/session-timeout-guard'
 import { LeftNav, LeftNavDrawer, NavDrawerProvider } from '@/components/ui/left-nav'
@@ -22,6 +24,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect('/login')
   }
 
+  // Hosted-UI / email-password sign-up only collects credentials; the profile
+  // (full name, country, language, birthdate, consent) is captured in a
+  // post-sign-in onboarding step. Block the app until that is done.
+  //
+  // The DB is the source of truth. The session token's `onboarded` flag is set
+  // at sign-in and cannot be reliably refreshed within a session (update() does
+  // not persist the cookie under OpenNext), so when it is false we verify against
+  // the DB before bouncing — otherwise a just-onboarded user loops here forever.
+  if (!session.user.onboarded) {
+    const state = await fetchOnboardingState()
+    // Stale cookie for a deleted/locked user → clear it and re-auth, rather than
+    // showing onboarding to a "zombie" session.
+    if (state === 'invalid') return <ForceSignOut />
+    if (state !== 'onboarded') redirect('/onboarding')
+  }
+
   const userRole = session?.user?.role ?? 'STANDARD'
   const userName = session?.user?.name ?? ''
   const userEmail = session?.user?.email ?? ''
@@ -36,7 +54,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <LeftNavDrawer userRole={userRole} />
             <div className="app-body">
               <WorkspaceProvider>
-                <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} />
+                <TopBar usageUsed={9} usageLimit={15} userInitials={userInitials} userRole={userRole} />
                 {SANDBOX_ENABLED && <RlsWarningBanner />}
                 <div className="app-canvas">{children}</div>
               </WorkspaceProvider>

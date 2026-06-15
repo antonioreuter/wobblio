@@ -10,6 +10,7 @@ import { Construct } from 'constructs';
 import { NagSuppressions } from 'cdk-nag';
 import { EnvironmentConfig } from '../config/environment';
 import { WobblioDbStack } from './WobblioDbStack';
+import { WOBBLIO_LOGIN_SETTINGS, WOBBLIO_LOGIN_ASSETS } from '../branding/web-login-branding';
 import { applyWobblioTags } from '../utils/tagging';
 
 interface WobblioAuthStackProps extends StackProps {
@@ -21,6 +22,12 @@ export class WobblioAuthStack extends Stack {
   readonly userPool: cognito.UserPool;
   readonly userPoolClientMobile: cognito.UserPoolClient;
   readonly userPoolClientWeb: cognito.UserPoolClient;
+  /** NextAuth session-signing key, consumed by the SSR webapp Lambda as AUTH_SECRET. */
+  readonly authSecret: secretsmanager.Secret;
+  /** Cognito Hosted-UI host (no scheme), e.g. wobblio-dev.auth.eu-west-1.amazoncognito.com. */
+  readonly cognitoDomain: string;
+  /** Generated web-client secret, consumed by the SSR webapp as COGNITO_CLIENT_SECRET. */
+  readonly webClientSecret: SecretValue;
 
   constructor(scope: Construct, id: string, props: WobblioAuthStackProps) {
     super(scope, id, props);
@@ -33,7 +40,7 @@ export class WobblioAuthStack extends Stack {
 
     const dbHost      = ssm.StringParameter.valueForStringParameter(this, '/shared/db/endpoint');
     const dbPort      = ssm.StringParameter.valueForStringParameter(this, '/shared/db/port');
-    const dbSecretArn = ssm.StringParameter.valueForStringParameter(this, '/shared/db/wobblio/secret-arn');
+    const dbSecretArn = ssm.StringParameter.valueForStringParameter(this, config.dbSecretParam);
 
     const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(this, 'DbSecret', dbSecretArn);
 
@@ -100,15 +107,41 @@ export class WobblioAuthStack extends Stack {
       removalPolicy: config.stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
     });
 
-    // Hosted UI domain — allows social sign-in redirect
+    // Hosted UI domain — allows social sign-in redirect. Managed Login (v2)
+    // enables the branding designer so the hosted sign-in page can be themed to
+    // match the Wobblio webapp design (passwords stay on the Cognito origin).
+    const domainPrefix = `wobblio-${config.stage}`;
     this.userPool.addDomain('CognitoDomain', {
-      cognitoDomain: { domainPrefix: `wobblio-${config.stage}` },
+      cognitoDomain: { domainPrefix },
+      managedLoginVersion: cognito.ManagedLoginVersion.NEWER_MANAGED_LOGIN,
     });
+    // Full Hosted-UI host the SSR webapp uses for the OAuth token endpoint.
+    this.cognitoDomain = `${domainPrefix}.auth.${this.region}.amazoncognito.com`;
 
-    const callbackUrl =
+    // NextAuth (Auth.js) session-signing key for the SSR webapp. Generated once
+    // per stage and consumed as the AUTH_SECRET env var on the web Lambda.
+    this.authSecret = new secretsmanager.Secret(this, 'WebAuthSecret', {
+      secretName: `wobblio/${config.stage}/web-auth-secret`,
+      description: `NextAuth AUTH_SECRET for Wobblio ${config.stage} SSR webapp`,
+      generateSecretString: {
+        passwordLength: 48,
+        excludePunctuation: true,
+      },
+      removalPolicy: config.stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
+    });
+    NagSuppressions.addResourceSuppressions(this.authSecret, [
+      { id: 'AwsSolutions-SMG4', reason: 'NextAuth signing key rotation is a manual operator action at MVP; automatic rotation deferred to Epic 12 security controls' },
+    ]);
+
+    const appOrigin =
       config.stage === 'prod'
-        ? 'https://app.wobblio.com/api/auth/callback/cognito'
-        : `https://app.${config.stage}.wobblio.com/api/auth/callback/cognito`;
+        ? 'https://app.wobblio.com'
+        : `https://app.${config.stage}.wobblio.com`;
+    const callbackUrl = `${appOrigin}/api/auth/callback/cognito`;
+    // Post-logout destinations for the Cognito Hosted-UI /logout endpoint (used by
+    // the federated sign-out so the IdP SSO cookie is cleared, not just the local
+    // session). Each must exactly match the logout_uri the app sends.
+    const logoutUrls = [`${appOrigin}/`, `${appOrigin}/login`, `${appOrigin}/api/auth/signout`];
 
     this.userPoolClientMobile = this.userPool.addClient('MobileClient', {
       userPoolClientName: config.resourceName('mobile-client'),
@@ -138,11 +171,27 @@ export class WobblioAuthStack extends Stack {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
         callbackUrls: [callbackUrl],
-        logoutUrls: [callbackUrl.replace('/api/auth/callback/cognito', '/api/auth/signout')],
+        logoutUrls,
       },
       accessTokenValidity: Duration.hours(1),
       refreshTokenValidity: Duration.days(30),
       preventUserExistenceErrors: true,
+    });
+
+    // Force creation of the DescribeCognitoUserPoolClient lookup here (in this
+    // stack) so the SSR webapp can read the generated client secret and the
+    // cdk-nag suppression below resolves against an existing resource.
+    this.webClientSecret = this.userPoolClientWeb.userPoolClientSecret;
+
+    // Managed Login branding for the web client — Wobblio palette + logo themed
+    // onto the hosted sign-in page (passwords stay on the Cognito origin).
+    new cognito.CfnManagedLoginBranding(this, 'WebManagedLoginBranding', {
+      userPoolId: this.userPool.userPoolId,
+      clientId: this.userPoolClientWeb.userPoolClientId,
+      useCognitoProvidedValues: false,
+      returnMergedResources: true,
+      settings: WOBBLIO_LOGIN_SETTINGS,
+      assets: WOBBLIO_LOGIN_ASSETS,
     });
 
     NagSuppressions.addResourceSuppressions(this.userPool, [
@@ -191,6 +240,19 @@ export class WobblioAuthStack extends Stack {
 
     NagSuppressions.addResourceSuppressions(preSignUpHookFn, hookNagSuppressions, true);
     NagSuppressions.addResourceSuppressions(postConfirmationHookFn, hookNagSuppressions, true);
+
+    // Reading the generated web-client secret (for the SSR webapp) provisions a
+    // CDK-managed AwsCustomResource singleton (DescribeCognitoUserPoolClient).
+    // Its provider Lambda + role are CDK-owned, like certArnReader in the web stack.
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `/${this.stackName}/AWS679f53fac002430cb0da5b7982bd2287`,
+      [
+        { id: 'AwsSolutions-L1', reason: 'AwsCustomResource provider Lambda runtime is CDK-managed' },
+        { id: 'AwsSolutions-IAM4', reason: 'AwsCustomResource provider uses the CDK-managed execution role with AWSLambdaBasicExecutionRole' },
+      ],
+      true,
+    );
 
     applyWobblioTags(this, config);
 

@@ -8,6 +8,7 @@ import { Nextjs } from 'cdk-nextjs-standalone';
 import { Construct } from 'constructs';
 import { NagSuppressions } from 'cdk-nag';
 import { EnvironmentConfig } from '../config/environment';
+import { WobblioAuthStack } from './WobblioAuthStack';
 import { applyWobblioTags } from '../utils/tagging';
 
 // All EU/EEA member states + UK — launch market is NL, expanding as warranted
@@ -19,13 +20,14 @@ const EU_GEO_ALLOWLIST: string[] = [
 
 interface WobblioWebStackProps extends StackProps {
   config: EnvironmentConfig;
+  authStack: WobblioAuthStack;
 }
 
 export class WobblioWebStack extends Stack {
   constructor(scope: Construct, id: string, props: WobblioWebStackProps) {
     super(scope, id, props);
 
-    const { config } = props;
+    const { config, authStack } = props;
 
     // ── Cross-region SSM read: certificate ARN from us-east-1 ────────────────
     const certArnReader = new cr.AwsCustomResource(this, 'WebCertArnReader', {
@@ -55,8 +57,27 @@ export class WobblioWebStack extends Stack {
       domainName: config.zoneDomain,
     });
 
+    // ── Server-side auth env for the OpenNext SSR Lambda ──────────────────────
+    // The SSR app (Auth.js + Cognito Hosted UI) reads these at runtime. Omitting
+    // COGNITO_ENDPOINT keeps the app in hosted-UI mode (vs. the local credentials
+    // provider). NEXT_PUBLIC_* are baked at build time; these are server-only.
+    const ssrEnvironment: Record<string, string> = {
+      // Server-only backend base URL for BFF route handlers. A runtime env var
+      // (not NEXT_PUBLIC_*) so it isn't build-time inlined — the OpenNext build
+      // otherwise picks up .env.local's localhost value over .env.production.
+      API_BASE_URL:         `https://${config.apiDomain}`,
+      COGNITO_REGION:       this.region,
+      COGNITO_USER_POOL_ID: authStack.userPool.userPoolId,
+      COGNITO_CLIENT_ID:    authStack.userPoolClientWeb.userPoolClientId,
+      COGNITO_CLIENT_SECRET: authStack.webClientSecret.unsafeUnwrap(),
+      COGNITO_DOMAIN:       authStack.cognitoDomain,
+      AUTH_SECRET:          authStack.authSecret.secretValue.unsafeUnwrap(),
+      AUTH_TRUST_HOST:      'true',
+    };
+
     const nextjs = new Nextjs(this, 'NextjsSite', {
       nextjsPath: webappDir,
+      environment: ssrEnvironment,
       // domainProps wires up ACM cert, CloudFront aliases, and Route53 A+AAAA records
       domainProps: {
         domainName: config.appDomain,

@@ -2,13 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { SessionTimeoutGuard } from './session-timeout-guard'
 
-const signOut = vi.fn()
+const federatedSignOut = vi.fn()
 const update = vi.fn()
 let sessionData: { error?: string } | null = { error: undefined }
 
 vi.mock('next-auth/react', () => ({
-  signOut: (...args: unknown[]) => signOut(...args),
   useSession: () => ({ data: sessionData, update }),
+}))
+
+vi.mock('@/lib/federated-sign-out', () => ({
+  federatedSignOut: (...args: unknown[]) => federatedSignOut(...args),
 }))
 
 // Control the idle lifecycle directly so we can drive each branch.
@@ -59,27 +62,27 @@ describe('SessionTimeoutGuard', () => {
 
     expect(update).toHaveBeenCalledTimes(1)
     expect(idleState.stayActive).toHaveBeenCalledTimes(1)
-    expect(signOut).not.toHaveBeenCalled()
+    expect(federatedSignOut).not.toHaveBeenCalled()
   })
 
-  it('signs out to the landing page on "Log out now"', () => {
+  it('signs out (federated) on "Log out now"', () => {
     idleState.warning = true
     render(<SessionTimeoutGuard />)
 
     fireEvent.click(screen.getByTestId('session-timeout-logout'))
 
-    expect(signOut).toHaveBeenCalledWith({ callbackUrl: '/' })
+    expect(federatedSignOut).toHaveBeenCalledTimes(1)
   })
 
-  it('signs out to the landing page when the idle timeout fires', () => {
+  it('signs out (federated) when the idle timeout fires', () => {
     render(<SessionTimeoutGuard />)
     idleState.onTimeout?.()
-    expect(signOut).toHaveBeenCalledWith({ callbackUrl: '/' })
+    expect(federatedSignOut).toHaveBeenCalledTimes(1)
   })
 
   it('signs out when the token refresh has failed', () => {
     sessionData = { error: 'RefreshAccessTokenError' }
     render(<SessionTimeoutGuard />)
-    expect(signOut).toHaveBeenCalledWith({ callbackUrl: '/' })
+    expect(federatedSignOut).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,10 +1,10 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { IWaitlistRepository, WaitlistUser } from '@core/ports/IWaitlistRepository';
 
 const WAITLIST_COUNTER = 'waitlist_count';
 
 export class WaitlistRepositoryAdapter implements IWaitlistRepository {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool | PoolClient) {}
 
   async getWaitlistedBatch(limit: number): Promise<WaitlistUser[]> {
     const result = await this.pool.query<WaitlistUser>(

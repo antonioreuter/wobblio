@@ -23,31 +23,26 @@ const isLocal = () => Boolean(process.env.COGNITO_ENDPOINT)
 export async function registerUser(
   email: string,
   password: string,
-  fullName: string,
-  country: string,
-  language: string,
-  currency: string,
 ): Promise<{ error?: string }> {
   try {
+    // Sign-up collects credentials only — identical to the Cognito Hosted UI on
+    // AWS (local↔dev parity). The full profile (name, consent, birthdate,
+    // country, language) is gathered in the onboarding step and stored in the DB.
     const signUpResult = await cognitoClient().send(
       new SignUpCommand({
         ClientId: clientId(),
         Username: email,
         Password: password,
-        UserAttributes: [
-          { Name: 'email',            Value: email },
-          { Name: 'custom:full_name', Value: fullName },
-          { Name: 'custom:country',   Value: country },
-          { Name: 'custom:language',  Value: language },
-          { Name: 'custom:currency',  Value: currency },
-        ],
+        UserAttributes: [{ Name: 'email', Value: email }],
       }),
     )
 
     const cognitoSub = signUpResult.UserSub
 
     if (isLocal()) {
-      // cognito-local doesn't fire Lambda triggers — auto-confirm and provision manually
+      // cognito-local fires no Lambda triggers — auto-confirm and provision the
+      // (empty-profile, not-yet-onboarded) app_user row that the prod
+      // post-confirmation hook would create.
       await cognitoClient().send(
         new AdminConfirmSignUpCommand({
           UserPoolId: userPoolId(),
@@ -56,7 +51,7 @@ export async function registerUser(
       )
 
       if (cognitoSub) {
-        await provisionUser({ cognitoSub, email, fullName, country, language, currency }).catch(
+        await provisionUser({ cognitoSub, email }).catch(
           err => console.error('[provision] registration provision failed', err),
         )
       }

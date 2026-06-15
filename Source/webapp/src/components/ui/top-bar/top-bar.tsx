@@ -12,7 +12,7 @@ interface TopBarProps {
   usageUsed?: number
   usageLimit?: number
   userInitials?: string
-  userPlan?: string
+  userRole?: string
 }
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -36,7 +36,7 @@ export function TopBar({
   usageUsed = 0,
   usageLimit = 15,
   userInitials = 'AR',
-  userPlan = 'Premium',
+  userRole = 'STANDARD',
 }: TopBarProps) {
   const pathname = usePathname() ?? '/dashboard'
   const { toggleDrawer } = useNavDrawer()
@@ -88,7 +88,7 @@ export function TopBar({
           <span className="topbar-upload-label">Upload</span>
         </button>
         <ThemeToggle className="btn-icon topbar-theme" />
-        <UserMenu userInitials={userInitials} userPlan={userPlan} />
+        <UserMenu userInitials={userInitials} userRole={userRole} />
       </div>
     </header>
   )

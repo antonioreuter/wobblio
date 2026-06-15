@@ -209,12 +209,15 @@ To override a value locally, append to `.env.local` after generation — it is g
 
 | | Local dev | Production / staging |
 |---|---|---|
+| Sign-up | Email/password form → cognito-local | Cognito Hosted UI (email + password) |
 | Login flow | Email/password form → cognito-local `InitiateAuth` | Redirect to Cognito Hosted UI (OIDC) |
+| Profile capture | Post-sign-in onboarding step → backend `/me/profile` | Same (identical onboarding + backend path) |
+| Backend | `npm run dev` harness on `:3001` → real `apiHandler` | API Gateway → Lambda fleet |
 | Session | NextAuth httpOnly cookie | NextAuth httpOnly cookie |
 | Seed user | `dev@wobblio.local` / `Dev1234!@#$` | Real Cognito users |
 | Re-init auth | `make cognito-init` | CDK deploy of `WobblioAuthStack` |
 
-> cognito-local implements the Cognito API but **not** the OAuth Hosted UI endpoints. The local login form (Credentials provider) is enabled automatically when `COGNITO_ENDPOINT` is set.
+> cognito-local implements the Cognito API but **not** the OAuth Hosted UI endpoints, so the *credential-entry screen* is the only intentional local/prod difference — local uses the in-app Credentials form (enabled automatically when `COGNITO_ENDPOINT` is set). Everything after sign-in (onboarding, the `/me/profile` backend call, the session gate) runs the same code in both environments.
 
 ---
 

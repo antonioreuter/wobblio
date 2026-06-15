@@ -10,7 +10,7 @@ export function Checkbox({ checked, defaultChecked, onChange, label, id, disable
     <label
       style={{
         display: 'inline-flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         gap: '12px',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
@@ -45,7 +45,7 @@ export function Checkbox({ checked, defaultChecked, onChange, label, id, disable
       >
         {isOn ? '✓' : ''}
       </span>
-      {label && <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{label}</span>}
+      {label && <span style={{ minWidth: 0, fontSize: '14px', lineHeight: 1.5, color: 'var(--text-primary)' }}>{label}</span>}
     </label>
   )
 }

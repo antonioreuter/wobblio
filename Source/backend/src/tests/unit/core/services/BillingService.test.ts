@@ -48,6 +48,8 @@ describe('BillingService', () => {
       findByCognitoSub: vi.fn(),
       insertUser: vi.fn(),
       promoteToPremium: vi.fn(),
+      getProfile: vi.fn(),
+      completeOnboarding: vi.fn(),
     };
     sut = new BillingService(gateway, whitelist, paymentRepo, archive, userRepo, URLS);
   });

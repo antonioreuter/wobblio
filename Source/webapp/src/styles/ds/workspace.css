@@ -1366,6 +1366,11 @@
   border: 1px solid var(--glass-border);
   white-space: nowrap;
 }
+/* Role badge variants — colour pairs with the icon + label, never alone. */
+.plan-chip--standard { color: var(--text-muted); background: var(--surface-2, rgba(100,116,139,0.10)); }
+.plan-chip--premium  { color: var(--brand);   background: var(--brand-glow); }
+.plan-chip--tester   { color: var(--warning); background: var(--warning-glow); }
+.plan-chip--admin    { color: var(--danger);  background: var(--danger-glow); }
 .user-menu-trigger {
   display: flex;
   align-items: center;

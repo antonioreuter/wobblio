@@ -244,7 +244,7 @@
   color: var(--text-secondary);
   cursor: pointer;
 }
-.auth-consent > :first-child { margin-top: 1px; flex-shrink: 0; }
+.auth-consent > :first-child { min-width: 0; }
 
 /* OTP / verify */
 .verify-icon {

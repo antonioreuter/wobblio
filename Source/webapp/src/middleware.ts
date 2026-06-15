@@ -19,7 +19,10 @@ function generateNonce(): string {
 }
 
 function buildCsp(nonce: string): string {
-  const apiOrigin = process.env.NEXT_PUBLIC_API_BASE_URL ?? ''
+  // Runtime server-only var on AWS; falls back to the build-time public var for
+  // local dev. Avoids inlining .env.local's localhost origin into the deployed
+  // CSP. Client calls go same-origin via /api/* BFF routes, covered by 'self'.
+  const apiOrigin = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? ''
 
   return [
     "default-src 'self'",
@@ -50,9 +53,14 @@ export default auth((req: NextRequest & { auth: unknown }) => {
   const csp   = buildCsp(nonce)
 
   // Forward nonce to server components via request header so layouts can
-  // pass it to any <Script nonce={nonce}> they render
+  // pass it to any <Script nonce={nonce}> they render. The CSP must also be on
+  // the REQUEST headers: that's how Next.js reads the nonce and applies it to
+  // its own framework inline scripts (hydration bootstrap). Without it, those
+  // scripts are blocked because a nonce in script-src makes the browser ignore
+  // 'unsafe-inline'.
   const requestHeaders = new Headers(req.headers)
   requestHeaders.set('x-nonce', nonce)
+  requestHeaders.set('Content-Security-Policy', csp)
 
   const response = NextResponse.next({ request: { headers: requestHeaders } })
 

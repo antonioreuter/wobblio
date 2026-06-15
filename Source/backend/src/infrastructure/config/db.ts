@@ -17,6 +17,20 @@ export async function buildPool(
 ): Promise<Pool> {
   if (pool) return pool;
 
+  // Local dev (Docker Postgres) has no Secrets Manager and no TLS —
+  // connect via DATABASE_URL with SSL disabled.
+  if (process.env.STAGE === 'local' && process.env.DATABASE_URL) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 1,
+      idleTimeoutMillis: 0,
+      connectionTimeoutMillis: 5000,
+      options: `--statement_timeout=${statementTimeoutMs}`,
+      ssl: false,
+    });
+    return pool;
+  }
+
   const sm = new SecretsManagerClient({});
   const response = await sm.send(new GetSecretValueCommand({ SecretId: secretArn }));
   const secret: DbSecret = JSON.parse(response.SecretString ?? '{}');

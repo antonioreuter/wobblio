@@ -9,9 +9,10 @@ import { SsmBillingWhitelistAdapter } from '@infrastructure/adapters/SsmBillingW
 import { PaymentTransactionRepositoryAdapter } from '@infrastructure/adapters/PaymentTransactionRepositoryAdapter';
 import { S3BillingArchiveAdapter } from '@infrastructure/adapters/S3BillingArchiveAdapter';
 import { BillingService } from '@core/services/BillingService';
-import { InvalidBillingPlanError } from '@core/domain/errors';
+import { ProfileService } from '@core/services/ProfileService';
+import { InvalidBillingPlanError, InvalidProfileError } from '@core/domain/errors';
 import type { AppUser } from '@core/ports/IAppUserRepository';
-import type { Pool } from 'pg';
+import type { PoolClient } from 'pg';
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 
@@ -41,9 +42,11 @@ export const handler = async (
 
   const client = await pool.connect();
   try {
-    const userRepo = new AppUserRepositoryAdapter(pool);
+    // Every query runs on the single acquired `client` so the request uses one
+    // connection (max:1) and shares the RLS tenant context set below.
+    const userRepo = new AppUserRepositoryAdapter(client);
     const tenantCtx = new TenantContextAdapter(client);
-    const waitlistRepo = new WaitlistRepositoryAdapter(pool);
+    const waitlistRepo = new WaitlistRepositoryAdapter(client);
 
     const user = await userRepo.findByCognitoSub(cognitoSub);
     if (!user) {
@@ -59,8 +62,11 @@ export const handler = async (
     const path = event.path ?? '';
     const method = event.httpMethod ?? 'GET';
     const isBillingRoute = path.startsWith('/billing/');
+    const isMeRoute = path.startsWith('/me/');
 
-    if (user.status === 'WAITLIST' && !isBillingRoute) {
+    // Billing (upgrade) and own-profile onboarding stay reachable while
+    // waitlisted; everything else is gated until a slot is released.
+    if (user.status === 'WAITLIST' && !isBillingRoute && !isMeRoute) {
       const total = await waitlistRepo.getWaitlistCount();
       log.info('waitlisted user access attempt', { userId: user.id, total });
       return json(423, {
@@ -74,7 +80,11 @@ export const handler = async (
     log.info('request authorised', { userId: user.id, role: user.role, path, method });
 
     if (isBillingRoute) {
-      return handleBillingRoute(pool, user, path, method, event, log);
+      return handleBillingRoute(client, user, path, method, event, log);
+    }
+
+    if (isMeRoute) {
+      return handleMeRoute(client, user, path, method, event, log);
     }
 
     return json(200, { status: 'ok' });
@@ -83,8 +93,50 @@ export const handler = async (
   }
 };
 
+async function handleMeRoute(
+  db: PoolClient,
+  user: AppUser,
+  path: string,
+  method: string,
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  if (path !== '/me/profile') {
+    return json(404, { message: 'Not Found' });
+  }
+
+  const service = new ProfileService(new AppUserRepositoryAdapter(db));
+
+  if (method === 'GET') {
+    return json(200, await service.getProfile(user.cognitoSub));
+  }
+
+  if (method === 'PUT') {
+    const body = parseJsonBody(event.body);
+    try {
+      await service.completeOnboarding(user.cognitoSub, {
+        fullName: String(body.fullName ?? ''),
+        country: String(body.country ?? ''),
+        language: String(body.language ?? ''),
+        currency: String(body.currency ?? ''),
+        birthdate: String(body.birthdate ?? ''),
+        consent: body.consent === true,
+      });
+      log.info('onboarding completed', { userId: user.id });
+      return json(200, { onboarded: true });
+    } catch (err) {
+      if (err instanceof InvalidProfileError) {
+        return json(400, { message: err.message });
+      }
+      throw err;
+    }
+  }
+
+  return json(405, { message: 'Method Not Allowed' });
+}
+
 async function handleBillingRoute(
-  pool: Pool,
+  db: PoolClient,
   user: AppUser,
   path: string,
   method: string,
@@ -96,7 +148,7 @@ async function handleBillingRoute(
   }
 
   if (path === '/billing/checkout-session') {
-    return handleCheckoutSession(pool, user, event, log);
+    return handleCheckoutSession(db, user, event, log);
   }
 
   if (path === '/billing/portal-session') {
@@ -110,7 +162,7 @@ async function handleBillingRoute(
 }
 
 async function handleCheckoutSession(
-  pool: Pool,
+  db: PoolClient,
   user: AppUser,
   event: APIGatewayProxyEvent,
   log: LambdaLogger,
@@ -124,9 +176,9 @@ async function handleCheckoutSession(
   const service = new BillingService(
     new MockBillingGatewayAdapter(),
     new SsmBillingWhitelistAdapter(REGION),
-    new PaymentTransactionRepositoryAdapter(pool),
+    new PaymentTransactionRepositoryAdapter(db),
     new S3BillingArchiveAdapter(REGION, archiveBucket),
-    new AppUserRepositoryAdapter(pool),
+    new AppUserRepositoryAdapter(db),
     {
       successUrl: `${webAppUrl}/upgrade/success`,
       cancelUrl: `${webAppUrl}/upgrade/cancel?reason=not_whitelisted`,

@@ -43,6 +43,13 @@ EXISTING_POOL_ID=$(
 if [[ -n "$EXISTING_POOL_ID" && "$EXISTING_POOL_ID" != "None" ]]; then
   ok "User pool already exists: $EXISTING_POOL_ID — skipping creation"
   USER_POOL_ID="$EXISTING_POOL_ID"
+  # Heal pools created before the profile custom attributes were added. Each
+  # add-custom-attributes is a no-op (and harmless error) if it already exists.
+  for attr in full_name country language currency; do
+    aws cognito-idp add-custom-attributes --user-pool-id "$USER_POOL_ID" $AWS_OPTS \
+      --custom-attributes "Name=$attr,AttributeDataType=String,Mutable=true" >/dev/null 2>&1 || true
+  done
+  ok "Custom profile attributes ensured"
 else
   # ── Create user pool ──────────────────────────────────────────────────────
   step "Creating user pool"
