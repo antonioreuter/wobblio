@@ -8,5 +8,13 @@ export interface LambdaLogger {
 }
 
 export function createLambdaLogger(service: string, requestId: string): LambdaLogger {
-  return pino({ level: 'info' }).child({ service, requestId });
+  // pino's signature is (mergingObject, msg); our callers use (msg, data). Without
+  // this adapter pino treats `data` as a printf arg and silently drops it.
+  const logger = pino({ level: 'info' }).child({ service, requestId });
+  const at = (level: 'info' | 'warn' | 'error' | 'debug') =>
+    (msg: string, data?: Record<string, unknown>): void => {
+      if (data) logger[level](data, msg);
+      else logger[level](msg);
+    };
+  return { info: at('info'), warn: at('warn'), error: at('error'), debug: at('debug') };
 }

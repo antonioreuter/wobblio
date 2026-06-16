@@ -20,15 +20,17 @@ function validateLine(line: unknown, index: number, issues: string[]): ParsedLin
   if (typeof l.raw_text !== 'string' || l.raw_text.length === 0) issues.push(`lines[${index}].raw_text must be a non-empty string`);
   if (!isNum(l.quantity)) issues.push(`lines[${index}].quantity must be a number`);
   if (!isNum(l.line_total)) issues.push(`lines[${index}].line_total must be a number`);
-  if (l.unit_price !== undefined && !isNum(l.unit_price)) issues.push(`lines[${index}].unit_price must be a number`);
-  if (l.unit_size_raw !== undefined && typeof l.unit_size_raw !== 'string') issues.push(`lines[${index}].unit_size_raw must be a string`);
+  // Optional fields: the vision model emits explicit `null` (not absent) when a line
+  // has no value, so treat null the same as undefined rather than failing validation.
+  if (l.unit_price != null && !isNum(l.unit_price)) issues.push(`lines[${index}].unit_price must be a number`);
+  if (l.unit_size_raw != null && typeof l.unit_size_raw !== 'string') issues.push(`lines[${index}].unit_size_raw must be a string`);
   if (issues.length > 0) return null;
   return {
     rawText: l.raw_text as string,
     quantity: l.quantity as number,
     lineTotal: l.line_total as number,
-    unitPrice: l.unit_price as number | undefined,
-    unitSizeRaw: l.unit_size_raw as string | undefined,
+    unitPrice: (l.unit_price ?? undefined) as number | undefined,
+    unitSizeRaw: (l.unit_size_raw ?? undefined) as string | undefined,
   };
 }
 

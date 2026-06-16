@@ -42,6 +42,17 @@ describe('parseReceiptJson — success', () => {
     }
   });
 
+  it('treats explicit null optional line fields as absent', () => {
+    const obj = validObject();
+    obj.lines = [{ raw_text: 'Brood', quantity: 2, line_total: 3.0, unit_price: null, unit_size_raw: null } as never];
+    const result = parseReceiptJson(JSON.stringify(obj));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.lines[0].unitPrice).toBeUndefined();
+      expect(result.value.lines[0].unitSizeRaw).toBeUndefined();
+    }
+  });
+
   it('extracts JSON wrapped in a ```json fence', () => {
     const result = parseReceiptJson('```json\n' + JSON.stringify(validObject()) + '\n```');
     expect(result.ok).toBe(true);

@@ -23,7 +23,9 @@ export class BedrockConverseAdapter implements IBedrockConverse {
               : [{ text: m.content }],
           })),
           system: request.systemPrompt ? [{ text: request.systemPrompt }] : undefined,
-          inferenceConfig: { temperature: request.temperature ?? 0, maxTokens: request.maxTokens },
+          // Default a generous output ceiling so large receipts don't truncate mid-JSON
+          // (a truncated response fails schema validation). Callers may still override.
+          inferenceConfig: { temperature: request.temperature ?? 0, maxTokens: request.maxTokens ?? 4096 },
         }),
       );
 
