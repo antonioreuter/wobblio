@@ -8,6 +8,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "cdk:synth": "cdk synth",
     "cdk:diff": "cdk diff",
     "cdk:deploy:local": "AWS_ENDPOINT_URL=http://localhost:4566 cdklocal deploy --require-approval never",
@@ -42,6 +44,7 @@
     "aws-cdk": "^2.150.0",
     "esbuild": "^0.23.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
   }
 }

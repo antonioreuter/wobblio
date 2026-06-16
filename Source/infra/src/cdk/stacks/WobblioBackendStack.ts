@@ -163,7 +163,11 @@ export class WobblioBackendStack extends Stack {
     );
 
     // ── IAM grants (least-privilege) ──────────────────────────────────────────
+    // api-handler PUTs (presign), reads (HeadObject on confirm + presignGet on
+    // detail view), and deletes (delete invoice) uploaded receipts.
     storageStack.uploadsBucket.grantPut(apiHandlerFn);
+    storageStack.uploadsBucket.grantRead(apiHandlerFn);
+    storageStack.uploadsBucket.grantDelete(apiHandlerFn);
     storageStack.uploadsBucket.grantRead(ingestionWorkerFn);
     storageStack.exportsBucket.grantReadWrite(apiHandlerFn);
     storageStack.billingArchiveBucket.grantWrite(apiHandlerFn);
@@ -209,6 +213,18 @@ export class WobblioBackendStack extends Stack {
     });
     [apiHandlerFn, cronWaitlistReleaseFn].forEach(fn => fn.addToRolePolicy(waitlistCapSsmPolicy));
 
+    // SSM: per-plan upload quotas — api-handler reads these (batched GetParameters)
+    // for the scan-quota check on /me/usage and presign. Must include GetParameters
+    // (plural) since SsmUploadQuotaAdapter loads all three in one call.
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/standard_uploads_per_week`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/premium_uploads_per_week`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/household_uploads_per_week`,
+      ],
+    }));
+
     // SSM: mock premium whitelist — api-handler reads at checkout time
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter'],
@@ -226,11 +242,29 @@ export class WobblioBackendStack extends Stack {
     );
     cronWaitlistReleaseFn.addEnvironment('SES_FROM_ADDRESS', 'noreply@wobblio.com');
 
-    // Bedrock: ingestion worker calls foundation models (model IDs are runtime SSM values)
+    // Bedrock: ingestion worker calls foundation models (model IDs are runtime SSM values).
+    // Models are invoked through cross-region inference profiles (e.g. eu.amazon.nova-lite),
+    // which require permission on the profile ARN AND the underlying foundation models in
+    // every member region — hence the all-region foundation-model wildcard.
     ingestionWorkerFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
-        resources: [`arn:aws:bedrock:${this.region}::foundation-model/*`],
+        resources: [
+          `arn:aws:bedrock:*::foundation-model/*`,
+          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
+        ],
+      }),
+    );
+
+    // SSM: ingestion worker resolves swappable model IDs (vision/auxiliary/embedder/insight)
+    // and the per-tenant daily AI-spend cap at runtime, one GetParameter per param.
+    ingestionWorkerFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter'],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/models/*`,
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/ai/*`,
+        ],
       }),
     );
 
@@ -437,8 +471,11 @@ export class WobblioBackendStack extends Stack {
     NagSuppressions.addResourceSuppressions(ingestionWorkerFn, [
       {
         id: 'AwsSolutions-IAM5',
-        reason: 'Bedrock foundation-model/* wildcard: model IDs are runtime SSM values and cannot be enumerated at synth time',
-        appliesTo: [`Resource::arn:aws:bedrock:${this.region}::foundation-model/*`],
+        reason: 'Bedrock foundation-model + inference-profile wildcards: model IDs are runtime SSM values, and cross-region inference profiles require foundation-model access in every member region — neither can be enumerated at synth time',
+        appliesTo: [
+          `Resource::arn:aws:bedrock:*::foundation-model/*`,
+          `Resource::arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
+        ],
       },
     ], true);
 

@@ -1,15 +1,27 @@
+import * as fs from 'fs';
 import { Client } from 'pg';
 import { merchantSeeds } from './seeds/merchant-aliases';
 import { categorySeed } from './seeds/product-taxonomy';
 import { countrySeed, subdivisionSeed } from './seeds/country-subdivisions';
 import { seedSsmParameters } from './seeds/ssm-parameters';
 
+// RDS requires TLS; local Postgres does not. Verify by default — pass the RDS CA
+// bundle via DB_SSL_CA (path or PEM). DB_SSL_NO_VERIFY exists only as an explicit
+// escape hatch for throwaway debugging and must never be used against real data.
+function buildSslConfig(): false | boolean | { ca?: string; rejectUnauthorized?: boolean } {
+  if (process.env.DB_SSL !== 'true') return false;
+  const ca = process.env.DB_SSL_CA;
+  if (ca) return { ca: fs.existsSync(ca) ? fs.readFileSync(ca, 'utf8') : ca };
+  if (process.env.DB_SSL_NO_VERIFY === 'true') return { rejectUnauthorized: false };
+  return true;
+}
+
 function buildDbClient(): Client {
   return new Client({
     connectionString:
       process.env.DATABASE_URL ??
       `postgres://${process.env.DB_USER ?? 'wobblio_dev'}:${process.env.DB_PASSWORD ?? 'wobblio_dev_secret'}@${process.env.DB_HOST ?? 'localhost'}:${process.env.DB_PORT ?? '5432'}/${process.env.DB_NAME ?? 'wobblio_local'}`,
-    ssl: false,
+    ssl: buildSslConfig(),
   });
 }
 
@@ -117,7 +129,14 @@ async function seedPostgres(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  await seedSsmParameters();
+  // SSM seeding writes mock model IDs and is for local only — real stages manage
+  // these parameters via deploy/ops, so seeding them here would clobber live config.
+  const stage = process.env.STAGE ?? 'local';
+  if (stage === 'local') {
+    await seedSsmParameters();
+  } else {
+    console.log(`Skipping SSM parameter seeding (STAGE=${stage} — reference data only).`);
+  }
   await seedPostgres();
   console.log('All seed operations complete.');
 }
