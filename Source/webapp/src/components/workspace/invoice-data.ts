@@ -5,7 +5,7 @@ export type StatusTone = 'success' | 'warning' | 'primary' | 'danger'
 export type Status = [StatusTone, string]
 
 export interface Invoice {
-  id: number
+  id: string
   merchant: string
   category: string
   dateISO: string
@@ -65,7 +65,7 @@ function buildInvoices(): Invoice[] {
     d.setDate(d.getDate() - day)
     const tags = [...new Set([TAG_POOL[k % TAG_POOL.length], TAG_POOL[(k * 2 + 1) % TAG_POOL.length]])]
     out.push({
-      id: k + 1,
+      id: String(k + 1),
       merchant: MERCHANTS[(k * 3) % MERCHANTS.length],
       category: CATEGORIES[k % CATEGORIES.length],
       dateISO: d.toISOString().slice(0, 10),

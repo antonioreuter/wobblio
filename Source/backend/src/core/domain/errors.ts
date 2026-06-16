@@ -74,3 +74,42 @@ export class WebhookVerificationError extends Error {
     this.name = 'WebhookVerificationError';
   }
 }
+
+export class DuplicateInvoiceError extends Error {
+  constructor(readonly imageSha256: string) {
+    super(`Receipt already scanned (sha256 ${imageSha256})`);
+    this.name = 'DuplicateInvoiceError';
+  }
+}
+
+export class QuotaExceededError extends Error {
+  constructor(
+    readonly counter: string,
+    readonly used: number,
+    readonly cap: number,
+  ) {
+    super(`Upload quota exceeded for ${counter}: ${used} >= ${cap}`);
+    this.name = 'QuotaExceededError';
+  }
+}
+
+export class InvoiceNotFoundError extends Error {
+  constructor(readonly invoiceId: string) {
+    super(`Invoice not found: ${invoiceId}`);
+    this.name = 'InvoiceNotFoundError';
+  }
+}
+
+export class SchemaValidationError extends Error {
+  constructor(readonly issues: string) {
+    super(`Output failed schema validation: ${issues}`);
+    this.name = 'SchemaValidationError';
+  }
+}
+
+export class StaleUploadError extends Error {
+  constructor(readonly invoiceId: string) {
+    super(`Upload object missing or expired for invoice ${invoiceId}`);
+    this.name = 'StaleUploadError';
+  }
+}

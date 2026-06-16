@@ -16,14 +16,14 @@ The end-to-end receipt ingestion pipeline: presigned S3 upload → SQS → worke
 ## Pipeline Architecture
 
 ```
-Client (mobile/web)
+Client (web; mobile capture/review deferred — see 16-mobile-capture-and-review.md)
   → compress image client-side
   → POST /invoices/presign (check quota, return presigned URL + invoice_id)
   → PUT to S3 presigned URL
-  → POST /invoices/{id}/confirm (triggers S3 → SQS event)
+  → POST /invoices/{id}/confirm (verify S3 object via HEAD, then enqueue SQS message)
   → return to dashboard with PROCESSING row
 
-S3 event → SQS ingestion queue (maxConcurrency 5)
+confirm endpoint → SQS ingestion queue (payload: invoice_id, tenant_id, s3_key; maxConcurrency 5)
   → ingestion worker Lambda:
       1. Idempotency: INSERT ingestion_ledger ON CONFLICT DO NOTHING
       2. Deduplication (image hash + fuzzy fingerprint)
@@ -51,14 +51,14 @@ PROCESSING → NEEDS_REVIEW (any stage below confidence threshold)
 
 `POST /invoices/presign`:
 - Enforces personal upload quota (or household quota if `household_id` provided)
-- Creates `invoice` row with `status=PROCESSING`
-- Writes `ingestion_ledger` entry
-- Returns presigned S3 PUT URL (30-min expiry) + `invoice_id`
+- Creates `invoice` row with `status=PROCESSING` (inside a transaction with `app.current_tenant_id` set — RLS)
+- Returns presigned S3 PUT URL (**≤300s / 5-min expiry**, per hard invariant #10) + `invoice_id`
 - Client compresses image to ≤1MB JPEG before upload
+- Does **not** write `ingestion_ledger` — that row is written by the worker as its first action (transport idempotency). `ingestion_ledger` is keyed on the S3 object key; a presign-time insert would make every worker delivery short-circuit as a duplicate.
 
 `POST /invoices/{id}/confirm`:
-- Verifies S3 object exists (HEAD request)
-- Enqueues message to SQS ingest queue
+- Verifies S3 object exists (HEAD request); if missing or stale (>300s past presign, URL expired) → `410 Gone`, client re-initiates presign
+- Enqueues message directly to the SQS ingest queue (`invoice_id`, `tenant_id`, `s3_key`) — there is **no** S3 `ObjectCreated` notification
 - Returns `202 Accepted`
 
 ## Deduplication (Two Layers)
@@ -73,7 +73,8 @@ Confirmed duplicates: emit no price observations, do not consume quota.
 
 ## Worker Contract (SQS Consumer)
 
-- First action: `INSERT ingestion_ledger ... ON CONFLICT DO NOTHING` (transport idempotency)
+- First action: `INSERT ingestion_ledger ... ON CONFLICT DO NOTHING` (transport idempotency); `rowCount === 0` → duplicate delivery, short-circuit
+- Set `app.current_tenant_id` (from the SQS message) before any tenant-scoped write — RLS
 - All downstream writes inside one transaction keyed to ledger row
 - Partial batch failure: `ReportBatchItemFailures` so one poisoned message doesn't recycle batch
 - maxReceiveCount 3 → DLQ
@@ -91,45 +92,37 @@ Any of the following → invoice moves to `NEEDS_REVIEW`:
 
 ## Review Screen Requirements
 
-**Mobile (Flutter):**
-- Vertically split: zoomable receipt photo (top), parsed fields (bottom)
-- Low-confidence fields pre-highlighted amber
-- Tap-to-fix opens bottom sheet: product search-as-you-type, size fix, price fix
-- Tag chip row: removable chips + add-tag picker over fixed vocabulary
-- Single sticky `Confirm` button
-- Target: clean receipt in one tap, messy receipt in <30 seconds
-
 **Web (Next.js):**
-- Right inspection drawer: side-by-side photo + fields (mirrors mobile)
+- Right inspection drawer: side-by-side photo + fields
 - `NEEDS_REVIEW` rows surfaced in a banner queue at top of Invoices page
-- Same correction capabilities as mobile
+- Correction capabilities: merchant/date/total tap-to-fix, line-item edit, tag chip row
 
-## Push Notifications
+> **Mobile (Flutter) review screen is deferred to `16-mobile-capture-and-review.md`.**
 
-After worker completes:
-- `PARSED`: push notification → deep-link to invoice card
-- `NEEDS_REVIEW`: push notification → deep-link to review screen
-- `FAILED_PROCESSING`: push notification with "tap to retry or contact support"
-- SNS mobile push (FCM for Android, APNs for iOS), device tokens stored in `app_user`, pruned on delivery failure
+## Completion Status & Notifications
+
+After the worker completes it writes the terminal status (`PARSED` / `NEEDS_REVIEW` / `FAILED_PROCESSING`) to the `invoice` row; web clients surface it via dashboard refresh.
+
+> **Push notifications (SNS FCM/APNs, `POST /me/device-token`, device-token storage & pruning, deep-links) are deferred to `16-mobile-capture-and-review.md`** — they only matter once the mobile client exists.
 
 ## User Feedback (Thumbs Up/Down)
 
 After invoice reaches `PARSED` (or after review confirmation):
-- Mobile: unobtrusive thumbs-up/down on invoice card
-- Web: same on invoice row / drawer
+- Web: thumbs-up/down on invoice row / drawer
 - Thumbs-down: opens 3-chip reason picker (`Wrong items`, `Wrong merchant/total`, `Other`) + optional free-text + shortcut to correction screen
 - Stored in `invoice_feedback` with `model_ids_snapshot` (model IDs + prompt versions)
 - Feeds: KPI aggregation, trust scoring, DOWN-ratio alarm, evaluation set
+
+> Mobile feedback affordance is deferred to `16-mobile-capture-and-review.md`.
 
 ---
 
 ## Checklist
 
 ### Presign & Upload
-- [ ] `POST /invoices/presign` endpoint: quota check, `invoice` row creation, S3 presigned PUT URL
-- [ ] S3 event → SQS message wiring (S3 notification on `ObjectCreated`)
-- [ ] `POST /invoices/{id}/confirm` endpoint: S3 HEAD check, SQS enqueue
-- [ ] Client-side image compression (≤1MB JPEG) in Flutter + Next.js
+- [ ] `POST /invoices/presign` endpoint: quota check, `invoice` row creation (no ledger write), S3 presigned PUT URL (≤300s)
+- [ ] `POST /invoices/{id}/confirm` endpoint: S3 HEAD check, enqueue SQS message directly (no S3 `ObjectCreated` notification)
+- [ ] Client-side image compression (≤1MB JPEG) in Next.js (Flutter deferred — see 16)
 - [ ] Multi-page receipt support: multiple images uploaded for one `invoice_id`
 
 ### Ingestion Worker Lambda
@@ -158,47 +151,29 @@ After invoice reaches `PARSED` (or after review confirmation):
 ### Invoice Status Updates
 - [ ] Status transitions: PROCESSING → PARSED / NEEDS_REVIEW / FAILED_PROCESSING / SUSPECTED_DUPLICATE
 - [ ] All status-update writes within the ingestion transaction
-- [ ] Worker emits invoice status to push notification on completion
-
-### Push Notifications
-- [ ] SNS platform applications: FCM (Android) and APNs (iOS) in CDK
-- [ ] Device token registration endpoint: `POST /me/device-token`
-- [ ] Device token storage in `app_user` or dedicated table
-- [ ] Device token pruning on SNS delivery failure (EndpointDisabled)
-- [ ] Push payload: notification type, `invoice_id`, deep-link path
-
-### Review Screen — Mobile (Flutter)
-- [ ] Split layout: pinch-to-zoom receipt image (top), scrollable parsed fields (bottom)
-- [ ] Amber highlight on `LOW_CONFIDENCE` fields
-- [ ] Merchant tap-to-fix: search-as-you-type against merchant table
-- [ ] Date tap-to-fix: date picker
-- [ ] Total tap-to-fix: numeric input
-- [ ] Line item tap-to-fix bottom sheet: product search, size/unit edit, price edit
-- [ ] Tag chip row with removable chips and vocabulary picker (§6.10.4)
-- [ ] Confirm button: saves corrections, flips to `PARSED`, triggers trust/alias updates
-- [ ] Discard button for `SUSPECTED_DUPLICATE`
+- [ ] Worker writes terminal status to the `invoice` row on completion
 
 ### Review Screen — Web (Next.js)
 - [ ] Collapsible right inspection drawer on Invoices page
 - [ ] Side-by-side photo + fields
 - [ ] `NEEDS_REVIEW` banner queue at top of Invoices table
-- [ ] Same correction capabilities as mobile
-- [ ] Tag chip row matching mobile design
+- [ ] Correction capabilities: merchant/date/total/line-item edits
+- [ ] Tag chip row with removable chips and vocabulary picker (§6.10.4)
 
-### User Feedback
-- [ ] Thumbs up/down affordance on invoice card (mobile) and row/drawer (web)
+### User Feedback (Web)
+- [ ] Thumbs up/down affordance on invoice row/drawer
 - [ ] Thumbs-down: 3-chip reason picker + optional free-text
 - [ ] Shortcut to correction screen from thumbs-down flow
 - [ ] `invoice_feedback` write with `model_ids_snapshot` (model IDs + prompt versions)
 
-### Invoice List / Dashboard
+### Invoice List / Dashboard (Web)
 - [ ] Dashboard recent invoices list: merchant avatar, merchant name, date, total, status pill
 - [ ] Status pill: `Processing...` shimmer, `Needs review` amber tap-target, `Parsed` green
-- [ ] Pull-to-refresh on mobile
 - [ ] Capture flow returns to dashboard immediately with Processing row (don't wait for parse)
 
-### Tag Filter (see §6.10.6)
-- [ ] Mobile: horizontally scrolling tag chip row above recent-invoices list
-- [ ] Web: tag filter chips on Invoices page alongside saved filters
+### Tag Filter — Web (see §6.10.6)
+- [ ] Tag filter chips on Invoices page alongside saved filters
 - [ ] Filter query: `search_tags && ARRAY[...]` (any-of) backed by GIN index
 - [ ] Free-tier: filter within 2-month window; premium: full history
+
+> **Deferred to `16-mobile-capture-and-review.md`:** push notifications (SNS FCM/APNs, `POST /me/device-token`, device-token storage & pruning), the Flutter review screen, mobile feedback, mobile dashboard/pull-to-refresh, and the mobile tag-filter chip row.

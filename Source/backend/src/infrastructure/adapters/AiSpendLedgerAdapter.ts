@@ -1,8 +1,8 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { IAiSpendLedger, AiSpendRecord } from '@core/ports/IAiSpendLedger';
 
 export class AiSpendLedgerAdapter implements IAiSpendLedger {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool | PoolClient) {}
 
   async record(entry: AiSpendRecord): Promise<void> {
     await this.pool.query(

@@ -1,24 +1,16 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertCircle, AlertTriangle, ArrowRight, RotateCw } from 'lucide-react'
-import { AnimatedNumber, Card, MetricCard, Money, ProgressBar } from '@/components/ds'
-import {
-  BUDGETS,
-  budgetColor,
-  InvoiceTable,
-  SpendOverTimeChart,
-  useWorkspace,
-} from '@/components/workspace'
+import { ArrowRight, RotateCw } from 'lucide-react'
+import { AnimatedNumber, Card, MetricCard, Money } from '@/components/ds'
+import { InvoiceTable, SpendOverTimeChart, useWorkspace } from '@/components/workspace'
+import { computeSpendMetrics } from '@/lib/invoice-metrics'
 
-const SCANS_USED = 9
-const SCANS_LIMIT = 15
-
-// Pairs budget meaning with an icon + label so it is never conveyed by color alone.
-function budgetStatus(pct: number): { icon: typeof AlertTriangle; label: string } | null {
-  if (pct > 100) return { icon: AlertTriangle, label: 'over' }
-  if (pct >= 85) return { icon: AlertCircle, label: 'near limit' }
-  return null
+interface Usage {
+  used: number
+  cap: number
+  remaining: number
 }
 
 export default function DashboardPage() {
@@ -32,12 +24,21 @@ export default function DashboardPage() {
     setShareTarget,
   } = useWorkspace()
 
-  const over = BUDGETS.filter((b) => b.pct > 100).length
-  const near = BUDGETS.filter((b) => b.pct >= 85 && b.pct <= 100).length
-  const onTrack = BUDGETS.filter((b) => b.pct < 85).length
-  const budgetTone = over > 0 ? 'danger' : near > 0 ? 'warning' : 'success'
-  const budgetValue = over > 0 ? `${over} over` : near > 0 ? `${near} near limit` : 'On track'
-  const scansLeft = Math.max(0, SCANS_LIMIT - SCANS_USED)
+  const metrics = useMemo(() => computeSpendMetrics(invoices, new Date()), [invoices])
+  const [usage, setUsage] = useState<Usage | null>(null)
+
+  useEffect(() => {
+    let active = true
+    fetch('/api/me/usage', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: Usage | null) => { if (active) setUsage(data) })
+      .catch(() => undefined)
+    return () => { active = false }
+  }, [invoices])
+
+  const delta = metrics.deltaPct
+  const spendingDown = delta !== null && delta < 0
+  const diff = metrics.thisMonth - metrics.lastMonth
 
   return (
     <div className="pane">
@@ -49,10 +50,7 @@ export default function DashboardPage() {
           ? [0, 1, 2, 3].map((i) => (
               <div className="glass" style={{ padding: 'var(--space-5)' }} key={i}>
                 <span className="sk sk-line" style={{ width: 90, height: 11 }} />
-                <span
-                  className="sk sk-line"
-                  style={{ width: 120, height: 26, margin: '12px 0 8px' }}
-                />
+                <span className="sk sk-line" style={{ width: 120, height: 26, margin: '12px 0 8px' }} />
                 <span className="sk sk-line" style={{ width: 140, height: 10 }} />
               </div>
             ))
@@ -60,33 +58,41 @@ export default function DashboardPage() {
             <>
               <MetricCard
                 label="Spent This Month"
-                value={<Money amount={642.3} animate />}
-                delta="June, month to date"
+                value={<Money amount={metrics.thisMonth} animate />}
+                delta="Month to date"
                 tone="neutral"
               />
               <MetricCard
                 label="vs Last Month"
-                value={<AnimatedNumber value={11.8} decimals={1} prefix="↓ " suffix="%" />}
-                delta="−€86.12 from €728.42"
-                tone="success"
+                value={
+                  delta === null
+                    ? '—'
+                    : <AnimatedNumber value={Math.abs(delta)} decimals={1} prefix={spendingDown ? '↓ ' : '↑ '} suffix="%" />
+                }
+                delta={
+                  delta === null
+                    ? 'No prior-month spend yet'
+                    : `${diff < 0 ? '−' : '+'}€${Math.abs(diff).toFixed(2)} from €${metrics.lastMonth.toFixed(2)}`
+                }
+                tone={delta === null ? 'neutral' : spendingDown ? 'success' : 'warning'}
               />
               <MetricCard
                 label="Budget Health"
-                value={budgetValue}
-                delta={`${onTrack} on track · ${near} near limit · ${over} over`}
-                tone={budgetTone}
+                value="Not set up"
+                delta="Budgets arrive in a later release"
+                tone="neutral"
               />
               <MetricCard
                 label="Scans Remaining"
-                value={<AnimatedNumber value={scansLeft} suffix=" left" />}
-                delta={`${SCANS_USED} of ${SCANS_LIMIT} used this week`}
-                tone={scansLeft <= 3 ? 'warning' : 'neutral'}
+                value={usage ? <AnimatedNumber value={usage.remaining} suffix=" left" /> : '—'}
+                delta={usage ? `${usage.used} of ${usage.cap} used this week` : 'Loading…'}
+                tone={usage && usage.remaining <= 3 ? 'warning' : 'neutral'}
               />
               <MetricCard
                 className="metric-ultrawide"
                 label="Top Merchant"
-                value="Albert Heijn"
-                delta="€248.60 this month"
+                value={metrics.topMerchant?.name ?? '—'}
+                delta={metrics.topMerchant ? `€${metrics.topMerchant.total.toFixed(2)} this month` : 'No spend this month'}
                 tone="neutral"
               />
             </>
@@ -94,44 +100,18 @@ export default function DashboardPage() {
       </div>
 
       <div className="dash-row">
-        <SpendOverTimeChart />
+        <SpendOverTimeChart data={metrics.series} />
 
-        <Card className="panel budget-tones">
+        <Card className="panel">
           <div className="panel-header" style={{ marginBottom: 4 }}>
             <span className="panel-title">Category Budgets</span>
           </div>
-          <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 18 }}>
-            <strong style={{ color: 'var(--text-primary)' }}>{BUDGETS.length} budgets</strong>{' '}
-            tracked ·{' '}
-            <strong style={{ color: over ? 'var(--danger)' : 'var(--success)' }}>
-              {over} over budget
-            </strong>
+          <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', margin: '12px 0 18px' }}>
+            Set monthly category budgets to track spending against your goals. Budget tracking lands
+            with the Budgets release.
           </p>
-          {BUDGETS.map((b) => {
-            const tone = budgetColor(b.pct)
-            const status = budgetStatus(b.pct)
-            const StatusIcon = status?.icon
-            return (
-              <div className="budget-item" key={b.name}>
-                <div className="budget-meta">
-                  <span className="name">{b.name}</span>
-                  <span className="pct" style={{ color: `var(--${tone})` }}>
-                    {StatusIcon && <StatusIcon size={13} aria-hidden="true" />}
-                    <AnimatedNumber value={b.pct} suffix="%" />
-                    {status ? ` ${status.label}` : ''}
-                  </span>
-                </div>
-                <ProgressBar
-                  value={Math.min(b.pct, 100)}
-                  tone={tone}
-                  animate
-                  ariaLabel={`${b.name} ${b.pct}%${status ? `, ${status.label}` : ''}`}
-                />
-              </div>
-            )
-          })}
           <Link href="/budgets" className="panel-footer-link" data-testid="dashboard-view-budgets">
-            View all budgets <ArrowRight size={14} />
+            Go to budgets <ArrowRight size={14} />
           </Link>
         </Card>
       </div>

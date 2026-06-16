@@ -8,9 +8,24 @@ import { MockBillingGatewayAdapter } from '@infrastructure/adapters/MockBillingG
 import { SsmBillingWhitelistAdapter } from '@infrastructure/adapters/SsmBillingWhitelistAdapter';
 import { PaymentTransactionRepositoryAdapter } from '@infrastructure/adapters/PaymentTransactionRepositoryAdapter';
 import { S3BillingArchiveAdapter } from '@infrastructure/adapters/S3BillingArchiveAdapter';
+import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/InvoiceRepositoryAdapter';
+import { QuotaRepositoryAdapter } from '@infrastructure/adapters/QuotaRepositoryAdapter';
+import { S3FileStorageAdapter } from '@infrastructure/adapters/S3FileStorageAdapter';
+import { SqsIngestionQueueAdapter } from '@infrastructure/adapters/SqsIngestionQueueAdapter';
+import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/SsmUploadQuotaAdapter';
 import { BillingService } from '@core/services/BillingService';
 import { ProfileService } from '@core/services/ProfileService';
-import { InvalidBillingPlanError, InvalidProfileError } from '@core/domain/errors';
+import { QuotaService } from '@core/services/QuotaService';
+import { PresignService } from '@core/services/PresignService';
+import { ConfirmService } from '@core/services/ConfirmService';
+import {
+  InvalidBillingPlanError,
+  InvalidProfileError,
+  DuplicateInvoiceError,
+  QuotaExceededError,
+  InvoiceNotFoundError,
+  StaleUploadError,
+} from '@core/domain/errors';
 import type { AppUser } from '@core/ports/IAppUserRepository';
 import type { PoolClient } from 'pg';
 
@@ -63,6 +78,7 @@ export const handler = async (
     const method = event.httpMethod ?? 'GET';
     const isBillingRoute = path.startsWith('/billing/');
     const isMeRoute = path.startsWith('/me/');
+    const isInvoicesRoute = path.startsWith('/invoices');
 
     // Billing (upgrade) and own-profile onboarding stay reachable while
     // waitlisted; everything else is gated until a slot is released.
@@ -87,6 +103,10 @@ export const handler = async (
       return handleMeRoute(client, user, path, method, event, log);
     }
 
+    if (isInvoicesRoute) {
+      return handleInvoicesRoute(client, user, path, method, event, log);
+    }
+
     return json(200, { status: 'ok' });
   } finally {
     client.release();
@@ -101,6 +121,8 @@ async function handleMeRoute(
   event: APIGatewayProxyEvent,
   log: LambdaLogger,
 ): Promise<APIGatewayProxyResult> {
+  if (path === '/me/usage' && method === 'GET') return handleUsage(db, user);
+
   if (path !== '/me/profile') {
     return json(404, { message: 'Not Found' });
   }
@@ -133,6 +155,143 @@ async function handleMeRoute(
   }
 
   return json(405, { message: 'Method Not Allowed' });
+}
+
+async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
+  const cap = await new SsmUploadQuotaAdapter(REGION).getPersonalUploadsCap(user.role);
+  const quotaService = new QuotaService(new QuotaRepositoryAdapter(db));
+  const used = await withTenantTx(db, user.id, () =>
+    quotaService.getUsed(user.id, 'UPLOADS', new Date()),
+  );
+  return json(200, { used, cap, remaining: Math.max(0, cap - used) });
+}
+
+const SHA256_RE = /^[a-f0-9]{64}$/i;
+
+async function withTenantTx<T>(db: PoolClient, tenantId: string, fn: () => Promise<T>): Promise<T> {
+  await db.query('BEGIN');
+  try {
+    await new TenantContextAdapter(db).setTenantId(tenantId);
+    const result = await fn();
+    await db.query('COMMIT');
+    return result;
+  } catch (err) {
+    await db.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  }
+}
+
+async function handleInvoicesRoute(
+  db: PoolClient,
+  user: AppUser,
+  path: string,
+  method: string,
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  if (method === 'GET' && path === '/invoices') return handleListInvoices(db, user);
+
+  const confirmMatch = path.match(/^\/invoices\/([^/]+)\/confirm$/);
+  if (method === 'POST' && confirmMatch) return handleConfirm(db, user, confirmMatch[1], log);
+
+  if (method === 'POST' && path === '/invoices/presign') return handlePresign(db, user, event, log);
+
+  const detailMatch = path.match(/^\/invoices\/([^/]+)$/);
+  if (method === 'GET' && detailMatch) return handleInvoiceDetail(db, user, detailMatch[1]);
+
+  return json(404, { message: 'Not Found' });
+}
+
+async function handleListInvoices(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
+  const invoices = await withTenantTx(db, user.id, () =>
+    new InvoiceRepositoryAdapter(db).listForTenant(100),
+  );
+  return json(200, { invoices });
+}
+
+async function handleInvoiceDetail(
+  db: PoolClient,
+  user: AppUser,
+  invoiceId: string,
+): Promise<APIGatewayProxyResult> {
+  const detail = await withTenantTx(db, user.id, () =>
+    new InvoiceRepositoryAdapter(db).getDetail(invoiceId),
+  );
+  if (!detail) return json(404, { message: 'Invoice not found' });
+
+  const uploadsBucket = process.env.UPLOADS_BUCKET!;
+  const { imageS3Key, ...rest } = detail;
+  const imageUrl = await new S3FileStorageAdapter(REGION, uploadsBucket).presignGet(imageS3Key, 300);
+  return json(200, { ...rest, imageUrl });
+}
+
+async function handlePresign(
+  db: PoolClient,
+  user: AppUser,
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody(event.body);
+  const imageSha256 = typeof body.imageSha256 === 'string' ? body.imageSha256 : '';
+  if (!SHA256_RE.test(imageSha256)) {
+    return json(400, { message: 'imageSha256 must be a 64-character hex string' });
+  }
+  const contentType = typeof body.contentType === 'string' ? body.contentType : 'image/jpeg';
+  const householdId = typeof body.householdId === 'string' ? body.householdId : null;
+
+  const uploadsBucket = process.env.UPLOADS_BUCKET!;
+  const service = new PresignService(
+    new InvoiceRepositoryAdapter(db),
+    new QuotaService(new QuotaRepositoryAdapter(db)),
+    new SsmUploadQuotaAdapter(REGION),
+    new S3FileStorageAdapter(REGION, uploadsBucket),
+  );
+
+  try {
+    const result = await withTenantTx(db, user.id, () =>
+      service.presign({
+        tenantId: user.id,
+        uploadedByUserId: user.id,
+        role: user.role,
+        householdId,
+        imageSha256,
+        contentType,
+      }),
+    );
+    log.info('presign issued', { userId: user.id, invoiceId: result.invoiceId });
+    return json(201, result);
+  } catch (err) {
+    if (err instanceof DuplicateInvoiceError) return json(409, { message: 'Receipt already scanned' });
+    if (err instanceof QuotaExceededError) {
+      return json(429, { message: 'Upload quota exceeded', used: err.used, cap: err.cap });
+    }
+    throw err;
+  }
+}
+
+async function handleConfirm(
+  db: PoolClient,
+  user: AppUser,
+  invoiceId: string,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const uploadsBucket = process.env.UPLOADS_BUCKET!;
+  const queueUrl = process.env.INGEST_QUEUE_URL!;
+  const service = new ConfirmService(
+    new InvoiceRepositoryAdapter(db),
+    new S3FileStorageAdapter(REGION, uploadsBucket),
+    new SqsIngestionQueueAdapter(REGION, queueUrl),
+  );
+
+  try {
+    await withTenantTx(db, user.id, () => service.confirm(invoiceId, user.id));
+    log.info('ingestion enqueued', { userId: user.id, invoiceId });
+    return json(202, { status: 'accepted', invoiceId });
+  } catch (err) {
+    if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
+    if (err instanceof StaleUploadError) return json(410, { message: 'Upload missing or expired; re-initiate presign' });
+    throw err;
+  }
 }
 
 async function handleBillingRoute(

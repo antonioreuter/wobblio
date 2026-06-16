@@ -10,18 +10,27 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { INVOICE_DB, TODAY, type Invoice } from './invoice-data'
+import { type Invoice } from './invoice-data'
 import { InvoiceDrawer } from './invoice-drawer'
 import { ConfirmDialog } from './confirm-dialog'
 import { ShareDialog } from './share-dialog'
 import { WorkspaceToast, type ToastState, type ToastTone } from './workspace-toast'
+import { mapInvoice, type BackendInvoice } from '@/lib/invoice-map'
+import { uploadReceipt, UploadError } from '@/lib/upload-receipt'
+
+async function fetchInvoices(): Promise<Invoice[]> {
+  const res = await fetch('/api/invoices', { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Failed to load invoices (${res.status})`)
+  const data = (await res.json()) as { invoices: BackendInvoice[] }
+  return data.invoices.map(mapInvoice)
+}
 
 interface WorkspaceContextValue {
   invoices: Invoice[]
   loading: boolean
   refreshing: boolean
   refresh: () => void
-  removeInvoice: (id: number) => void
+  removeInvoice: (id: string) => void
   openInvoice: Invoice | null
   setOpenInvoice: (inv: Invoice | null) => void
   setConfirmDelete: (inv: Invoice | null) => void
@@ -39,7 +48,7 @@ export function useWorkspace(): WorkspaceContextValue {
 }
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [invoices, setInvoices] = useState<Invoice[]>(INVOICE_DB)
+  const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [openInvoice, setOpenInvoice] = useState<Invoice | null>(null)
@@ -48,10 +57,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const loadInvoices = useCallback(() => fetchInvoices().then(setInvoices), [])
+
   useEffect(() => {
-    const id = setTimeout(() => { setInvoices(INVOICE_DB); setLoading(false) }, 1100)
-    return () => clearTimeout(id)
-  }, [])
+    loadInvoices().catch(() => undefined).finally(() => setLoading(false))
+  }, [loadInvoices])
 
   const showToast = useCallback((msg: string, tone: ToastTone = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -63,10 +73,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(() => {
     if (refreshing) return
     setRefreshing(true)
-    setTimeout(() => { setInvoices(INVOICE_DB); setRefreshing(false) }, 900)
-  }, [refreshing])
+    loadInvoices().catch(() => undefined).finally(() => setRefreshing(false))
+  }, [refreshing, loadInvoices])
 
-  const removeInvoice = useCallback((id: number) => {
+  const removeInvoice = useCallback((id: string) => {
     setInvoices((list) => list.filter((x) => x.id !== id))
   }, [])
 
@@ -91,26 +101,26 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const scanReceipt = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/png,image/jpeg,image/webp,application/pdf'
-    input.onchange = () => {
-      if (!input.files || !input.files.length) return
-      showToast('Processing your receipt — this can take a few seconds…', 'processing')
-      setTimeout(() => {
-        const next: Invoice = {
-          id: Date.now(),
-          merchant: 'Albert Heijn',
-          category: 'Groceries',
-          dateISO: TODAY.toISOString().slice(0, 10),
-          status: ['primary', 'Auto Parsed'],
-          tags: ['weekly'],
-          total: Math.round((10 + Math.random() * 40) * 100) / 100,
-        }
-        setInvoices((list) => [next, ...list])
-        showToast('Receipt scanned — added to your invoices.', 'success')
-      }, 1700)
+    input.accept = 'image/png,image/jpeg,image/webp'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      showToast('Uploading your receipt…', 'processing')
+      try {
+        await uploadReceipt(file)
+        showToast('Receipt uploaded — processing in the background…', 'processing')
+        // Show the PROCESSING row immediately, then poll as the worker parses it.
+        void loadInvoices().catch(() => undefined)
+        ;[2500, 5000, 9000].forEach((ms) =>
+          setTimeout(() => void loadInvoices().catch(() => undefined), ms),
+        )
+      } catch (err) {
+        const msg = err instanceof UploadError ? err.message : 'Upload failed — please try again.'
+        showToast(msg, 'danger')
+      }
     }
     input.click()
-  }, [showToast])
+  }, [showToast, loadInvoices])
 
   const value: WorkspaceContextValue = {
     invoices,

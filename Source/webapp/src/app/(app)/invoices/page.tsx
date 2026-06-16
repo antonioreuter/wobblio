@@ -15,29 +15,29 @@ import {
 } from 'lucide-react'
 import { Button, Card } from '@/components/ds'
 import {
-  ALL_TAGS,
   BLANK,
-  CATEGORIES,
-  daysAgo,
   FilterSelect,
   InvoiceTable,
-  MERCHANTS,
   PAGE_SIZE,
   PRESETS,
-  STATUSES,
-  TODAY,
   useWorkspace,
   type FilterDraft,
   type Invoice,
   type Preset,
 } from '@/components/workspace'
 
-function matchesPreset(iso: string, draft: FilterDraft, rangeInvalid: boolean) {
+const daysAgo = (now: Date, n: number): Date => {
+  const d = new Date(now)
+  d.setDate(d.getDate() - n)
+  return d
+}
+
+function matchesPreset(iso: string, draft: FilterDraft, rangeInvalid: boolean, now: Date) {
   const d = new Date(iso)
-  if (draft.preset === '30d') return d >= daysAgo(30)
+  if (draft.preset === '30d') return d >= daysAgo(now, 30)
   if (draft.preset === 'month')
-    return d.getUTCMonth() === TODAY.getUTCMonth() && d.getUTCFullYear() === TODAY.getUTCFullYear()
-  if (draft.preset === '90d') return d >= daysAgo(92)
+    return d.getUTCMonth() === now.getUTCMonth() && d.getUTCFullYear() === now.getUTCFullYear()
+  if (draft.preset === '90d') return d >= daysAgo(now, 92)
   if (draft.preset === 'custom') {
     if (rangeInvalid || !draft.from || !draft.to) return true
     return d >= new Date(draft.from) && d <= new Date(draft.to)
@@ -45,14 +45,30 @@ function matchesPreset(iso: string, draft: FilterDraft, rangeInvalid: boolean) {
   return true
 }
 
-function filterInvoices(invoices: Invoice[], draft: FilterDraft, rangeInvalid: boolean) {
+function filterInvoices(invoices: Invoice[], draft: FilterDraft, rangeInvalid: boolean, now: Date) {
   return invoices.filter((inv) =>
     (draft.category === 'all' || inv.category === draft.category) &&
     (draft.merchant === 'all' || inv.merchant === draft.merchant) &&
     (draft.status === 'all' || inv.status[1] === draft.status) &&
     (draft.tags.length === 0 || draft.tags.some((t) => inv.tags.includes(t))) &&
-    matchesPreset(inv.dateISO, draft, rangeInvalid),
+    matchesPreset(inv.dateISO, draft, rangeInvalid, now),
   )
+}
+
+// Facets derived from the loaded invoices so the filters always match real data.
+function deriveFacets(invoices: Invoice[]) {
+  const categories = new Set<string>()
+  const merchants = new Set<string>()
+  const statuses = new Set<string>()
+  const tags = new Set<string>()
+  for (const inv of invoices) {
+    categories.add(inv.category)
+    merchants.add(inv.merchant)
+    statuses.add(inv.status[1])
+    inv.tags.forEach((t) => tags.add(t))
+  }
+  const sorted = (s: Set<string>) => Array.from(s).sort((a, b) => a.localeCompare(b))
+  return { categories: sorted(categories), merchants: sorted(merchants), statuses: sorted(statuses), tags: sorted(tags) }
 }
 
 export default function InvoicesPage() {
@@ -72,9 +88,12 @@ export default function InvoicesPage() {
   const rangeInvalid =
     draft.preset === 'custom' && draft.from !== '' && draft.to !== '' && (rangeDays < 0 || rangeDays > 92)
 
+  const now = useMemo(() => new Date(), [])
+  const facets = useMemo(() => deriveFacets(invoices), [invoices])
+
   const filtered = useMemo(
-    () => filterInvoices(invoices, draft, rangeInvalid),
-    [invoices, draft, rangeInvalid],
+    () => filterInvoices(invoices, draft, rangeInvalid, now),
+    [invoices, draft, rangeInvalid, now],
   )
 
   useEffect(() => { setVisible(PAGE_SIZE) }, [draft])
@@ -112,7 +131,7 @@ export default function InvoicesPage() {
             onChange={(e) => set({ category: e.target.value })}
           >
             <option value="all">All categories</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            {facets.categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </FilterSelect>
           <FilterSelect
             label="Merchant"
@@ -121,7 +140,7 @@ export default function InvoicesPage() {
             onChange={(e) => set({ merchant: e.target.value })}
           >
             <option value="all">All merchants</option>
-            {MERCHANTS.map((m) => <option key={m} value={m}>{m}</option>)}
+            {facets.merchants.map((m) => <option key={m} value={m}>{m}</option>)}
           </FilterSelect>
           <FilterSelect
             label="Date range"
@@ -138,7 +157,7 @@ export default function InvoicesPage() {
             onChange={(e) => set({ status: e.target.value })}
           >
             <option value="all">Any status</option>
-            {STATUSES.map(([, l]) => <option key={l} value={l}>{l}</option>)}
+            {facets.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
           </FilterSelect>
         </div>
 
@@ -176,7 +195,10 @@ export default function InvoicesPage() {
         <div className="filter-field" style={{ marginTop: 16 }}>
           <label className="filter-label">Tags</label>
           <div className="filter-tags">
-            {ALL_TAGS.map((t) => (
+            {facets.tags.length === 0 && (
+              <span className="filter-hint">Tags appear here as your receipts are parsed.</span>
+            )}
+            {facets.tags.map((t) => (
               <button
                 key={t}
                 type="button"

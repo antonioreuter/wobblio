@@ -7,10 +7,14 @@ import { SPEND_OVER_TIME } from './invoice-data'
 
 const eur = (v: number) => `€${v.toFixed(2)}`
 
-export function SpendOverTimeChart() {
+interface SpendOverTimeChartProps {
+  data?: Array<{ month: string; total: number }>
+}
+
+export function SpendOverTimeChart({ data: dataProp }: SpendOverTimeChartProps = {}) {
   const [hover, setHover] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
-  const data = SPEND_OVER_TIME
+  const data = dataProp ?? SPEND_OVER_TIME
 
   const W = 760, H = 300, padL = 52, padR = 18, padT = 20, padB = 34
   const plotW = W - padL - padR
@@ -60,7 +64,7 @@ export function SpendOverTimeChart() {
       </div>
       <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 16 }}>
         <strong style={{ color: 'var(--text-primary)' }}>{eur(total6mo)}</strong>{' '}
-        across the last 6 months · June is month-to-date.
+        across the last 6 months · {data[mtdIndex].month} is month-to-date.
       </p>
 
       {showTable ? (

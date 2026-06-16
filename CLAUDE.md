@@ -78,6 +78,7 @@ invoices/           Sample receipt fixtures for parsing tests
 | 3 | `06`–`08` | landing, ingestion pipeline, data-intelligence layer |
 | 4 | `09`–`11` | households, budgets + lists + optimizer, splitting + FX + reporting |
 | 5 | `12`–`15` | admin console, security controls, GDPR, full observability + KPIs |
+| Mobile | `16` | Flutter capture/review client + push delivery (post-MVP; `Source/mobile/` lands here) |
 
 Capacity envelope is enforced, not aspirational: ~10k registered users, ~4k MAU, ~3k ingestions/day on db.t3.micro. The waitlist guardrail (§2.5) is the load-shedding mechanism.
 

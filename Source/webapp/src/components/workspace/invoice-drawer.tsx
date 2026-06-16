@@ -5,13 +5,24 @@ import { createPortal } from 'react-dom'
 import { Box, Calendar, Share2, Shield, ShieldCheck, Tag as TagIcon, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
 import { Badge, MerchantIcon, Tag } from '@/components/ds'
 import { eur, fmtDate, type Invoice } from './invoice-data'
-import { buildLineItems } from './item-catalog'
 
 interface InvoiceDrawerProps {
   invoice: Invoice
   onClose: () => void
   onRequestDelete: (inv: Invoice) => void
   onShare: (inv: Invoice) => void
+}
+
+interface DetailLine {
+  rawText: string
+  quantity: number
+  unitPrice: number | null
+  lineTotal: number
+}
+
+interface InvoiceDetail {
+  imageUrl?: string
+  lines: DetailLine[]
 }
 
 export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare }: InvoiceDrawerProps) {
@@ -21,6 +32,22 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare }: In
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const [detail, setDetail] = useState<InvoiceDetail | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(true)
+  const [detailError, setDetailError] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setLoadingDetail(true)
+    setDetailError(false)
+    fetch(`/api/invoices/${invoice.id}`, { cache: 'no-store' })
+      .then((res) => { if (!res.ok) throw new Error(String(res.status)); return res.json() })
+      .then((data: InvoiceDetail) => { if (active) setDetail(data) })
+      .catch(() => { if (active) setDetailError(true) })
+      .finally(() => { if (active) setLoadingDetail(false) })
+    return () => { active = false }
+  }, [invoice.id])
+
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
   const [pop, setPop] = useState<'up' | 'down' | null>(null)
   const giveFeedback = (v: 'up' | 'down') => {
@@ -28,10 +55,6 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare }: In
     setPop(v)
     setTimeout(() => setPop(null), 420)
   }
-
-  const items = buildLineItems(invoice)
-  const subtotal = items.reduce((s, it) => s + it.lineTotal, 0)
-  const vat = Math.round(subtotal * 0.09 * 100) / 100
 
   if (typeof document === 'undefined') return null
 
@@ -67,25 +90,50 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare }: In
             <div className="dd-row">
               <span className="dd-label"><TagIcon size={14} /> Tags</span>
               <div className="tag-row">
-                {invoice.tags.map((t) => <Tag key={t}>{t}</Tag>)}
+                {invoice.tags.length ? invoice.tags.map((t) => <Tag key={t}>{t}</Tag>) : <span className="dd-val">—</span>}
               </div>
             </div>
           </div>
+
+          {detail?.imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={detail.imageUrl}
+              alt={`Receipt from ${invoice.merchant}`}
+              style={{ width: '100%', borderRadius: 12, border: '1px solid var(--border)', objectFit: 'contain', maxHeight: 420 }}
+            />
+          )}
 
           <div className="drawer-receipt">
             <div className="receipt-head">
               <span>Item</span><span>Qty</span><span>Amount</span>
             </div>
-            {items.map((it, i) => (
+
+            {loadingDetail && [0, 1, 2].map((i) => (
+              <div className="receipt-row" key={`sk-${i}`}>
+                <span className="ri-name"><span className="sk sk-line" style={{ width: 120 }} /></span>
+                <span className="ri-qty"><span className="sk sk-line" style={{ width: 20 }} /></span>
+                <span className="ri-amt"><span className="sk sk-line" style={{ width: 44, marginLeft: 'auto' }} /></span>
+              </div>
+            ))}
+
+            {!loadingDetail && detail?.lines.map((it, i) => (
               <div className="receipt-row" key={i}>
-                <span className="ri-name">{it.name}</span>
-                <span className="ri-qty">×{it.qty}</span>
+                <span className="ri-name">{it.rawText}</span>
+                <span className="ri-qty">×{it.quantity}</span>
                 <span className="ri-amt">{eur(it.lineTotal)}</span>
               </div>
             ))}
+
+            {!loadingDetail && !detailError && detail?.lines.length === 0 && (
+              <div className="receipt-row"><span className="ri-name">No line items parsed yet.</span></div>
+            )}
+
+            {detailError && (
+              <div className="receipt-row"><span className="ri-name">Couldn’t load line items.</span></div>
+            )}
+
             <div className="receipt-totals">
-              <div><span>Subtotal</span><span>{eur(subtotal - vat)}</span></div>
-              <div><span>VAT (9%)</span><span>{eur(vat)}</span></div>
               <div className="receipt-grand"><span>Total</span><span>{eur(invoice.total)}</span></div>
             </div>
           </div>

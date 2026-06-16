@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { MockedObject } from 'vitest';
 import { QuotaService } from '@core/services/QuotaService';
 import type { IQuotaRepository } from '@core/ports/IQuotaRepository';
+import { QuotaExceededError } from '@core/domain/errors';
 
 describe('QuotaService.getWeekStart', () => {
   let sut: QuotaService;
@@ -49,5 +50,32 @@ describe('QuotaService.getUsed', () => {
 
     expect(mockRepo.getUsed).toHaveBeenCalledWith('tenant-abc', 'UPLOADS', '2026-06-08');
     expect(result).toBe(2);
+  });
+});
+
+describe('QuotaService.reserveUpload', () => {
+  let mockRepo: MockedObject<IQuotaRepository>;
+  let sut: QuotaService;
+  const wednesday = new Date('2026-06-10T10:00:00Z');
+
+  beforeEach(() => {
+    mockRepo = { getUsed: vi.fn(), increment: vi.fn() };
+    sut = new QuotaService(mockRepo);
+  });
+
+  it('increments the counter when usage is below the cap', async () => {
+    mockRepo.getUsed.mockResolvedValue(2);
+
+    await sut.reserveUpload('tenant-abc', 'UPLOADS', 3, wednesday);
+
+    expect(mockRepo.increment).toHaveBeenCalledWith('tenant-abc', 'UPLOADS', '2026-06-08');
+  });
+
+  it('throws QuotaExceededError and does not increment when usage equals the cap', async () => {
+    mockRepo.getUsed.mockResolvedValue(3);
+
+    await expect(sut.reserveUpload('tenant-abc', 'UPLOADS', 3, wednesday))
+      .rejects.toBeInstanceOf(QuotaExceededError);
+    expect(mockRepo.increment).not.toHaveBeenCalled();
   });
 });

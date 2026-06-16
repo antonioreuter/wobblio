@@ -18,7 +18,9 @@ export class BedrockConverseAdapter implements IBedrockConverse {
           modelId: request.modelId,
           messages: request.messages.map(m => ({
             role: m.role,
-            content: [{ text: m.content }],
+            content: m.image
+              ? [{ image: { format: m.image.format, source: { bytes: m.image.bytes } } }, { text: m.content }]
+              : [{ text: m.content }],
           })),
           system: request.systemPrompt ? [{ text: request.systemPrompt }] : undefined,
         }),

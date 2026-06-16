@@ -6,9 +6,16 @@ export type BedrockStage =
   | 'WEEKLY_ADVISOR'
   | 'EMBEDDING';
 
+export interface BedrockImage {
+  format: 'jpeg' | 'png';
+  bytes: Uint8Array;
+}
+
 export interface BedrockMessage {
   role: 'user' | 'assistant';
   content: string;
+  // Optional image attachment for vision-capable stages (e.g. VISION_PARSE).
+  image?: BedrockImage;
 }
 
 export interface BedrockConverseRequest {

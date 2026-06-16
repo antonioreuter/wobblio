@@ -18,6 +18,7 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-l
 import { handler as apiHandler } from '@handlers/api-handler';
 import { handler as waitlistStatusHandler } from '@handlers/waitlist-status';
 import { handler as analyticsEventsHandler } from '@handlers/analytics-events';
+import { startIngestionPoller } from './ingestion-poller';
 
 type LambdaHandler = (event: APIGatewayProxyEvent, context: Context) => Promise<APIGatewayProxyResult>;
 
@@ -79,4 +80,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, () => console.log(`[local-api] backend listening on http://localhost:${PORT}`));
+server.listen(PORT, () => {
+  console.log(`[local-api] backend listening on http://localhost:${PORT}`);
+  startIngestionPoller();
+});

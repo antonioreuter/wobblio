@@ -1,8 +1,8 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { IQuotaRepository, QuotaType } from '@core/ports/IQuotaRepository';
 
 export class QuotaRepositoryAdapter implements IQuotaRepository {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool | PoolClient) {}
 
   async getUsed(tenantId: string, type: QuotaType, weekStart: string): Promise<number> {
     const result = await this.pool.query<{ used: string }>(
