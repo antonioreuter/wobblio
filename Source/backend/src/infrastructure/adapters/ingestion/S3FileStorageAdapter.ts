@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   HeadObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
@@ -40,6 +41,10 @@ export class S3FileStorageAdapter implements IS3FileStorage {
     const response = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
     if (!response.Body) throw new Error(`S3 object ${key} has no body`);
     return response.Body.transformToByteArray();
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 }
 

@@ -1,3 +1,5 @@
+import * as zlib from 'zlib';
+
 // Wobblio-branded Cognito Managed Login (v2) style for the web app client.
 // Maps the webapp's "Obsidian Aurora" design tokens onto the Managed Login
 // settings schema so the hosted sign-in page matches the app while keeping
@@ -106,9 +108,100 @@ function b64(svg: string): string {
   return Buffer.from(svg, 'utf-8').toString('base64');
 }
 
+// ── Favicon ───────────────────────────────────────────────────────────────────
+// Without a custom favicon, Managed Login loads its DEFAULT favicon from an
+// AWS-owned CDN (d3…cloudfront.net/default-assets/...) whose response carries no
+// CORS header, so the browser logs a noisy `ERR_FAILED`/CORS console error on the
+// hosted sign-in pages. Supplying our own favicon makes Cognito serve it from the
+// branding store instead, eliminating that fetch. We generate a small brand
+// gradient (indigo→teal) rounded square inline — no build-time deps, no binary
+// asset checked in. We provide the .ico (the exact format the page requests) and
+// an .svg for modern browsers.
+const INDIGO: [number, number, number] = [0x63, 0x66, 0xf1]; // --brand (dark) #6366F1
+const TEAL: [number, number, number] = [0x0d, 0x94, 0x88];   // --success #0D9488
+
+function crc32(buf: Buffer): number {
+  let crc = ~0;
+  for (let i = 0; i < buf.length; i++) {
+    crc ^= buf[i];
+    for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (~crc) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length, 0);
+  const typeBuf = Buffer.from(type, 'ascii');
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+  return Buffer.concat([len, typeBuf, data, crc]);
+}
+
+// 32×32 RGBA PNG: brand gradient (diagonal) clipped to a rounded square.
+function faviconPng(size = 32): Buffer {
+  const radius = Math.round((size * 7) / 32);
+  const raw = Buffer.alloc((size * 4 + 1) * size);
+  let p = 0;
+  for (let y = 0; y < size; y++) {
+    raw[p++] = 0; // filter type: none
+    for (let x = 0; x < size; x++) {
+      const t = (x + y) / (2 * (size - 1));
+      const dx = Math.max(radius - x, x - (size - 1 - radius), 0);
+      const dy = Math.max(radius - y, y - (size - 1 - radius), 0);
+      const inside = dx * dx + dy * dy <= radius * radius;
+      raw[p++] = Math.round(INDIGO[0] + (TEAL[0] - INDIGO[0]) * t);
+      raw[p++] = Math.round(INDIGO[1] + (TEAL[1] - INDIGO[1]) * t);
+      raw[p++] = Math.round(INDIGO[2] + (TEAL[2] - INDIGO[2]) * t);
+      raw[p++] = inside ? 255 : 0;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // colour type: RGBA
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', zlib.deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+// PNG-in-ICO container (browsers accept PNG-encoded icon entries).
+function faviconIco(size = 32): string {
+  const png = faviconPng(size);
+  const dir = Buffer.alloc(6);
+  dir.writeUInt16LE(1, 2); // type: icon
+  dir.writeUInt16LE(1, 4); // image count
+  const entry = Buffer.alloc(16);
+  entry[0] = size; // width  (0 ⇒ 256)
+  entry[1] = size; // height
+  entry.writeUInt16LE(1, 4);             // colour planes
+  entry.writeUInt16LE(32, 6);            // bits per pixel
+  entry.writeUInt32LE(png.length, 8);    // image byte size
+  entry.writeUInt32LE(6 + 16, 12);       // offset to image data
+  return Buffer.concat([dir, entry, png]).toString('base64');
+}
+
+const FAVICON_SVG = b64(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">` +
+    `<defs><linearGradient id="fg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">` +
+    `<stop offset="0" stop-color="#6366F1"/><stop offset="1" stop-color="#0D9488"/></linearGradient></defs>` +
+    `<rect width="32" height="32" rx="7" fill="url(#fg)"/></svg>`,
+);
+const FAVICON_ICO = faviconIco();
+
 // Light/dark form-logo assets. Cognito serves the matching one per color mode.
 // Wordmark + brand-accent "io" follow the theme's --text-primary and --brand.
 export const WOBBLIO_LOGIN_ASSETS = [
   { category: 'FORM_LOGO', colorMode: 'LIGHT', extension: 'SVG', bytes: b64(logoSvg('0F172A', '4F46E5')) },
   { category: 'FORM_LOGO', colorMode: 'DARK', extension: 'SVG', bytes: b64(logoSvg('F8FAFC', '6366F1')) },
+  // Brand favicon — overrides Cognito's default-assets favicon (which has no CORS
+  // header). Same gradient mark works on both color modes.
+  { category: 'FAVICON_ICO', colorMode: 'LIGHT', extension: 'ICO', bytes: FAVICON_ICO },
+  { category: 'FAVICON_ICO', colorMode: 'DARK', extension: 'ICO', bytes: FAVICON_ICO },
+  { category: 'FAVICON_SVG', colorMode: 'LIGHT', extension: 'SVG', bytes: FAVICON_SVG },
+  { category: 'FAVICON_SVG', colorMode: 'DARK', extension: 'SVG', bytes: FAVICON_SVG },
 ];

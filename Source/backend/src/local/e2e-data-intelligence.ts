@@ -88,6 +88,7 @@ const fakeStorage: IS3FileStorage = {
   async presignGet() { return 'x'; },
   async headExists() { return true; },
   async getObjectBytes() { return new Uint8Array([0xff, 0xd8, 0xff]); }, // bytes unused by the fake vision parser
+  async deleteObject() { /* no-op */ },
 };
 
 const fakeVisionParser = { async parse() { return fixtureReceipt(); } } as unknown as VisionParseService;

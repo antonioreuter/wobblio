@@ -25,8 +25,22 @@ async function fetchInvoices(): Promise<Invoice[]> {
   return data.invoices.map(mapInvoice)
 }
 
+/** Weekly scan quota for the current tenant (§2.4). */
+export interface Usage {
+  used: number
+  cap: number
+  remaining: number
+}
+
+async function fetchUsage(): Promise<Usage | null> {
+  const res = await fetch('/api/me/usage', { cache: 'no-store' })
+  if (!res.ok) return null
+  return (await res.json()) as Usage
+}
+
 interface WorkspaceContextValue {
   invoices: Invoice[]
+  usage: Usage | null
   loading: boolean
   refreshing: boolean
   refresh: () => void
@@ -49,6 +63,7 @@ export function useWorkspace(): WorkspaceContextValue {
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [usage, setUsage] = useState<Usage | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [openInvoice, setOpenInvoice] = useState<Invoice | null>(null)
@@ -58,10 +73,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadInvoices = useCallback(() => fetchInvoices().then(setInvoices), [])
+  const loadUsage = useCallback(() => fetchUsage().then(setUsage), [])
 
   useEffect(() => {
     loadInvoices().catch(() => undefined).finally(() => setLoading(false))
-  }, [loadInvoices])
+    loadUsage().catch(() => undefined)
+  }, [loadInvoices, loadUsage])
 
   const showToast = useCallback((msg: string, tone: ToastTone = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -73,21 +90,31 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(() => {
     if (refreshing) return
     setRefreshing(true)
+    loadUsage().catch(() => undefined)
     loadInvoices().catch(() => undefined).finally(() => setRefreshing(false))
-  }, [refreshing, loadInvoices])
+  }, [refreshing, loadInvoices, loadUsage])
 
   const removeInvoice = useCallback((id: string) => {
     setInvoices((list) => list.filter((x) => x.id !== id))
   }, [])
 
-  const doDelete = useCallback(() => {
+  const doDelete = useCallback(async () => {
     if (!confirmDelete) return
     const inv = confirmDelete
+    // Optimistic: drop the row and close the drawer/dialog right away, then
+    // confirm with the backend and roll back from the server on failure.
     removeInvoice(inv.id)
     setOpenInvoice((curr) => (curr && curr.id === inv.id ? null : curr))
     setConfirmDelete(null)
-    showToast(`${inv.merchant} invoice deleted.`, 'danger')
-  }, [confirmDelete, removeInvoice, showToast])
+    try {
+      const res = await fetch(`/api/invoices/${inv.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(String(res.status))
+      showToast(`${inv.merchant} invoice deleted.`, 'danger')
+    } catch {
+      void loadInvoices().catch(() => undefined)
+      showToast(`Couldn’t delete the ${inv.merchant} invoice — please try again.`, 'danger')
+    }
+  }, [confirmDelete, removeInvoice, showToast, loadInvoices])
 
   const copyLink = useCallback((link: string) => {
     try {
@@ -110,9 +137,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         await uploadReceipt(file)
         showToast('Receipt uploaded — processing in the background…', 'processing')
         // Show the PROCESSING row immediately, then poll as the worker parses it.
+        // The weekly counter increments once the upload is accepted, so refresh
+        // usage alongside each invoice poll.
         void loadInvoices().catch(() => undefined)
+        void loadUsage().catch(() => undefined)
         ;[2500, 5000, 9000].forEach((ms) =>
-          setTimeout(() => void loadInvoices().catch(() => undefined), ms),
+          setTimeout(() => {
+            void loadInvoices().catch(() => undefined)
+            void loadUsage().catch(() => undefined)
+          }, ms),
         )
       } catch (err) {
         const msg = err instanceof UploadError ? err.message : 'Upload failed — please try again.'
@@ -124,6 +157,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const value: WorkspaceContextValue = {
     invoices,
+    usage,
     loading,
     refreshing,
     refresh,

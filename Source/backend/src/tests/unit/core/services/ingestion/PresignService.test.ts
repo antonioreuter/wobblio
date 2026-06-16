@@ -34,12 +34,13 @@ describe('PresignService', () => {
       findFuzzyDuplicate: vi.fn(),
       persistParsed: vi.fn(),
       updateStatus: vi.fn(),
+      softDelete: vi.fn(),
       listForTenant: vi.fn(),
       getDetail: vi.fn(),
     };
     quotaRepo = { getUsed: vi.fn(), increment: vi.fn() };
     quotaProvider = { getPersonalUploadsCap: vi.fn(), getHouseholdUploadsCap: vi.fn() };
-    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn() };
+    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     sut = new PresignService(invoiceRepo, new QuotaService(quotaRepo), quotaProvider, storage);
   });
 

@@ -6,3 +6,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   return proxyToBackend(req, `/invoices/${encodeURIComponent(id)}`, 'GET')
 }
+
+// DELETE /api/invoices/:id → backend DELETE /invoices/:id (soft-delete + S3 purge)
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  return proxyToBackend(req, `/invoices/${encodeURIComponent(id)}`, 'DELETE')
+}

@@ -29,10 +29,11 @@ describe('ConfirmService', () => {
       findFuzzyDuplicate: vi.fn(),
       persistParsed: vi.fn(),
       updateStatus: vi.fn(),
+      softDelete: vi.fn(),
       listForTenant: vi.fn(),
       getDetail: vi.fn(),
     };
-    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn() };
+    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     queue = { enqueue: vi.fn() };
     sut = new ConfirmService(invoiceRepo, storage, queue);
   });

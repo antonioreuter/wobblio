@@ -58,7 +58,7 @@ describe('IngestionService', () => {
   beforeEach(() => {
     tenantContext = { setTenantId: vi.fn() };
     ledger = { claim: vi.fn(), setStatus: vi.fn() };
-    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn() };
+    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     visionParser = { parse: vi.fn() };
     merchantResolver = { resolve: vi.fn() };
     productNormalizer = { normalize: vi.fn() };
@@ -71,6 +71,7 @@ describe('IngestionService', () => {
       findFuzzyDuplicate: vi.fn(),
       persistParsed: vi.fn(),
       updateStatus: vi.fn(),
+      softDelete: vi.fn(),
       listForTenant: vi.fn(),
       getDetail: vi.fn(),
     };

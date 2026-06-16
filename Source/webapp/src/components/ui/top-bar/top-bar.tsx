@@ -9,8 +9,6 @@ import { TopBarSearch } from './topbar-search'
 import { UserMenu } from './user-menu'
 
 interface TopBarProps {
-  usageUsed?: number
-  usageLimit?: number
   userInitials?: string
   userRole?: string
 }
@@ -33,15 +31,15 @@ function deriveTitle(pathname: string): string {
 }
 
 export function TopBar({
-  usageUsed = 0,
-  usageLimit = 15,
   userInitials = 'AR',
   userRole = 'STANDARD',
 }: TopBarProps) {
   const pathname = usePathname() ?? '/dashboard'
   const { toggleDrawer } = useNavDrawer()
-  const { scanReceipt } = useWorkspace()
+  const { scanReceipt, usage } = useWorkspace()
   const title = deriveTitle(pathname)
+  const usageUsed = usage?.used ?? 0
+  const usageLimit = usage?.cap ?? 0
   const pct = Math.max(0, Math.min(100, (usageUsed / Math.max(1, usageLimit)) * 100))
 
   return (
@@ -70,7 +68,7 @@ export function TopBar({
             <div className="usage-top">
               <span className="usage-label">Invoices this week</span>
               <span className="usage-count">
-                <strong>{usageUsed}</strong> / {usageLimit}
+                {usage ? <><strong>{usageUsed}</strong> / {usageLimit}</> : '—'}
               </span>
             </div>
             <div className="usage-bar">

@@ -1,21 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowRight, RotateCw } from 'lucide-react'
 import { AnimatedNumber, Card, MetricCard, Money } from '@/components/ds'
 import { InvoiceTable, SpendOverTimeChart, useWorkspace } from '@/components/workspace'
 import { computeSpendMetrics } from '@/lib/invoice-metrics'
 
-interface Usage {
-  used: number
-  cap: number
-  remaining: number
-}
-
 export default function DashboardPage() {
   const {
     invoices,
+    usage,
     loading,
     refreshing,
     refresh,
@@ -25,16 +20,6 @@ export default function DashboardPage() {
   } = useWorkspace()
 
   const metrics = useMemo(() => computeSpendMetrics(invoices, new Date()), [invoices])
-  const [usage, setUsage] = useState<Usage | null>(null)
-
-  useEffect(() => {
-    let active = true
-    fetch('/api/me/usage', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: Usage | null) => { if (active) setUsage(data) })
-      .catch(() => undefined)
-    return () => { active = false }
-  }, [invoices])
 
   const delta = metrics.deltaPct
   const spendingDown = delta !== null && delta < 0
@@ -48,12 +33,12 @@ export default function DashboardPage() {
       <div className="metrics-row">
         {loading
           ? [0, 1, 2, 3].map((i) => (
-              <div className="glass" style={{ padding: 'var(--space-5)' }} key={i}>
-                <span className="sk sk-line" style={{ width: 90, height: 11 }} />
-                <span className="sk sk-line" style={{ width: 120, height: 26, margin: '12px 0 8px' }} />
-                <span className="sk sk-line" style={{ width: 140, height: 10 }} />
-              </div>
-            ))
+            <div className="glass" style={{ padding: 'var(--space-5)' }} key={i}>
+              <span className="sk sk-line" style={{ width: 90, height: 11 }} />
+              <span className="sk sk-line" style={{ width: 120, height: 26, margin: '12px 0 8px' }} />
+              <span className="sk sk-line" style={{ width: 140, height: 10 }} />
+            </div>
+          ))
           : (
             <>
               <MetricCard
@@ -78,7 +63,7 @@ export default function DashboardPage() {
               />
               <MetricCard
                 label="Budget Health"
-                value="Not set up"
+                value="-"
                 delta="Budgets arrive in a later release"
                 tone="neutral"
               />

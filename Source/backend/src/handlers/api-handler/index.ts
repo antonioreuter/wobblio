@@ -19,6 +19,7 @@ import { ProfileService } from '@core/services/identity/ProfileService';
 import { QuotaService } from '@core/services/quota/QuotaService';
 import { PresignService } from '@core/services/ingestion/PresignService';
 import { ConfirmService } from '@core/services/ingestion/ConfirmService';
+import { DeleteInvoiceService } from '@core/services/ingestion/DeleteInvoiceService';
 import {
   InvalidBillingPlanError,
   InvalidProfileError,
@@ -220,6 +221,7 @@ async function handleInvoicesRoute(
 
   const detailMatch = path.match(/^\/invoices\/([^/]+)$/);
   if (method === 'GET' && detailMatch) return handleInvoiceDetail(db, user, detailMatch[1]);
+  if (method === 'DELETE' && detailMatch) return handleDeleteInvoice(db, user, detailMatch[1], log);
 
   return json(404, { message: 'Not Found' });
 }
@@ -245,6 +247,28 @@ async function handleInvoiceDetail(
   const { imageS3Key, ...rest } = detail;
   const imageUrl = await new S3FileStorageAdapter(REGION, uploadsBucket).presignGet(imageS3Key, 300);
   return json(200, { ...rest, imageUrl });
+}
+
+async function handleDeleteInvoice(
+  db: PoolClient,
+  user: AppUser,
+  invoiceId: string,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const uploadsBucket = process.env.UPLOADS_BUCKET!;
+  const service = new DeleteInvoiceService(
+    new InvoiceRepositoryAdapter(db),
+    new S3FileStorageAdapter(REGION, uploadsBucket),
+  );
+
+  try {
+    await withTenantTx(db, user.id, () => service.delete(invoiceId));
+    log.info('invoice deleted', { userId: user.id, invoiceId });
+    return json(204, {});
+  } catch (err) {
+    if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
+    throw err;
+  }
 }
 
 async function handlePresign(

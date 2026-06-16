@@ -71,6 +71,10 @@ export class WobblioWebStack extends Stack {
       // API_BASE_URL: NEXT_PUBLIC_SITE_URL is build-time inlined and the OpenNext
       // build bakes .env.local's localhost over .env.production.
       APP_ORIGIN:           `https://${config.appDomain}`,
+      // Uploads bucket origin for the CSP (middleware): receipt capture PUTs to a
+      // presigned S3 URL and the review drawer renders the photo from a presigned
+      // GET, both against this virtual-hosted bucket host — not our API origin.
+      UPLOADS_BUCKET_ORIGIN: `https://${config.resourceName('uploads')}.s3.${config.region}.amazonaws.com`,
       COGNITO_REGION:       this.region,
       COGNITO_USER_POOL_ID: authStack.userPool.userPoolId,
       COGNITO_CLIENT_ID:    authStack.userPoolClientWeb.userPoolClientId,

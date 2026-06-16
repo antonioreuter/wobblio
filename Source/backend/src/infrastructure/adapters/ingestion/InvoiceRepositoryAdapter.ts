@@ -78,7 +78,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
   async findSameTenantByHash(imageSha256: string): Promise<InvoiceRecord | null> {
     const result = await this.client.query<InvoiceRow>(
       `SELECT id, tenant_id, status, image_s3_key, image_sha256, household_id
-       FROM invoice WHERE image_sha256 = $1 LIMIT 1`,
+       FROM invoice WHERE image_sha256 = $1 AND status <> 'DISCARDED' LIMIT 1`,
       [imageSha256],
     );
     return result.rows[0] ? toRecord(result.rows[0]) : null;
@@ -129,6 +129,10 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
 
   async updateStatus(invoiceId: string, status: InvoiceStatus): Promise<void> {
     await this.client.query(`UPDATE invoice SET status = $2 WHERE id = $1`, [invoiceId, status]);
+  }
+
+  async softDelete(invoiceId: string): Promise<void> {
+    await this.client.query(`UPDATE invoice SET status = 'DISCARDED' WHERE id = $1`, [invoiceId]);
   }
 
   async listForTenant(limit: number): Promise<InvoiceListItem[]> {

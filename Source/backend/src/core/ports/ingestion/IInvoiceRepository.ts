@@ -83,6 +83,8 @@ export interface IInvoiceRepository {
   findFuzzyDuplicate(invoiceId: string, fingerprint: FuzzyFingerprint): Promise<boolean>;
   persistParsed(input: PersistParsedInvoice): Promise<void>;
   updateStatus(invoiceId: string, status: InvoiceStatus): Promise<void>;
+  // Hides the invoice from the tenant's list by flipping its status to DISCARDED.
+  softDelete(invoiceId: string): Promise<void>;
   listForTenant(limit: number): Promise<InvoiceListItem[]>;
   getDetail(invoiceId: string): Promise<InvoiceDetail | null>;
 }

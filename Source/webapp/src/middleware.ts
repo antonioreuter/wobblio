@@ -24,21 +24,29 @@ function buildCsp(nonce: string): string {
   // CSP. Client calls go same-origin via /api/* BFF routes, covered by 'self'.
   const apiOrigin = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? ''
 
+  // Receipt capture PUTs directly to a presigned S3 URL and the review/inspection
+  // drawer renders the photo from a presigned S3 GET — both hit the uploads bucket
+  // origin, not our API. Allow it in connect-src (upload) and img-src (display).
+  const uploadsOrigin =
+    process.env.UPLOADS_BUCKET_ORIGIN ?? process.env.NEXT_PUBLIC_UPLOADS_BUCKET_ORIGIN ?? ''
+
   return [
     "default-src 'self'",
     // nonce + strict-dynamic: modern browsers trust nonce and ignore 'unsafe-inline';
     // 'unsafe-inline' is the fallback for legacy browsers only.
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline'`,
     "style-src 'self' 'unsafe-inline'",        // Tailwind requires inline styles
-    "img-src 'self' data: blob:",
+    `img-src 'self' data: blob: ${uploadsOrigin}`,
     "font-src 'self'",
-    `connect-src 'self' ${apiOrigin}`,
+    `connect-src 'self' ${apiOrigin} ${uploadsOrigin}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
     "upgrade-insecure-requests",
-  ].join('; ')
+  ]
+    .map((directive) => directive.trim().replace(/\s+/g, ' '))
+    .join('; ')
 }
 
 export default auth((req: NextRequest & { auth: unknown }) => {

@@ -4,4 +4,6 @@ export interface IS3FileStorage {
   presignGet(key: string, ttlSeconds: number): Promise<string>;
   headExists(key: string): Promise<boolean>;
   getObjectBytes(key: string): Promise<Uint8Array>;
+  // Idempotent: succeeds whether or not the object exists.
+  deleteObject(key: string): Promise<void>;
 }

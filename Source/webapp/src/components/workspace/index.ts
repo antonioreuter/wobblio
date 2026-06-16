@@ -1,4 +1,4 @@
-export { WorkspaceProvider, useWorkspace } from './workspace-provider'
+export { WorkspaceProvider, useWorkspace, type Usage } from './workspace-provider'
 export { FilterSelect } from './filter-select'
 export { InvoiceTable } from './invoice-table'
 export { LineChart } from './line-chart'
