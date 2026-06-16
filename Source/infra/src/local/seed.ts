@@ -1,6 +1,7 @@
 import { Client } from 'pg';
 import { merchantSeeds } from './seeds/merchant-aliases';
 import { categorySeed } from './seeds/product-taxonomy';
+import { countrySeed, subdivisionSeed } from './seeds/country-subdivisions';
 import { seedSsmParameters } from './seeds/ssm-parameters';
 
 function buildDbClient(): Client {
@@ -32,10 +33,10 @@ async function seedMerchants(client: Client): Promise<void> {
   console.log('  Seeding merchants...');
   for (const m of merchantSeeds) {
     await client.query(
-      `INSERT INTO merchant (id, brand_name, country_code, website, created_via, status)
-       VALUES ($1, $2, $3, $4, 'SEED', 'ACTIVE')
-       ON CONFLICT (id) DO NOTHING`,
-      [m.id, m.brand_name, m.country_code, m.website]
+      `INSERT INTO merchant (id, brand_name, country_code, default_category_id, website, created_via, status)
+       VALUES ($1, $2, $3, $4, $5, 'SEED', 'ACTIVE')
+       ON CONFLICT (id) DO UPDATE SET default_category_id = EXCLUDED.default_category_id`,
+      [m.id, m.brand_name, m.country_code, m.default_category_id, m.website]
     );
   }
   console.log(`  ✓ ${merchantSeeds.length} merchants`);
@@ -78,11 +79,35 @@ async function seedTaxonomy(client: Client): Promise<void> {
   console.log(`  ✓ ${categorySeed.length} product categories`);
 }
 
+async function seedReference(client: Client): Promise<void> {
+  if (!(await tableExists(client, 'country'))) {
+    console.warn('  ⚠  Table "country" does not exist — skipping. Run migrations first.');
+    return;
+  }
+
+  console.log('  Seeding ISO 3166 reference data...');
+  for (const c of countrySeed) {
+    await client.query(
+      `INSERT INTO country (code, name) VALUES ($1, $2) ON CONFLICT (code) DO NOTHING`,
+      [c.code, c.name]
+    );
+  }
+  for (const s of subdivisionSeed) {
+    await client.query(
+      `INSERT INTO country_subdivision (code, country_code, name)
+       VALUES ($1, $2, $3) ON CONFLICT (code) DO NOTHING`,
+      [s.code, s.country_code, s.name]
+    );
+  }
+  console.log(`  ✓ ${countrySeed.length} countries, ${subdivisionSeed.length} subdivisions`);
+}
+
 async function seedPostgres(): Promise<void> {
   const client = buildDbClient();
   await client.connect();
   try {
     console.log('\nSeeding PostgreSQL...');
+    await seedReference(client);
     await seedMerchants(client);
     await seedTaxonomy(client);
     console.log('PostgreSQL seed complete.\n');

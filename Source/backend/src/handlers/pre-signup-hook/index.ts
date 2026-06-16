@@ -1,8 +1,8 @@
 import type { PreSignUpTriggerEvent, Context } from 'aws-lambda';
 import { createLambdaLogger } from '@infrastructure/logging/logger';
 import { buildPool } from '@infrastructure/config/db';
-import { FreeUserCounterAdapter } from '@infrastructure/adapters/FreeUserCounterAdapter';
-import { SsmWaitlistCapAdapter } from '@infrastructure/adapters/SsmWaitlistCapAdapter';
+import { FreeUserCounterAdapter } from '@infrastructure/adapters/waitlist/FreeUserCounterAdapter';
+import { SsmWaitlistCapAdapter } from '@infrastructure/adapters/waitlist/SsmWaitlistCapAdapter';
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 

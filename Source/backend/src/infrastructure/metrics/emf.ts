@@ -1,5 +1,5 @@
 import { createMetricsLogger, Unit } from 'aws-embedded-metrics';
-import type { BedrockStage } from '@core/ports/IBedrockConverse';
+import type { BedrockStage } from '@core/ports/ai/IBedrockConverse';
 
 export async function emitBedrockTokenMetric(
   stage: BedrockStage,

@@ -30,7 +30,7 @@ describe('isArithmeticConsistent', () => {
 });
 
 describe('decideStatus', () => {
-  const ok = { parseConfidence: 0.9, arithmeticOk: true, hasLowConfidenceLine: false, isSuspectedDuplicate: false };
+  const ok = { parseConfidence: 0.9, arithmeticOk: true, hasLowConfidenceLine: false, lowConfidenceMerchant: false, isSuspectedDuplicate: false };
 
   it('returns SUSPECTED_DUPLICATE when a fuzzy duplicate is found', () => {
     expect(decideStatus({ ...ok, isSuspectedDuplicate: true })).toBe('SUSPECTED_DUPLICATE');
@@ -46,6 +46,10 @@ describe('decideStatus', () => {
 
   it('returns NEEDS_REVIEW when a low-confidence line is present', () => {
     expect(decideStatus({ ...ok, hasLowConfidenceLine: true })).toBe('NEEDS_REVIEW');
+  });
+
+  it('returns NEEDS_REVIEW when the merchant was resolved with low confidence', () => {
+    expect(decideStatus({ ...ok, lowConfidenceMerchant: true })).toBe('NEEDS_REVIEW');
   });
 
   it('returns PARSED when every signal is healthy', () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MockedObject } from 'vitest';
 import { processAnalyticsEvent } from '@handlers/analytics-events/index';
-import type { IAnalyticsQueuePort } from '@core/ports/IAnalyticsQueuePort';
+import type { IAnalyticsQueuePort } from '@core/ports/notifications/IAnalyticsQueuePort';
 
 describe('analytics-events handler', () => {
   let port: MockedObject<IAnalyticsQueuePort>;

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MockedObject } from 'vitest';
 import { buildWaitlistStatusResponse } from '@handlers/waitlist-status/index';
-import type { IWaitlistStatusPort } from '@core/ports/IWaitlistStatusPort';
+import type { IWaitlistStatusPort } from '@core/ports/waitlist/IWaitlistStatusPort';
 
 describe('waitlist-status handler', () => {
   let port: MockedObject<IWaitlistStatusPort>;

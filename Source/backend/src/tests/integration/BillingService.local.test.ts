@@ -2,12 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { S3Client, ListObjectsV2Command, CreateBucketCommand, DeleteObjectsCommand, DeleteBucketCommand } from '@aws-sdk/client-s3';
-import { BillingService } from '@core/services/BillingService';
-import { MockBillingGatewayAdapter } from '@infrastructure/adapters/MockBillingGatewayAdapter';
-import { SsmBillingWhitelistAdapter } from '@infrastructure/adapters/SsmBillingWhitelistAdapter';
-import { PaymentTransactionRepositoryAdapter } from '@infrastructure/adapters/PaymentTransactionRepositoryAdapter';
-import { S3BillingArchiveAdapter } from '@infrastructure/adapters/S3BillingArchiveAdapter';
-import { AppUserRepositoryAdapter } from '@infrastructure/adapters/AppUserRepositoryAdapter';
+import { BillingService } from '@core/services/billing/BillingService';
+import { MockBillingGatewayAdapter } from '@infrastructure/adapters/billing/MockBillingGatewayAdapter';
+import { SsmBillingWhitelistAdapter } from '@infrastructure/adapters/billing/SsmBillingWhitelistAdapter';
+import { PaymentTransactionRepositoryAdapter } from '@infrastructure/adapters/billing/PaymentTransactionRepositoryAdapter';
+import { S3BillingArchiveAdapter } from '@infrastructure/adapters/billing/S3BillingArchiveAdapter';
+import { AppUserRepositoryAdapter } from '@infrastructure/adapters/identity/AppUserRepositoryAdapter';
 
 const REGION = 'eu-west-1';
 const ARCHIVE_BUCKET = 'wobblio-billing-archive-local';

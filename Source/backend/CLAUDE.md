@@ -9,11 +9,11 @@ Node/TypeScript Lambda fleet + CDK infrastructure for the Wobblio ingestion, API
 ```
 src/
   core/
-    services/      # business logic — pure, framework-agnostic
-    ports/         # interfaces for every external capability (DB, Bedrock, S3, Cognito, Stripe, …)
+    services/      # business logic, grouped by feature subfolder (see below)
+    ports/         # interfaces, grouped by feature subfolder (see below)
     domain/        # entities, value objects, domain errors
   infrastructure/
-    adapters/      # concrete implementations of ports (AWS SDK v3, pg, stripe-node, …)
+    adapters/      # concrete implementations of ports, grouped by feature subfolder (see below)
     config/        # SSM loaders, environment wiring
   handlers/        # Lambda entry points — thin, only translate event → core invocation → response
   cdk/             # CDK stacks (WobblioDbStack, WobblioAuthStack, WobblioStorageStack, WobblioObservabilityStack, WobblioBackendStack)
@@ -28,6 +28,8 @@ src/
 **The golden rule:** `src/core/` MUST NOT import from `src/infrastructure/`, `@aws-sdk/*`, `aws-jwt-verify`, `stripe`, `pg`, or any other SDK. Use ports. The validator (`npm run skill:hexagonal-architecture-validator`) enforces this — exit 0 is non-negotiable before commit.
 
 Ports are split by capability (ISP): `IBedrockChatClient`, `IBedrockEmbedder`, `IS3FileStorage`, `ICognitoIdentityManager`, `IStripeBillingClient`, `ITenantRepository`, `IInvoiceRepository`, `IPriceObservationStore`, `IIngestionLedger`, …  Never create a monolithic `IInfrastructurePort`.
+
+`services/`, `ports/`, and `adapters/` are each split into **mirrored feature subfolders**: `identity/`, `ingestion/`, `data-intelligence/`, `ai/`, `billing/`, `quota/`, `waitlist/`, `notifications/`, `security/` (`services/` only carries the families it has). A service, its ports, and their adapters share a family — e.g. `core/services/ingestion/IngestionService.ts`, `core/ports/ingestion/IInvoiceRepository.ts`, `infrastructure/adapters/ingestion/InvoiceRepositoryAdapter.ts`. New code lands in the matching family (add a folder only for a genuinely new capability area). Imports carry the family segment: `@core/services/<family>/FooService`, `@core/ports/<family>/IFoo`, `@infrastructure/adapters/<family>/FooAdapter`.
 
 Adapters map SDK/infra errors to domain errors (`UserNotFoundError`, `QuotaExceededError`, `DuplicateInvoiceError`, …). Core throws only domain errors.
 

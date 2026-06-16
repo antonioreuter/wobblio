@@ -1,23 +1,24 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { createLambdaLogger, type LambdaLogger } from '@infrastructure/logging/logger';
 import { buildPool } from '@infrastructure/config/db';
-import { AppUserRepositoryAdapter } from '@infrastructure/adapters/AppUserRepositoryAdapter';
-import { TenantContextAdapter } from '@infrastructure/adapters/TenantContextAdapter';
-import { WaitlistRepositoryAdapter } from '@infrastructure/adapters/WaitlistRepositoryAdapter';
-import { MockBillingGatewayAdapter } from '@infrastructure/adapters/MockBillingGatewayAdapter';
-import { SsmBillingWhitelistAdapter } from '@infrastructure/adapters/SsmBillingWhitelistAdapter';
-import { PaymentTransactionRepositoryAdapter } from '@infrastructure/adapters/PaymentTransactionRepositoryAdapter';
-import { S3BillingArchiveAdapter } from '@infrastructure/adapters/S3BillingArchiveAdapter';
-import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/InvoiceRepositoryAdapter';
-import { QuotaRepositoryAdapter } from '@infrastructure/adapters/QuotaRepositoryAdapter';
-import { S3FileStorageAdapter } from '@infrastructure/adapters/S3FileStorageAdapter';
-import { SqsIngestionQueueAdapter } from '@infrastructure/adapters/SqsIngestionQueueAdapter';
-import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/SsmUploadQuotaAdapter';
-import { BillingService } from '@core/services/BillingService';
-import { ProfileService } from '@core/services/ProfileService';
-import { QuotaService } from '@core/services/QuotaService';
-import { PresignService } from '@core/services/PresignService';
-import { ConfirmService } from '@core/services/ConfirmService';
+import { AppUserRepositoryAdapter } from '@infrastructure/adapters/identity/AppUserRepositoryAdapter';
+import { TenantContextAdapter } from '@infrastructure/adapters/identity/TenantContextAdapter';
+import { WaitlistRepositoryAdapter } from '@infrastructure/adapters/waitlist/WaitlistRepositoryAdapter';
+import { MockBillingGatewayAdapter } from '@infrastructure/adapters/billing/MockBillingGatewayAdapter';
+import { SsmBillingWhitelistAdapter } from '@infrastructure/adapters/billing/SsmBillingWhitelistAdapter';
+import { PaymentTransactionRepositoryAdapter } from '@infrastructure/adapters/billing/PaymentTransactionRepositoryAdapter';
+import { S3BillingArchiveAdapter } from '@infrastructure/adapters/billing/S3BillingArchiveAdapter';
+import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceRepositoryAdapter';
+import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligence/RegionReferenceAdapter';
+import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
+import { S3FileStorageAdapter } from '@infrastructure/adapters/ingestion/S3FileStorageAdapter';
+import { SqsIngestionQueueAdapter } from '@infrastructure/adapters/ingestion/SqsIngestionQueueAdapter';
+import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
+import { BillingService } from '@core/services/billing/BillingService';
+import { ProfileService } from '@core/services/identity/ProfileService';
+import { QuotaService } from '@core/services/quota/QuotaService';
+import { PresignService } from '@core/services/ingestion/PresignService';
+import { ConfirmService } from '@core/services/ingestion/ConfirmService';
 import {
   InvalidBillingPlanError,
   InvalidProfileError,
@@ -26,7 +27,7 @@ import {
   InvoiceNotFoundError,
   StaleUploadError,
 } from '@core/domain/errors';
-import type { AppUser } from '@core/ports/IAppUserRepository';
+import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import type { PoolClient } from 'pg';
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
@@ -79,10 +80,11 @@ export const handler = async (
     const isBillingRoute = path.startsWith('/billing/');
     const isMeRoute = path.startsWith('/me/');
     const isInvoicesRoute = path.startsWith('/invoices');
+    const isReferenceRoute = path.startsWith('/reference/');
 
-    // Billing (upgrade) and own-profile onboarding stay reachable while
-    // waitlisted; everything else is gated until a slot is released.
-    if (user.status === 'WAITLIST' && !isBillingRoute && !isMeRoute) {
+    // Billing (upgrade), own-profile onboarding, and reference lookups stay
+    // reachable while waitlisted; everything else is gated until a slot is released.
+    if (user.status === 'WAITLIST' && !isBillingRoute && !isMeRoute && !isReferenceRoute) {
       const total = await waitlistRepo.getWaitlistCount();
       log.info('waitlisted user access attempt', { userId: user.id, total });
       return json(423, {
@@ -107,6 +109,10 @@ export const handler = async (
       return handleInvoicesRoute(client, user, path, method, event, log);
     }
 
+    if (isReferenceRoute) {
+      return handleReferenceRoute(client, path, method, event);
+    }
+
     return json(200, { status: 'ok' });
   } finally {
     client.release();
@@ -127,7 +133,7 @@ async function handleMeRoute(
     return json(404, { message: 'Not Found' });
   }
 
-  const service = new ProfileService(new AppUserRepositoryAdapter(db));
+  const service = new ProfileService(new AppUserRepositoryAdapter(db), new RegionReferenceAdapter(db));
 
   if (method === 'GET') {
     return json(200, await service.getProfile(user.cognitoSub));
@@ -139,6 +145,7 @@ async function handleMeRoute(
       await service.completeOnboarding(user.cognitoSub, {
         fullName: String(body.fullName ?? ''),
         country: String(body.country ?? ''),
+        regionCode: String(body.regionCode ?? ''),
         language: String(body.language ?? ''),
         currency: String(body.currency ?? ''),
         birthdate: String(body.birthdate ?? ''),
@@ -155,6 +162,21 @@ async function handleMeRoute(
   }
 
   return json(405, { message: 'Method Not Allowed' });
+}
+
+// Reference data for the onboarding region dropdown. Country comes from the
+// query string; subdivisions are the ISO 3166-2 list for that country.
+async function handleReferenceRoute(
+  db: PoolClient,
+  path: string,
+  method: string,
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
+  if (path !== '/reference/regions' || method !== 'GET') return json(404, { message: 'Not Found' });
+  const country = (event.queryStringParameters?.country ?? '').toUpperCase();
+  if (country.length !== 2) return json(400, { message: 'country query parameter is required' });
+  const subdivisions = await new RegionReferenceAdapter(db).listSubdivisions(country);
+  return json(200, { subdivisions });
 }
 
 async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {

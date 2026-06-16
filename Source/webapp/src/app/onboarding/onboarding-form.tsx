@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { federatedSignOut } from '@/lib/federated-sign-out'
-import { Cake, Check, ChevronDown, Globe, Languages, User, Wallet } from 'lucide-react'
+import { Cake, Check, ChevronDown, Globe, Languages, MapPin, User, Wallet } from 'lucide-react'
 import { Button } from '@/components/ds/Button'
 import { Input } from '@/components/ds/Input'
 import { Checkbox } from '@/components/ds/Checkbox'
@@ -19,6 +19,28 @@ export function OnboardingForm() {
   const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY)
   const [language, setLanguage] = useState(DEFAULT_COUNTRY.defaultLanguage)
   const [consent, setConsent] = useState(false)
+  const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
+  const [regionCode, setRegionCode] = useState('')
+
+  // Region (state/province) options are driven by the selected country, from the
+  // ISO 3166-2 reference table. A failed/empty lookup degrades gracefully — the
+  // backend then stores the country code as the region.
+  useEffect(() => {
+    let active = true
+    setRegions([])
+    setRegionCode('')
+    fetch(`/api/reference/regions?country=${country.code}`)
+      .then((res) => (res.ok ? res.json() : { subdivisions: [] }))
+      .then((data: { subdivisions?: { code: string; name: string }[] }) => {
+        if (active) setRegions(data.subdivisions ?? [])
+      })
+      .catch(() => {
+        if (active) setRegions([])
+      })
+    return () => {
+      active = false
+    }
+  }, [country.code])
 
   function handleCountryChange(code: string) {
     const c = COUNTRIES.find((x) => x.code === code) ?? DEFAULT_COUNTRY
@@ -36,6 +58,7 @@ export function OnboardingForm() {
 
     if (!fullName) return setError('Please enter your full name.')
     if (!birthdate) return setError('Please enter your date of birth.')
+    if (regions.length > 0 && !regionCode) return setError('Please select your region.')
     if (!consent) return setError('Please accept the privacy terms to continue.')
 
     setLoading(true)
@@ -45,6 +68,7 @@ export function OnboardingForm() {
       body: JSON.stringify({
         fullName,
         country: country.code,
+        regionCode,
         language,
         currency: country.currency,
         birthdate,
@@ -131,6 +155,29 @@ export function OnboardingForm() {
           </div>
         </div>
       </div>
+
+      {regions.length > 0 && (
+        <div className="auth-field">
+          <label htmlFor="region" className="auth-field-label">Region</label>
+          <div className="auth-control-wrap">
+            <span className="lead-icon"><MapPin size={16} /></span>
+            <select
+              id="region"
+              name="region"
+              className="auth-select"
+              value={regionCode}
+              onChange={(e) => setRegionCode(e.target.value)}
+              data-testid="onboarding-region"
+            >
+              <option value="">Select your region…</option>
+              {regions.map((r) => (
+                <option key={r.code} value={r.code}>{r.name}</option>
+              ))}
+            </select>
+            <span className="chevron"><ChevronDown size={16} /></span>
+          </div>
+        </div>
+      )}
 
       <div className="auth-field">
         <label htmlFor="language" className="auth-field-label">Preferred language</label>

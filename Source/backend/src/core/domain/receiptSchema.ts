@@ -1,20 +1,11 @@
 import type { ParsedReceipt, ParsedLine } from './ingestion';
+import { extractJsonObject } from './jsonExtract';
 
 export type ReceiptParseResult =
   | { ok: true; value: ParsedReceipt }
   | { ok: false; issues: string };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-// Vision models often wrap JSON in ```json fences or prose — extract the object.
-function extractJsonObject(raw: string): string {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = (fenced ? fenced[1] : raw).trim();
-  const start = candidate.indexOf('{');
-  const end = candidate.lastIndexOf('}');
-  if (start === -1 || end === -1 || end < start) return candidate;
-  return candidate.slice(start, end + 1);
-}
 
 function isNum(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);

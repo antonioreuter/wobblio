@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { randomUUID, createHash } from 'crypto';
 import { Pool } from 'pg';
-import { AppUserRepositoryAdapter } from '@infrastructure/adapters/AppUserRepositoryAdapter';
-import { TenantContextAdapter } from '@infrastructure/adapters/TenantContextAdapter';
-import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/InvoiceRepositoryAdapter';
-import { IngestionLedgerAdapter } from '@infrastructure/adapters/IngestionLedgerAdapter';
+import { AppUserRepositoryAdapter } from '@infrastructure/adapters/identity/AppUserRepositoryAdapter';
+import { TenantContextAdapter } from '@infrastructure/adapters/identity/TenantContextAdapter';
+import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceRepositoryAdapter';
+import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
 import type { PoolClient } from 'pg';
 
 const hashOf = (s: string) => createHash('sha256').update(s).digest('hex');

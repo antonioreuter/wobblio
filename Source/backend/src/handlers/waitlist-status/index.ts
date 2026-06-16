@@ -1,7 +1,7 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
 import { buildPool } from '@infrastructure/config/db';
-import { WaitlistStatusDbAdapter } from '@infrastructure/adapters/WaitlistStatusDbAdapter';
-import type { IWaitlistStatusPort } from '@core/ports/IWaitlistStatusPort';
+import { WaitlistStatusDbAdapter } from '@infrastructure/adapters/waitlist/WaitlistStatusDbAdapter';
+import type { IWaitlistStatusPort } from '@core/ports/waitlist/IWaitlistStatusPort';
 
 const json = (statusCode: number, body: object, extra: Record<string, string> = {}): APIGatewayProxyResult => ({
   statusCode,

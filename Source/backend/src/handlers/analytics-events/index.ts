@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-lambda';
-import { SqsAnalyticsQueueAdapter } from '@infrastructure/adapters/SqsAnalyticsQueueAdapter';
-import type { IAnalyticsQueuePort, FunnelEvent } from '@core/ports/IAnalyticsQueuePort';
+import { SqsAnalyticsQueueAdapter } from '@infrastructure/adapters/notifications/SqsAnalyticsQueueAdapter';
+import type { IAnalyticsQueuePort, FunnelEvent } from '@core/ports/notifications/IAnalyticsQueuePort';
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 

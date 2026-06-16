@@ -11,8 +11,18 @@ vi.mock('next-auth/react', () => ({
   useSession: () => ({ data: sessionData, update: vi.fn() }),
 }))
 
-function mockOnboarding(opts: { ok?: boolean; status?: number; body?: unknown }) {
-  const fetchMock = vi.fn(async (url: string) => {
+const NL_SUBDIVISIONS = [
+  { code: 'NL-NB', name: 'Noord-Brabant' },
+  { code: 'NL-NH', name: 'Noord-Holland' },
+]
+
+// Handles both BFF calls the form makes: the region lookup on mount and the
+// onboarding submit.
+function mockApi(opts: { ok?: boolean; status?: number; body?: unknown; subdivisions?: { code: string; name: string }[] } = {}) {
+  const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+    if (url.startsWith('/api/reference/regions')) {
+      return { ok: true, status: 200, json: async () => ({ subdivisions: opts.subdivisions ?? NL_SUBDIVISIONS }) } as Response
+    }
     if (url === '/api/onboarding') {
       return { ok: opts.ok ?? true, status: opts.status ?? 200, json: async () => opts.body ?? {} } as Response
     }
@@ -22,9 +32,11 @@ function mockOnboarding(opts: { ok?: boolean; status?: number; body?: unknown })
   return fetchMock
 }
 
-function fillValidForm() {
+async function fillValidForm() {
   fireEvent.change(screen.getByTestId('onboarding-fullName'), { target: { value: 'Ada Lovelace' } })
   fireEvent.change(screen.getByTestId('onboarding-birthdate'), { target: { value: '1990-12-10' } })
+  const region = await screen.findByTestId('onboarding-region')
+  fireEvent.change(region, { target: { value: 'NL-NB' } })
   fireEvent.click(screen.getByTestId('onboarding-consent'))
 }
 
@@ -39,40 +51,61 @@ describe('OnboardingForm', () => {
     cleanup()
   })
 
-  it('submits then hard-navigates to /dashboard (server gate re-derives onboarding from the DB)', async () => {
-    mockOnboarding({ ok: true, status: 200 })
+  it('submits the selected region then hard-navigates to /dashboard', async () => {
+    const fetchMock = mockApi({ ok: true, status: 200 })
 
     render(<OnboardingForm />)
-    fillValidForm()
+    await fillValidForm()
     fireEvent.click(screen.getByTestId('onboarding-submit'))
 
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/dashboard'))
+    const submitCall = fetchMock.mock.calls.find(([url]) => url === '/api/onboarding')!
+    const body = JSON.parse((submitCall[1] as RequestInit).body as string)
+    expect(body.regionCode).toBe('NL-NB')
+    expect(body.country).toBe('NL')
+  })
+
+  it('loads region options for the default country and requires a selection', async () => {
+    const fetchMock = mockApi({})
+
+    render(<OnboardingForm />)
+    fireEvent.change(screen.getByTestId('onboarding-fullName'), { target: { value: 'Ada Lovelace' } })
+    fireEvent.change(screen.getByTestId('onboarding-birthdate'), { target: { value: '1990-12-10' } })
+    await screen.findByTestId('onboarding-region') // options loaded
+    fireEvent.click(screen.getByTestId('onboarding-consent'))
+    fireEvent.click(screen.getByTestId('onboarding-submit'))
+
+    expect(screen.getByTestId('onboarding-error')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/onboarding')).toBe(false)
   })
 
   it('shows the session-expired state on a 401 and does not navigate', async () => {
-    mockOnboarding({ ok: false, status: 401 })
+    mockApi({ ok: false, status: 401 })
 
     render(<OnboardingForm />)
-    fillValidForm()
+    await fillValidForm()
     fireEvent.click(screen.getByTestId('onboarding-submit'))
 
     expect(await screen.findByTestId('onboarding-session-expired')).toBeInTheDocument()
     expect(assign).not.toHaveBeenCalled()
   })
 
-  it('short-circuits client-side without a POST when required fields are missing', () => {
-    const fetchMock = mockOnboarding({ ok: true, status: 200 })
+  it('short-circuits client-side without a POST when required fields are missing', async () => {
+    const fetchMock = mockApi({ ok: true, status: 200 })
 
     render(<OnboardingForm />)
+    await screen.findByTestId('onboarding-region') // flush the mount region fetch
     fireEvent.click(screen.getByTestId('onboarding-submit'))
 
     expect(screen.getByTestId('onboarding-error')).toBeInTheDocument()
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock.mock.calls.some(([url]) => url === '/api/onboarding')).toBe(false)
   })
 
-  it('pre-fills the full name from the session', () => {
+  it('pre-fills the full name from the session', async () => {
     sessionData = { user: { name: 'Grace Hopper' } }
+    mockApi({})
     render(<OnboardingForm />)
     expect(screen.getByTestId('onboarding-fullName')).toHaveValue('Grace Hopper')
+    await screen.findByTestId('onboarding-region') // flush the mount region fetch
   })
 })

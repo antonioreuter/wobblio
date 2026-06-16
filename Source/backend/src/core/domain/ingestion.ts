@@ -46,6 +46,7 @@ export interface StatusDecisionInput {
   parseConfidence: number;
   arithmeticOk: boolean;
   hasLowConfidenceLine: boolean;
+  lowConfidenceMerchant: boolean; // §6.2 resolved below threshold (e.g. provisional)
   isSuspectedDuplicate: boolean;
 }
 
@@ -56,6 +57,7 @@ export function decideStatus(input: StatusDecisionInput): InvoiceStatus {
     input.parseConfidence < ConfidenceThresholds.visionMin
     || !input.arithmeticOk
     || input.hasLowConfidenceLine
+    || input.lowConfidenceMerchant
   ) {
     return 'NEEDS_REVIEW';
   }

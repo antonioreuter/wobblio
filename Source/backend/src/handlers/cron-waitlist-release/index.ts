@@ -1,11 +1,11 @@
 import type { Context } from 'aws-lambda';
 import { createLambdaLogger } from '@infrastructure/logging/logger';
 import { buildPool } from '@infrastructure/config/db';
-import { FreeUserCounterAdapter } from '@infrastructure/adapters/FreeUserCounterAdapter';
-import { SsmWaitlistCapAdapter } from '@infrastructure/adapters/SsmWaitlistCapAdapter';
-import { WaitlistRepositoryAdapter } from '@infrastructure/adapters/WaitlistRepositoryAdapter';
-import { SesEmailAdapter } from '@infrastructure/adapters/SesEmailAdapter';
-import { WaitlistReleaseService } from '@core/services/WaitlistReleaseService';
+import { FreeUserCounterAdapter } from '@infrastructure/adapters/waitlist/FreeUserCounterAdapter';
+import { SsmWaitlistCapAdapter } from '@infrastructure/adapters/waitlist/SsmWaitlistCapAdapter';
+import { WaitlistRepositoryAdapter } from '@infrastructure/adapters/waitlist/WaitlistRepositoryAdapter';
+import { SesEmailAdapter } from '@infrastructure/adapters/notifications/SesEmailAdapter';
+import { WaitlistReleaseService } from '@core/services/waitlist/WaitlistReleaseService';
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 
