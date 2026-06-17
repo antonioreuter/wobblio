@@ -1,4 +1,4 @@
-import type { Invoice, Status } from '@/components/workspace/invoice-data'
+import type { Invoice, LocationStatus, Status } from '@/components/workspace/invoice-data'
 
 // Shape returned by the backend GET /invoices list (via the BFF proxy).
 export interface BackendInvoice {
@@ -11,6 +11,9 @@ export interface BackendInvoice {
   currency: string | null
   searchTags: string[]
   createdAt: string
+  locationStatus: LocationStatus
+  locationCountryCode: string | null
+  locationRegionCode: string | null
 }
 
 const STATUS_MAP: Record<string, Status> = {
@@ -31,5 +34,9 @@ export function mapInvoice(b: BackendInvoice): Invoice {
     status: STATUS_MAP[b.status] ?? ['primary', b.status],
     tags: b.searchTags ?? [],
     total: b.total ?? 0,
+    locationStatus: b.locationStatus ?? 'RESOLVED',
+    locationCountryCode: b.locationCountryCode ?? null,
+    locationRegionCode: b.locationRegionCode ?? null,
+    locationConfirmable: b.status === 'PARSED' || b.status === 'NEEDS_REVIEW',
   }
 }

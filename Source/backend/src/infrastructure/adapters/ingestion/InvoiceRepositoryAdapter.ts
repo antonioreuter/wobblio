@@ -5,11 +5,15 @@ import type {
   InvoiceRecord,
   FuzzyFingerprint,
   PersistParsedInvoice,
+  ConfirmLocationInput,
+  InvoiceReEmission,
   InvoiceListItem,
   InvoiceDetail,
   InvoiceDetailLine,
 } from '@core/ports/ingestion/IInvoiceRepository';
 import type { InvoiceStatus } from '@core/domain/ingestion';
+import type { InvoiceLocationStatus } from '@core/domain/region';
+import type { ObservationLine } from '@core/domain/priceObservation';
 
 interface InvoiceListRow {
   id: string;
@@ -21,6 +25,9 @@ interface InvoiceListRow {
   currency: string | null;
   search_tags: string[];
   created_at: string;
+  location_status: InvoiceLocationStatus;
+  location_country_code: string | null;
+  location_region_code: string | null;
 }
 
 const num = (v: string | null): number | null => (v === null ? null : parseFloat(v));
@@ -35,12 +42,16 @@ const toListItem = (row: InvoiceListRow): InvoiceListItem => ({
   currency: row.currency,
   searchTags: row.search_tags,
   createdAt: row.created_at,
+  locationStatus: row.location_status,
+  locationCountryCode: row.location_country_code,
+  locationRegionCode: row.location_region_code,
 });
 
 const LIST_COLUMNS = `
   i.id, i.status, m.brand_name AS merchant_name, i.category_id,
   i.transaction_date::text AS transaction_date, i.total::text AS total,
-  i.currency, i.search_tags, i.created_at::text AS created_at`;
+  i.currency, i.search_tags, i.created_at::text AS created_at,
+  i.location_status, i.location_country_code, i.location_region_code`;
 
 interface InvoiceRow {
   id: string;
@@ -49,7 +60,12 @@ interface InvoiceRow {
   image_s3_key: string;
   image_sha256: string;
   household_id: string | null;
+  location_status: InvoiceLocationStatus;
+  location_confirmed_at: string | null;
 }
+
+const RECORD_COLUMNS = `id, tenant_id, status, image_s3_key, image_sha256, household_id,
+  location_status, location_confirmed_at::text AS location_confirmed_at`;
 
 // All methods rely on RLS (app.current_tenant_id) set on this client's transaction.
 export class InvoiceRepositoryAdapter implements IInvoiceRepository {
@@ -68,8 +84,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
 
   async getById(invoiceId: string): Promise<InvoiceRecord | null> {
     const result = await this.client.query<InvoiceRow>(
-      `SELECT id, tenant_id, status, image_s3_key, image_sha256, household_id
-       FROM invoice WHERE id = $1`,
+      `SELECT ${RECORD_COLUMNS} FROM invoice WHERE id = $1`,
       [invoiceId],
     );
     return result.rows[0] ? toRecord(result.rows[0]) : null;
@@ -77,11 +92,25 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
 
   async findSameTenantByHash(imageSha256: string): Promise<InvoiceRecord | null> {
     const result = await this.client.query<InvoiceRow>(
-      `SELECT id, tenant_id, status, image_s3_key, image_sha256, household_id
+      `SELECT ${RECORD_COLUMNS}
        FROM invoice WHERE image_sha256 = $1 AND status <> 'DISCARDED' LIMIT 1`,
       [imageSha256],
     );
     return result.rows[0] ? toRecord(result.rows[0]) : null;
+  }
+
+  // Another invoice (this tenant, via RLS) sharing this one's image hash that already
+  // RESOLVED its location has emitted its observations; the re-upload must not emit again.
+  async hasEmittedDuplicateByHash(invoiceId: string): Promise<boolean> {
+    const result = await this.client.query(
+      `SELECT 1 FROM invoice
+       WHERE id <> $1
+         AND image_sha256 = (SELECT image_sha256 FROM invoice WHERE id = $1)
+         AND location_status = 'RESOLVED'
+       LIMIT 1`,
+      [invoiceId],
+    );
+    return result.rowCount !== null && result.rowCount > 0;
   }
 
   async findFuzzyDuplicate(invoiceId: string, fp: FuzzyFingerprint): Promise<boolean> {
@@ -102,29 +131,107 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
   async persistParsed(input: PersistParsedInvoice): Promise<void> {
     await this.client.query(
       `UPDATE invoice
-         SET merchant_id = $2, branch_id = $3, transaction_date = $4, currency = $5,
-             total = $6, category_id = $7, search_tags = $8, status = $9
+         SET merchant_id = $2, merchant_provisional = $3, branch_id = $4,
+             transaction_date = $5, currency = $6, total = $7, category_id = $8,
+             search_tags = $9, status = $10, location_country_code = $11,
+             location_region_code = $12, location_status = $13, location_source = $14
        WHERE id = $1`,
       [
-        input.invoiceId, input.merchantId, input.branchId, input.transactionDate,
-        input.currency, input.total, input.categoryId, input.searchTags, input.status,
+        input.invoiceId, input.merchantId, input.merchantProvisional, input.branchId,
+        input.transactionDate, input.currency, input.total, input.categoryId,
+        input.searchTags, input.status, input.location.countryCode,
+        input.location.regionCode, input.location.status, input.location.source,
       ],
     );
 
     for (const line of input.lines) {
       await this.client.query(
         `INSERT INTO invoice_line
-           (invoice_id, raw_text, product_id, category_id, quantity, pack_quantity,
-            base_unit, unit_price, normalized_unit_price, line_total, is_discount,
-            is_deposit_or_fee, confidence)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+           (invoice_id, raw_text, product_id, product_provisional, category_id, quantity,
+            pack_quantity, base_unit, unit_price, normalized_unit_price, line_total,
+            is_discount, is_deposit_or_fee, confidence)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
-          input.invoiceId, line.rawText, line.productId, line.categoryId, line.quantity,
-          line.packQuantity, line.baseUnit, line.unitPrice, line.normalizedUnitPrice,
-          line.lineTotal, line.isDiscount, line.isDepositOrFee, line.confidence,
+          input.invoiceId, line.rawText, line.productId, line.productProvisional,
+          line.categoryId, line.quantity, line.packQuantity, line.baseUnit, line.unitPrice,
+          line.normalizedUnitPrice, line.lineTotal, line.isDiscount, line.isDepositOrFee,
+          line.confidence,
         ],
       );
     }
+  }
+
+  // Write-once: the guard rejects a second confirmation so a location can't be
+  // changed once set (the user gets one chance, per the data-quality gate).
+  async confirmLocation(input: ConfirmLocationInput): Promise<void> {
+    await this.client.query(
+      `UPDATE invoice
+         SET location_country_code = $2, location_region_code = $3,
+             location_status = $4, location_source = $5, location_confirmed_at = now()
+       WHERE id = $1 AND location_confirmed_at IS NULL`,
+      [input.invoiceId, input.countryCode, input.regionCode, input.status, input.source],
+    );
+  }
+
+  // Only an emit-eligible invoice (PARSED/NEEDS_REVIEW) yields re-emission rows; a
+  // SUSPECTED_DUPLICATE or DISCARDED invoice returns null so deferred confirmation and
+  // the release cron never emit observations for it (§6.8, invariant #7).
+  async getForReEmission(invoiceId: string): Promise<InvoiceReEmission | null> {
+    const head = await this.client.query<{
+      merchant_id: string | null;
+      merchant_provisional: boolean;
+      transaction_date: string | null;
+      currency: string | null;
+    }>(
+      `SELECT merchant_id, merchant_provisional, transaction_date::text AS transaction_date, currency
+       FROM invoice WHERE id = $1 AND status IN ('PARSED', 'NEEDS_REVIEW')`,
+      [invoiceId],
+    );
+    const row = head.rows[0];
+    if (!row || row.transaction_date === null || row.currency === null) return null;
+
+    const lines = await this.client.query<{
+      product_id: string | null;
+      product_provisional: boolean;
+      base_unit: ObservationLine['baseUnit'];
+      normalized_unit_price: string | null;
+      is_deposit_or_fee: boolean;
+      quantity: string;
+      line_total: string;
+      unit_price: string | null;
+    }>(
+      `SELECT product_id, product_provisional, base_unit,
+              normalized_unit_price::text AS normalized_unit_price, is_deposit_or_fee,
+              quantity::text AS quantity, line_total::text AS line_total,
+              unit_price::text AS unit_price
+       FROM invoice_line WHERE invoice_id = $1 ORDER BY id`,
+      [invoiceId],
+    );
+
+    return {
+      merchantId: row.merchant_id,
+      merchantProvisional: row.merchant_provisional,
+      transactionDate: row.transaction_date,
+      currency: row.currency,
+      lines: lines.rows.map(l => ({
+        productId: l.product_id,
+        productProvisional: l.product_provisional,
+        baseUnit: l.base_unit,
+        normalizedUnitPrice: num(l.normalized_unit_price),
+        isDepositOrFee: l.is_deposit_or_fee,
+        quantity: parseFloat(l.quantity),
+        lineTotal: parseFloat(l.line_total),
+        listUnitPrice: num(l.unit_price),
+      })),
+    };
+  }
+
+  async markLocationResolved(invoiceId: string): Promise<void> {
+    await this.client.query(
+      `UPDATE invoice SET location_status = 'RESOLVED'
+       WHERE id = $1 AND location_status = 'HELD_UNMAPPED'`,
+      [invoiceId],
+    );
   }
 
   async updateStatus(invoiceId: string, status: InvoiceStatus): Promise<void> {
@@ -181,5 +288,7 @@ function toRecord(row: InvoiceRow): InvoiceRecord {
     imageS3Key: row.image_s3_key,
     imageSha256: row.image_sha256,
     householdId: row.household_id,
+    locationStatus: row.location_status,
+    locationConfirmedAt: row.location_confirmed_at,
   };
 }

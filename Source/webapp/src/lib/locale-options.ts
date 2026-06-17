@@ -9,16 +9,19 @@ export interface Country {
 }
 
 export const COUNTRIES: Country[] = [
-  { code: 'BR', name: 'Brazil',         currency: 'BRL', symbol: 'R$', defaultLanguage: 'pt-BR' },
-  { code: 'CA', name: 'Canada',         currency: 'CAD', symbol: 'C$', defaultLanguage: 'en'    },
-  { code: 'FR', name: 'France',         currency: 'EUR', symbol: '€',  defaultLanguage: 'fr'    },
-  { code: 'DE', name: 'Germany',        currency: 'EUR', symbol: '€',  defaultLanguage: 'de'    },
-  { code: 'IT', name: 'Italy',          currency: 'EUR', symbol: '€',  defaultLanguage: 'it'    },
-  { code: 'NL', name: 'Netherlands',    currency: 'EUR', symbol: '€',  defaultLanguage: 'nl'    },
-  { code: 'PT', name: 'Portugal',       currency: 'EUR', symbol: '€',  defaultLanguage: 'pt-BR' },
-  { code: 'ES', name: 'Spain',          currency: 'EUR', symbol: '€',  defaultLanguage: 'en'    },
-  { code: 'GB', name: 'United Kingdom', currency: 'GBP', symbol: '£',  defaultLanguage: 'en'    },
-  { code: 'US', name: 'United States',  currency: 'USD', symbol: '$',  defaultLanguage: 'en'    },
+  { code: 'BR', name: 'Brazil',           currency: 'BRL', symbol: 'R$', defaultLanguage: 'pt-BR' },
+  { code: 'CA', name: 'Canada',           currency: 'CAD', symbol: 'C$', defaultLanguage: 'en'    },
+  { code: 'EN', name: 'England',          currency: 'GBP', symbol: '£',  defaultLanguage: 'en'    },
+  { code: 'FR', name: 'France',           currency: 'EUR', symbol: '€',  defaultLanguage: 'fr'    },
+  { code: 'DE', name: 'Germany',          currency: 'EUR', symbol: '€',  defaultLanguage: 'de'    },
+  { code: 'IT', name: 'Italy',            currency: 'EUR', symbol: '€',  defaultLanguage: 'it'    },
+  { code: 'NL', name: 'Netherlands',      currency: 'EUR', symbol: '€',  defaultLanguage: 'nl'    },
+  { code: 'NI', name: 'Northern Ireland', currency: 'GBP', symbol: '£',  defaultLanguage: 'en'    },
+  { code: 'PT', name: 'Portugal',         currency: 'EUR', symbol: '€',  defaultLanguage: 'pt-BR' },
+  { code: 'SC', name: 'Scotland',         currency: 'GBP', symbol: '£',  defaultLanguage: 'en'    },
+  { code: 'ES', name: 'Spain',            currency: 'EUR', symbol: '€',  defaultLanguage: 'en'    },
+  { code: 'US', name: 'United States',    currency: 'USD', symbol: '$',  defaultLanguage: 'en'    },
+  { code: 'WA', name: 'Wales',            currency: 'GBP', symbol: '£',  defaultLanguage: 'en'    },
 ]
 
 export const LANGUAGES = [

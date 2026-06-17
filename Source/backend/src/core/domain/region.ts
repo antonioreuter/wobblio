@@ -12,3 +12,13 @@ export function resolveObservationRegion(
   const region = contributorRegion?.trim();
   return region && region.length > 0 ? region : countryCode;
 }
+
+// Sharing gate for an invoice's price observations (§6.5). An invoice's prices
+// reach the global index only once its location is RESOLVED (mapped to reference
+// data). PENDING holds the prices and prompts the user; HELD_UNMAPPED holds them
+// until the user-supplied area is added to the reference tables.
+export type InvoiceLocationStatus = 'RESOLVED' | 'PENDING' | 'HELD_UNMAPPED';
+
+// Where the invoice location came from: derived from the contributor profile at
+// ingestion, or explicitly confirmed once by the user.
+export type LocationSource = 'PROFILE' | 'USER';

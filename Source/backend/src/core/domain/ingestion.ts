@@ -6,6 +6,14 @@ export type InvoiceStatus =
   | 'SUSPECTED_DUPLICATE'
   | 'DISCARDED';
 
+// Only a successfully-parsed receipt is eligible for the §6.5 location gate. A
+// duplicate must contribute zero observations (§6.8), and PROCESSING/FAILED/DISCARDED
+// invoices have no shareable data — confirming a location for any of these must never
+// emit (nor flip an in-flight invoice the worker is about to overwrite).
+export function isLocationConfirmable(status: InvoiceStatus): boolean {
+  return status === 'PARSED' || status === 'NEEDS_REVIEW';
+}
+
 export interface ParsedLine {
   rawText: string;
   quantity: number;

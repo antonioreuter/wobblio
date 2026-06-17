@@ -5,12 +5,14 @@ import { createPortal } from 'react-dom'
 import { Box, Calendar, Share2, Shield, ShieldCheck, Tag as TagIcon, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
 import { Badge, MerchantIcon, Tag } from '@/components/ds'
 import { eur, fmtDate, type Invoice } from './invoice-data'
+import { InvoiceLocationGate } from './invoice-location-gate'
 
 interface InvoiceDrawerProps {
   invoice: Invoice
   onClose: () => void
   onRequestDelete: (inv: Invoice) => void
   onShare: (inv: Invoice) => void
+  onLocationConfirmed: (status: 'RESOLVED' | 'HELD_UNMAPPED') => void
 }
 
 interface DetailLine {
@@ -25,7 +27,7 @@ interface InvoiceDetail {
   lines: DetailLine[]
 }
 
-export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare }: InvoiceDrawerProps) {
+export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onLocationConfirmed }: InvoiceDrawerProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
@@ -94,6 +96,8 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare }: In
               </div>
             </div>
           </div>
+
+          <InvoiceLocationGate invoice={invoice} onConfirmed={onLocationConfirmed} />
 
           {detail?.imageUrl && (
             // eslint-disable-next-line @next/next/no-img-element

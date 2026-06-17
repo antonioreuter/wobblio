@@ -4,6 +4,8 @@
 export type StatusTone = 'success' | 'warning' | 'primary' | 'danger'
 export type Status = [StatusTone, string]
 
+export type LocationStatus = 'RESOLVED' | 'PENDING' | 'HELD_UNMAPPED'
+
 export interface Invoice {
   id: string
   merchant: string
@@ -12,6 +14,12 @@ export interface Invoice {
   status: Status
   tags: string[]
   total: number
+  locationStatus: LocationStatus
+  locationCountryCode: string | null
+  locationRegionCode: string | null
+  // Whether the receipt is parsed enough to confirm a location (PARSED/NEEDS_REVIEW).
+  // Duplicates and in-flight invoices can be PENDING but must not show the prompt.
+  locationConfirmable: boolean
 }
 
 export type Preset = '30d' | 'month' | '90d' | 'custom'
@@ -72,6 +80,10 @@ function buildInvoices(): Invoice[] {
       status: STATUSES[k % STATUSES.length],
       tags,
       total: Math.round((8 + ((k * 7.37) % 72)) * 100) / 100,
+      locationStatus: 'RESOLVED',
+      locationCountryCode: null,
+      locationRegionCode: null,
+      locationConfirmable: true,
     })
     day += 1 + (k % 3)
   }

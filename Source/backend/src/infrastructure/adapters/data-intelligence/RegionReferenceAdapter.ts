@@ -27,4 +27,11 @@ export class RegionReferenceAdapter implements IRegionReference {
     );
     return result.rowCount !== null && result.rowCount > 0;
   }
+
+  // A location is mapped only when its exact subdivision exists in reference data.
+  // A country whose subdivisions aren't seeded yet is treated as UNMAPPED so its
+  // invoices stay HELD rather than emitting against an unmapped region (§6.5 gate).
+  async isMappedLocation(countryCode: string, regionCode: string): Promise<boolean> {
+    return this.isValidRegion(countryCode, regionCode);
+  }
 }

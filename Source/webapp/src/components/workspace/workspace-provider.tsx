@@ -116,6 +116,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [confirmDelete, removeInvoice, showToast, loadInvoices])
 
+  const onLocationConfirmed = useCallback((status: 'RESOLVED' | 'HELD_UNMAPPED') => {
+    setOpenInvoice(null)
+    refresh()
+    showToast(
+      status === 'RESOLVED'
+        ? 'Location confirmed — your prices now help the regional index.'
+        : 'Location saved — it’ll join the index once we map your area.',
+      'success',
+    )
+  }, [refresh, showToast])
+
   const copyLink = useCallback((link: string) => {
     try {
       void navigator.clipboard?.writeText(link)
@@ -190,6 +201,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           onClose={() => setOpenInvoice(null)}
           onRequestDelete={setConfirmDelete}
           onShare={setShareTarget}
+          onLocationConfirmed={onLocationConfirmed}
         />
       )}
       {shareTarget && (

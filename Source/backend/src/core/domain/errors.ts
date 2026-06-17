@@ -100,6 +100,27 @@ export class InvoiceNotFoundError extends Error {
   }
 }
 
+export class LocationAlreadySetError extends Error {
+  constructor(readonly invoiceId: string) {
+    super(`Invoice location already set for ${invoiceId}; it can only be set once`);
+    this.name = 'LocationAlreadySetError';
+  }
+}
+
+export class LocationNotConfirmableError extends Error {
+  constructor(readonly invoiceId: string, readonly status: string) {
+    super(`Invoice ${invoiceId} cannot have its location confirmed in status ${status}`);
+    this.name = 'LocationNotConfirmableError';
+  }
+}
+
+export class InvalidLocationError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid invoice location: ${reason}`);
+    this.name = 'InvalidLocationError';
+  }
+}
+
 export class SchemaValidationError extends Error {
   constructor(readonly issues: string) {
     super(`Output failed schema validation: ${issues}`);
@@ -113,3 +134,11 @@ export class StaleUploadError extends Error {
     this.name = 'StaleUploadError';
   }
 }
+
+export class PremiumRequiredError extends Error {
+  constructor(readonly feature: string) {
+    super(`Premium subscription required for ${feature}`);
+    this.name = 'PremiumRequiredError';
+  }
+}
+

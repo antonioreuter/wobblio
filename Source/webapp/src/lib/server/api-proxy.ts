@@ -7,7 +7,7 @@ import { getToken } from 'next-auth/jwt'
 export async function proxyToBackend(
   req: NextRequest,
   path: string,
-  method: 'GET' | 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
 ): Promise<NextResponse> {
   const token = await getToken({
     req,
@@ -25,7 +25,7 @@ export async function proxyToBackend(
     method,
     headers: { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' },
   }
-  if (method === 'POST') init.body = await req.text()
+  if (method === 'POST' || method === 'PUT') init.body = await req.text()
 
   const res = await fetch(`${apiBase}${path}`, init)
   // 204/205/304 are null-body statuses — the Response constructor throws if given
