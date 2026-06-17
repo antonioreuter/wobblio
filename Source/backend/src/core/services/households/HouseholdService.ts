@@ -1,0 +1,64 @@
+import type {
+  IHouseholdRepository,
+  HouseholdSummary,
+  HouseholdMember,
+} from '../../ports/households/IHouseholdRepository';
+import type { UserRole } from '../../ports/identity/IAppUserRepository';
+import {
+  PremiumRequiredError,
+  AlreadyOwnsHouseholdError,
+  InvalidHouseholdError,
+  HouseholdNotFoundError,
+  NotHouseholdOwnerError,
+  OwnerCannotLeaveError,
+} from '../../domain/errors';
+
+export interface HouseholdDetail extends HouseholdSummary {
+  members: HouseholdMember[];
+}
+
+export class HouseholdService {
+  constructor(private readonly households: IHouseholdRepository) {}
+
+  // Create: PREMIUM only, max one owned household per user (Business Rules §09).
+  async create(userId: string, role: UserRole, name: string): Promise<HouseholdSummary> {
+    if (role !== 'PREMIUM') throw new PremiumRequiredError('households');
+
+    const cleanName = name.trim();
+    if (!cleanName) throw new InvalidHouseholdError('name is required');
+
+    const owned = await this.households.countOwnedByUser(userId);
+    if (owned > 0) throw new AlreadyOwnsHouseholdError(userId);
+
+    const id = await this.households.create(userId, cleanName);
+    return { id, name: cleanName, ownerUserId: userId };
+  }
+
+  async getDetail(householdId: string): Promise<HouseholdDetail> {
+    const household = await this.requireMembership(householdId);
+    const members = await this.households.listMembers(householdId);
+    return { ...household, members };
+  }
+
+  async disband(userId: string, householdId: string): Promise<void> {
+    const ok = await this.households.disband(householdId, userId);
+    if (!ok) throw new NotHouseholdOwnerError(householdId);
+  }
+
+  async removeMember(userId: string, householdId: string, memberId: string): Promise<void> {
+    const ok = await this.households.removeMember(householdId, memberId, userId);
+    if (!ok) throw new NotHouseholdOwnerError(householdId);
+  }
+
+  async leave(userId: string, householdId: string): Promise<void> {
+    const household = await this.requireMembership(householdId);
+    if (household.ownerUserId === userId) throw new OwnerCannotLeaveError(householdId);
+    await this.households.leave(householdId, userId);
+  }
+
+  private async requireMembership(householdId: string): Promise<HouseholdSummary> {
+    const household = await this.households.findForMember(householdId);
+    if (!household) throw new HouseholdNotFoundError(householdId);
+    return household;
+  }
+}

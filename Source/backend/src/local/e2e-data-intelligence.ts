@@ -25,6 +25,7 @@ import { MerchantCatalogAdapter } from '@infrastructure/adapters/data-intelligen
 import { ProductCatalogAdapter } from '@infrastructure/adapters/data-intelligence/ProductCatalogAdapter';
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
 import { ContributorContextRepositoryAdapter } from '@infrastructure/adapters/data-intelligence/ContributorContextRepositoryAdapter';
+import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligence/RegionReferenceAdapter';
 import { OllamaEmbedderAdapter } from '@infrastructure/adapters/data-intelligence/OllamaEmbedderAdapter';
 import { AiSpendLedgerAdapter } from '@infrastructure/adapters/ai/AiSpendLedgerAdapter';
 import { BedrockSpendGuardService } from '@core/services/ai/BedrockSpendGuardService';
@@ -123,6 +124,7 @@ function buildService(client: PoolClient): IngestionService {
     new InvoiceRepositoryAdapter(client),
     new PriceObservationStoreAdapter(client),
     new ContributorContextRepositoryAdapter(client),
+    new RegionReferenceAdapter(client),
   );
 }
 

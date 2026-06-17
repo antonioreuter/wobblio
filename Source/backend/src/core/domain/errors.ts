@@ -142,3 +142,102 @@ export class PremiumRequiredError extends Error {
   }
 }
 
+export class InvalidHouseholdError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid household: ${reason}`);
+    this.name = 'InvalidHouseholdError';
+  }
+}
+
+export class AlreadyOwnsHouseholdError extends Error {
+  constructor(readonly userId: string) {
+    super(`User ${userId} already owns a household`);
+    this.name = 'AlreadyOwnsHouseholdError';
+  }
+}
+
+export class HouseholdNotFoundError extends Error {
+  constructor(readonly householdId: string) {
+    super(`Household not found: ${householdId}`);
+    this.name = 'HouseholdNotFoundError';
+  }
+}
+
+export class NotHouseholdOwnerError extends Error {
+  // householdId is omitted when the caller belongs to no household at all (e.g. a
+  // solo user attempting a household-scoped action that requires ownership).
+  constructor(readonly householdId?: string) {
+    super(householdId ? `Caller is not the owner of household ${householdId}` : 'Caller is not a household owner');
+    this.name = 'NotHouseholdOwnerError';
+  }
+}
+
+export class OwnerCannotLeaveError extends Error {
+  constructor(readonly householdId: string) {
+    super(`Owner cannot leave household ${householdId}; disband it instead`);
+    this.name = 'OwnerCannotLeaveError';
+  }
+}
+
+export class HouseholdFullError extends Error {
+  constructor(readonly householdId: string) {
+    super(`Household ${householdId} already has the maximum of 5 members`);
+    this.name = 'HouseholdFullError';
+  }
+}
+
+export class InvalidInviteError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid household invite: ${reason}`);
+    this.name = 'InvalidInviteError';
+  }
+}
+
+export class InvalidBudgetError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid budget: ${reason}`);
+    this.name = 'InvalidBudgetError';
+  }
+}
+
+export class BudgetLimitError extends Error {
+  constructor(readonly limit: number) {
+    super(`Budget limit reached (max ${limit})`);
+    this.name = 'BudgetLimitError';
+  }
+}
+
+export class BudgetNotFoundError extends Error {
+  constructor(readonly budgetId: string) {
+    super(`Budget not found: ${budgetId}`);
+    this.name = 'BudgetNotFoundError';
+  }
+}
+
+export class InvalidListError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid shopping list: ${reason}`);
+    this.name = 'InvalidListError';
+  }
+}
+
+export class ListLimitError extends Error {
+  constructor(readonly limit: number) {
+    super(`Active shopping-list limit reached (max ${limit})`);
+    this.name = 'ListLimitError';
+  }
+}
+
+export class ListNotFoundError extends Error {
+  constructor(readonly listId: string) {
+    super(`Shopping list not found: ${listId}`);
+    this.name = 'ListNotFoundError';
+  }
+}
+
+export class ListItemNotFoundError extends Error {
+  constructor(readonly itemId: string) {
+    super(`Shopping list item not found: ${itemId}`);
+    this.name = 'ListItemNotFoundError';
+  }
+}

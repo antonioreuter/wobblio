@@ -41,7 +41,10 @@ export class PresignService {
       ? await this.quotaProvider.getHouseholdUploadsCap()
       : await this.quotaProvider.getPersonalUploadsCap(input.role);
 
-    await this.quotaService.reserveUpload(input.tenantId, counter, cap, new Date());
+    // The household pool is shared, so its counter is keyed by household_id; a
+    // personal upload draws from the uploader's own counter (Epic 09 mechanics).
+    const quotaOwnerId = isHousehold ? input.householdId! : input.tenantId;
+    await this.quotaService.reserveUpload(quotaOwnerId, counter, cap, new Date());
 
     const s3Key = `receipts/${input.tenantId}/${input.imageSha256}.jpg`;
     const invoiceId = await this.invoiceRepo.createPending({

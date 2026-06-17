@@ -1,16 +1,12 @@
 import type { IQuotaRepository, QuotaType } from '../../ports/quota/IQuotaRepository';
 import { QuotaExceededError } from '../../domain/errors';
+import { weekStart } from '../../domain/week';
 
 export class QuotaService {
   constructor(private readonly quotaRepo: IQuotaRepository) {}
 
   getWeekStart(date: Date): string {
-    const d = new Date(date);
-    const day = d.getUTCDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    d.setUTCDate(d.getUTCDate() + diff);
-    d.setUTCHours(0, 0, 0, 0);
-    return d.toISOString().slice(0, 10);
+    return weekStart(date.toISOString().slice(0, 10));
   }
 
   async getUsed(tenantId: string, type: QuotaType, date: Date): Promise<number> {

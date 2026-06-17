@@ -14,6 +14,7 @@ import { MerchantCatalogAdapter } from '@infrastructure/adapters/data-intelligen
 import { ProductCatalogAdapter } from '@infrastructure/adapters/data-intelligence/ProductCatalogAdapter';
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
 import { ContributorContextRepositoryAdapter } from '@infrastructure/adapters/data-intelligence/ContributorContextRepositoryAdapter';
+import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligence/RegionReferenceAdapter';
 import { BedrockSpendGuardService } from '@core/services/ai/BedrockSpendGuardService';
 import { VisionParseService } from '@core/services/ingestion/VisionParseService';
 import { MerchantResolver } from '@core/services/data-intelligence/MerchantResolver';
@@ -82,6 +83,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         new InvoiceRepositoryAdapter(client),
         new PriceObservationStoreAdapter(client),
         new ContributorContextRepositoryAdapter(client),
+        new RegionReferenceAdapter(client),
       );
 
       const outcome = await service.process(message);

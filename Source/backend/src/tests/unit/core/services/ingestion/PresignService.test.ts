@@ -77,7 +77,8 @@ describe('PresignService', () => {
     await sut.presign({ ...baseInput, householdId: 'hh-1' });
 
     expect(quotaProvider.getHouseholdUploadsCap).toHaveBeenCalled();
-    expect(quotaRepo.increment).toHaveBeenCalledWith('tenant-1', 'HOUSEHOLD_UPLOADS', expect.any(String));
+    // The shared pool is keyed by household_id, not the uploader.
+    expect(quotaRepo.increment).toHaveBeenCalledWith('hh-1', 'HOUSEHOLD_UPLOADS', expect.any(String));
   });
 
   it('throws QuotaExceededError when the cap is reached', async () => {

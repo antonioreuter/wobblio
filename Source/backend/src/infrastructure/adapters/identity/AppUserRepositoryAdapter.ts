@@ -20,6 +20,7 @@ interface DbUserRow {
 interface DbProfileRow {
   full_name: string;
   country_code: string;
+  region_code: string | null;
   language: string;
   home_currency: string;
   birthdate: string | null;
@@ -82,6 +83,7 @@ export class AppUserRepositoryAdapter implements IAppUserRepository {
     return {
       fullName: row.full_name,
       country: row.country_code,
+      regionCode: row.region_code,
       language: row.language,
       currency: row.home_currency,
       birthdate: row.birthdate,

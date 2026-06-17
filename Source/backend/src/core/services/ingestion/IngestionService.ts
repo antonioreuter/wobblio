@@ -8,10 +8,12 @@ import type { ITagGenerator } from '../../ports/data-intelligence/ITagGenerator'
 import type { IInvoiceRepository, PersistedLine } from '../../ports/ingestion/IInvoiceRepository';
 import type { IPriceObservationStore } from '../../ports/data-intelligence/IPriceObservationStore';
 import type { IContributorContextRepository } from '../../ports/data-intelligence/IContributorContextRepository';
+import type { IRegionReference } from '../../ports/data-intelligence/IRegionReference';
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
 import type { VisionParseService } from './VisionParseService';
 import { decideStatus, isArithmeticConsistent, type InvoiceStatus, type ParsedLine, type ParsedReceipt } from '../../domain/ingestion';
-import { buildPriceObservations, type ObservationLine } from '../../domain/priceObservation';
+import { buildPriceObservations, type ContributorContext, type ObservationLine } from '../../domain/priceObservation';
+import { resolveObservationRegion, type InvoiceLocationStatus } from '../../domain/region';
 
 const LAUNCH_COUNTRY = 'NL';
 
@@ -36,6 +38,7 @@ export class IngestionService {
     private readonly invoiceRepo: IInvoiceRepository,
     private readonly priceObservationStore: IPriceObservationStore,
     private readonly contributorContext: IContributorContextRepository,
+    private readonly regionReference: IRegionReference,
   ) {}
 
   async process(message: IngestionMessage): Promise<IngestionOutcome> {
@@ -64,12 +67,17 @@ export class IngestionService {
       suggestedTags,
     });
 
-    const isSuspectedDuplicate = await this.invoiceRepo.findFuzzyDuplicate(message.invoiceId, {
+    const fuzzyDuplicate = await this.invoiceRepo.findFuzzyDuplicate(message.invoiceId, {
       merchantId: merchant.merchantId,
       transactionDate: receipt.transactionDate,
       total: receipt.total,
       lineCount: receipt.lines.length,
     });
+    // An exact re-upload of a receipt this tenant already contributed (even one later
+    // deleted) must not emit a second, non-retractable observation set (§6.5). It is
+    // still a real upload: it keeps its quota slot and stays visible in the list.
+    const alreadyContributed = await this.invoiceRepo.hasEmittedDuplicateByHash(message.invoiceId);
+    const isSuspectedDuplicate = fuzzyDuplicate || alreadyContributed;
 
     const status = decideStatus({
       parseConfidence: receipt.parseConfidence,
@@ -79,9 +87,18 @@ export class IngestionService {
       isSuspectedDuplicate,
     });
 
+    // Resolve the sharing location from the contributor profile. When it can't be
+    // mapped to reference data, the invoice is held PENDING and emission is deferred
+    // until the user confirms a location (§6.5 data-quality gate).
+    const context = await this.contributorContext.getContext(message.tenantId);
+    const regionCode = resolveObservationRegion(context.regionCode, context.countryCode);
+    const locationMapped = await this.regionReference.isMappedLocation(context.countryCode, regionCode);
+    const locationStatus: InvoiceLocationStatus = locationMapped ? 'RESOLVED' : 'PENDING';
+
     await this.invoiceRepo.persistParsed({
       invoiceId: message.invoiceId,
       merchantId: merchant.merchantId,
+      merchantProvisional: merchant.provisional,
       branchId: merchant.branchId,
       transactionDate: receipt.transactionDate,
       currency: receipt.currency,
@@ -89,14 +106,21 @@ export class IngestionService {
       categoryId,
       searchTags: tags,
       status,
+      location: {
+        countryCode: context.countryCode,
+        regionCode,
+        status: locationStatus,
+        source: 'PROFILE',
+      },
       lines: receipt.lines.map((line, index) => toPersistedLine(line, normalized[index])),
     });
 
-    // A suspected duplicate stays out of the price index until the user resolves it —
-    // confirmed duplicates must contribute no observations (§6.8), and emitted rows are
-    // de-identified and cannot be retracted.
-    if (status !== 'SUSPECTED_DUPLICATE') {
-      await this.emitPriceObservations(message.tenantId, merchant, receipt, normalized);
+    // A duplicate (fuzzy fingerprint or exact re-upload) stays out of the price index:
+    // confirmed duplicates contribute no observations (§6.8) and emitted rows are
+    // de-identified and cannot be retracted. The reserved quota slot is kept — the scan
+    // still cost an AI parse, so it counts against the §2.4 cap (Epic 09 cost control).
+    if (status !== 'SUSPECTED_DUPLICATE' && locationStatus === 'RESOLVED') {
+      await this.emitPriceObservations(merchant, receipt, normalized, context);
     }
 
     await this.ledger.setStatus(message.s3Key, 'DONE');
@@ -107,12 +131,11 @@ export class IngestionService {
   // The domain builder skips opt-out, missing-merchant, and non-priceable lines, and
   // quarantines provisional catalog entries.
   private async emitPriceObservations(
-    tenantId: string,
     merchant: MerchantResolution,
     receipt: ParsedReceipt,
     normalized: NormalizedLine[],
+    context: ContributorContext,
   ): Promise<void> {
-    const context = await this.contributorContext.getContext(tenantId);
     const rows = buildPriceObservations({
       merchantId: merchant.merchantId,
       merchantProvisional: merchant.provisional,
@@ -142,6 +165,7 @@ function toPersistedLine(line: ParsedLine, norm: NormalizedLine): PersistedLine 
   return {
     rawText: line.rawText,
     productId: norm.productId,
+    productProvisional: norm.productProvisional,
     categoryId: norm.categoryId,
     quantity: line.quantity,
     packQuantity: norm.packQuantity,

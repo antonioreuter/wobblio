@@ -24,6 +24,7 @@ export interface OnboardingInput extends UserProfile {
 }
 
 export interface OnboardingProfile extends UserProfile {
+  regionCode: string | null; // ISO 3166-2 home region; prefilled into the invoice-location prompt
   birthdate: string | null;
   onboarded: boolean;
   role: UserRole;

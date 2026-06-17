@@ -10,7 +10,10 @@ import { PaymentTransactionRepositoryAdapter } from '@infrastructure/adapters/bi
 import { S3BillingArchiveAdapter } from '@infrastructure/adapters/billing/S3BillingArchiveAdapter';
 import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceRepositoryAdapter';
 import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligence/RegionReferenceAdapter';
+import { ContributorContextRepositoryAdapter } from '@infrastructure/adapters/data-intelligence/ContributorContextRepositoryAdapter';
+import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
 import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
+import { WeeklyAdvisorRepositoryAdapter } from '@infrastructure/adapters/ai/WeeklyAdvisorRepositoryAdapter';
 import { S3FileStorageAdapter } from '@infrastructure/adapters/ingestion/S3FileStorageAdapter';
 import { SqsIngestionQueueAdapter } from '@infrastructure/adapters/ingestion/SqsIngestionQueueAdapter';
 import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
@@ -20,6 +23,7 @@ import { QuotaService } from '@core/services/quota/QuotaService';
 import { PresignService } from '@core/services/ingestion/PresignService';
 import { ConfirmService } from '@core/services/ingestion/ConfirmService';
 import { DeleteInvoiceService } from '@core/services/ingestion/DeleteInvoiceService';
+import { InvoiceLocationService } from '@core/services/ingestion/InvoiceLocationService';
 import {
   InvalidBillingPlanError,
   InvalidProfileError,
@@ -27,17 +31,18 @@ import {
   QuotaExceededError,
   InvoiceNotFoundError,
   StaleUploadError,
+  LocationAlreadySetError,
+  LocationNotConfirmableError,
+  InvalidLocationError,
 } from '@core/domain/errors';
 import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import type { PoolClient } from 'pg';
-
-const REGION = process.env.AWS_REGION ?? 'eu-west-1';
-
-const json = (statusCode: number, body: object): APIGatewayProxyResult => ({
-  statusCode,
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify(body),
-});
+import { REGION, json, parseJsonBody, withTenantTx } from './shared';
+import { handleHouseholdsRoute } from './householdRoutes';
+import { handleBudgetsRoute } from './budgetRoutes';
+import { handleNotificationsRoute } from './notificationRoutes';
+import { handleListsRoute } from './listRoutes';
+import { handleProductsRoute } from './productRoutes';
 
 export const handler = async (
   event: APIGatewayProxyEvent,
@@ -82,6 +87,11 @@ export const handler = async (
     const isMeRoute = path.startsWith('/me/');
     const isInvoicesRoute = path.startsWith('/invoices');
     const isReferenceRoute = path.startsWith('/reference/');
+    const isHouseholdsRoute = path.startsWith('/households');
+    const isBudgetsRoute = path.startsWith('/budgets');
+    const isNotificationsRoute = path.startsWith('/notifications');
+    const isListsRoute = path.startsWith('/lists');
+    const isProductsRoute = path.startsWith('/products');
 
     // Billing (upgrade), own-profile onboarding, and reference lookups stay
     // reachable while waitlisted; everything else is gated until a slot is released.
@@ -114,6 +124,26 @@ export const handler = async (
       return handleReferenceRoute(client, path, method, event);
     }
 
+    if (isHouseholdsRoute) {
+      return handleHouseholdsRoute(client, user, path, method, event, log);
+    }
+
+    if (isBudgetsRoute) {
+      return handleBudgetsRoute(client, user, path, method, event, log);
+    }
+
+    if (isNotificationsRoute) {
+      return handleNotificationsRoute(client, user, path, method);
+    }
+
+    if (isListsRoute) {
+      return handleListsRoute(client, user, path, method, event, log);
+    }
+
+    if (isProductsRoute) {
+      return handleProductsRoute(client, user, path, method, event);
+    }
+
     return json(200, { status: 'ok' });
   } finally {
     client.release();
@@ -129,6 +159,7 @@ async function handleMeRoute(
   log: LambdaLogger,
 ): Promise<APIGatewayProxyResult> {
   if (path === '/me/usage' && method === 'GET') return handleUsage(db, user);
+  if (path === '/me/advisor' && method === 'GET') return handleAdvisorCard(db, user);
 
   if (path !== '/me/profile') {
     return json(404, { message: 'Not Found' });
@@ -180,6 +211,12 @@ async function handleReferenceRoute(
   return json(200, { subdivisions });
 }
 
+// Current weekly advisor card for the dashboard (null until the cron generates one).
+async function handleAdvisorCard(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
+  const advisor = await withTenantTx(db, user.id, () => new WeeklyAdvisorRepositoryAdapter(db).getCurrent());
+  return json(200, { advisor });
+}
+
 async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
   const cap = await new SsmUploadQuotaAdapter(REGION).getPersonalUploadsCap(user.role);
   const quotaService = new QuotaService(new QuotaRepositoryAdapter(db));
@@ -190,19 +227,6 @@ async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayPro
 }
 
 const SHA256_RE = /^[a-f0-9]{64}$/i;
-
-async function withTenantTx<T>(db: PoolClient, tenantId: string, fn: () => Promise<T>): Promise<T> {
-  await db.query('BEGIN');
-  try {
-    await new TenantContextAdapter(db).setTenantId(tenantId);
-    const result = await fn();
-    await db.query('COMMIT');
-    return result;
-  } catch (err) {
-    await db.query('ROLLBACK').catch(() => undefined);
-    throw err;
-  }
-}
 
 async function handleInvoicesRoute(
   db: PoolClient,
@@ -216,6 +240,9 @@ async function handleInvoicesRoute(
 
   const confirmMatch = path.match(/^\/invoices\/([^/]+)\/confirm$/);
   if (method === 'POST' && confirmMatch) return handleConfirm(db, user, confirmMatch[1], log);
+
+  const locationMatch = path.match(/^\/invoices\/([^/]+)\/location$/);
+  if (method === 'PUT' && locationMatch) return handleConfirmLocation(db, user, locationMatch[1], event, log);
 
   if (method === 'POST' && path === '/invoices/presign') return handlePresign(db, user, event, log);
 
@@ -315,6 +342,45 @@ async function handlePresign(
   }
 }
 
+// Write-once location confirmation that releases (or holds) the invoice's price
+// observations — the second half of the §6.5 data-quality gate. The deferred
+// price_observation INSERT runs here under the same DB credentials the ingestion
+// worker uses (both Lambdas read the one shared dbSecret — see WobblioBackendStack),
+// so no extra grant is required. If a read-only api-handler DB role is ever
+// introduced, it must keep INSERT on the (RLS-exempt) price_observation table.
+async function handleConfirmLocation(
+  db: PoolClient,
+  user: AppUser,
+  invoiceId: string,
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody(event.body);
+  const service = new InvoiceLocationService(
+    new InvoiceRepositoryAdapter(db),
+    new RegionReferenceAdapter(db),
+    new ContributorContextRepositoryAdapter(db),
+    new PriceObservationStoreAdapter(db),
+  );
+
+  try {
+    const locationStatus = await withTenantTx(db, user.id, () =>
+      service.confirm(invoiceId, user.id, {
+        countryCode: String(body.countryCode ?? ''),
+        regionCode: String(body.regionCode ?? ''),
+      }),
+    );
+    log.info('invoice location confirmed', { userId: user.id, invoiceId, locationStatus });
+    return json(200, { locationStatus });
+  } catch (err) {
+    if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
+    if (err instanceof LocationAlreadySetError) return json(409, { message: 'Location already set' });
+    if (err instanceof LocationNotConfirmableError) return json(409, { message: 'Invoice is not ready for a location' });
+    if (err instanceof InvalidLocationError) return json(422, { message: err.message });
+    throw err;
+  }
+}
+
 async function handleConfirm(
   db: PoolClient,
   user: AppUser,
@@ -406,14 +472,5 @@ async function handleCheckoutSession(
       return json(400, { message: err.message });
     }
     throw err;
-  }
-}
-
-function parseJsonBody(body: string | null): Record<string, unknown> {
-  if (!body) return {};
-  try {
-    return JSON.parse(body) as Record<string, unknown>;
-  } catch {
-    return {};
   }
 }

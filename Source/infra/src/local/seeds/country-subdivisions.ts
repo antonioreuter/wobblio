@@ -1,7 +1,10 @@
 // ISO 3166 reference data for the launch + roadmap markets. `country` is ISO
 // 3166-1 alpha-2; `subdivision.code` is ISO 3166-2. These are the single source
 // of truth for the onboarding country/region dropdowns and region-code
-// validation. Top-level subdivisions only (e.g. UK = the 4 nations).
+// validation. Top-level subdivisions only. The four UK nations (England,
+// Scotland, Wales, Northern Ireland) are modelled as separate top-level
+// countries with project-local codes EN/SC/WA/NI (no ISO 3166-1 alpha-2 exists),
+// each carrying its own regions, rather than as subdivisions of GB.
 
 export interface CountrySeed {
   code: string;
@@ -15,7 +18,12 @@ export interface SubdivisionSeed {
 }
 
 export const countrySeed: CountrySeed[] = [
-  { code: 'GB', name: 'United Kingdom' },
+  // UK nations as separate top-level countries. No ISO 3166-1 alpha-2 exists for
+  // them, so EN/SC/WA/NI are project-local codes fitting the CHAR(2) country.code.
+  { code: 'EN', name: 'England' },
+  { code: 'SC', name: 'Scotland' },
+  { code: 'WA', name: 'Wales' },
+  { code: 'NI', name: 'Northern Ireland' },
   { code: 'NL', name: 'Netherlands' },
   { code: 'FR', name: 'France' },
   { code: 'DE', name: 'Germany' },
@@ -31,11 +39,87 @@ export const countrySeed: CountrySeed[] = [
 ];
 
 export const subdivisionSeed: SubdivisionSeed[] = [
-  // ── United Kingdom (4 nations) ──────────────────────────────────────────────
-  { code: 'GB-ENG', country_code: 'GB', name: 'England' },
-  { code: 'GB-SCT', country_code: 'GB', name: 'Scotland' },
-  { code: 'GB-WLS', country_code: 'GB', name: 'Wales' },
-  { code: 'GB-NIR', country_code: 'GB', name: 'Northern Ireland' },
+  // ── England (9 statistical regions) ─────────────────────────────────────────
+  { code: 'EN-NE', country_code: 'EN', name: 'North East' },
+  { code: 'EN-NW', country_code: 'EN', name: 'North West' },
+  { code: 'EN-YH', country_code: 'EN', name: 'Yorkshire and the Humber' },
+  { code: 'EN-EM', country_code: 'EN', name: 'East Midlands' },
+  { code: 'EN-WM', country_code: 'EN', name: 'West Midlands' },
+  { code: 'EN-EE', country_code: 'EN', name: 'East of England' },
+  { code: 'EN-LDN', country_code: 'EN', name: 'London' },
+  { code: 'EN-SE', country_code: 'EN', name: 'South East' },
+  { code: 'EN-SW', country_code: 'EN', name: 'South West' },
+
+  // ── Scotland (32 council areas) ─────────────────────────────────────────────
+  { code: 'SC-ABE', country_code: 'SC', name: 'Aberdeen City' },
+  { code: 'SC-ABD', country_code: 'SC', name: 'Aberdeenshire' },
+  { code: 'SC-ANS', country_code: 'SC', name: 'Angus' },
+  { code: 'SC-AGB', country_code: 'SC', name: 'Argyll and Bute' },
+  { code: 'SC-CLK', country_code: 'SC', name: 'Clackmannanshire' },
+  { code: 'SC-DGY', country_code: 'SC', name: 'Dumfries and Galloway' },
+  { code: 'SC-DND', country_code: 'SC', name: 'Dundee City' },
+  { code: 'SC-EAY', country_code: 'SC', name: 'East Ayrshire' },
+  { code: 'SC-EDU', country_code: 'SC', name: 'East Dunbartonshire' },
+  { code: 'SC-ELN', country_code: 'SC', name: 'East Lothian' },
+  { code: 'SC-ERW', country_code: 'SC', name: 'East Renfrewshire' },
+  { code: 'SC-EDH', country_code: 'SC', name: 'City of Edinburgh' },
+  { code: 'SC-ELS', country_code: 'SC', name: 'Na h-Eileanan Siar' },
+  { code: 'SC-FAL', country_code: 'SC', name: 'Falkirk' },
+  { code: 'SC-FIF', country_code: 'SC', name: 'Fife' },
+  { code: 'SC-GLG', country_code: 'SC', name: 'Glasgow City' },
+  { code: 'SC-HLD', country_code: 'SC', name: 'Highland' },
+  { code: 'SC-IVC', country_code: 'SC', name: 'Inverclyde' },
+  { code: 'SC-MLN', country_code: 'SC', name: 'Midlothian' },
+  { code: 'SC-MRY', country_code: 'SC', name: 'Moray' },
+  { code: 'SC-NAY', country_code: 'SC', name: 'North Ayrshire' },
+  { code: 'SC-NLK', country_code: 'SC', name: 'North Lanarkshire' },
+  { code: 'SC-ORK', country_code: 'SC', name: 'Orkney Islands' },
+  { code: 'SC-PKN', country_code: 'SC', name: 'Perth and Kinross' },
+  { code: 'SC-RFW', country_code: 'SC', name: 'Renfrewshire' },
+  { code: 'SC-SCB', country_code: 'SC', name: 'Scottish Borders' },
+  { code: 'SC-ZET', country_code: 'SC', name: 'Shetland Islands' },
+  { code: 'SC-SAY', country_code: 'SC', name: 'South Ayrshire' },
+  { code: 'SC-SLK', country_code: 'SC', name: 'South Lanarkshire' },
+  { code: 'SC-STG', country_code: 'SC', name: 'Stirling' },
+  { code: 'SC-WDU', country_code: 'SC', name: 'West Dunbartonshire' },
+  { code: 'SC-WLN', country_code: 'SC', name: 'West Lothian' },
+
+  // ── Wales (22 principal areas) ──────────────────────────────────────────────
+  { code: 'WA-BGW', country_code: 'WA', name: 'Blaenau Gwent' },
+  { code: 'WA-BGE', country_code: 'WA', name: 'Bridgend' },
+  { code: 'WA-CAY', country_code: 'WA', name: 'Caerphilly' },
+  { code: 'WA-CRF', country_code: 'WA', name: 'Cardiff' },
+  { code: 'WA-CMN', country_code: 'WA', name: 'Carmarthenshire' },
+  { code: 'WA-CGN', country_code: 'WA', name: 'Ceredigion' },
+  { code: 'WA-CWY', country_code: 'WA', name: 'Conwy' },
+  { code: 'WA-DEN', country_code: 'WA', name: 'Denbighshire' },
+  { code: 'WA-FLN', country_code: 'WA', name: 'Flintshire' },
+  { code: 'WA-GWN', country_code: 'WA', name: 'Gwynedd' },
+  { code: 'WA-AGY', country_code: 'WA', name: 'Isle of Anglesey' },
+  { code: 'WA-MTY', country_code: 'WA', name: 'Merthyr Tydfil' },
+  { code: 'WA-MON', country_code: 'WA', name: 'Monmouthshire' },
+  { code: 'WA-NTL', country_code: 'WA', name: 'Neath Port Talbot' },
+  { code: 'WA-NWP', country_code: 'WA', name: 'Newport' },
+  { code: 'WA-PEM', country_code: 'WA', name: 'Pembrokeshire' },
+  { code: 'WA-POW', country_code: 'WA', name: 'Powys' },
+  { code: 'WA-RCT', country_code: 'WA', name: 'Rhondda Cynon Taf' },
+  { code: 'WA-SWA', country_code: 'WA', name: 'Swansea' },
+  { code: 'WA-TOF', country_code: 'WA', name: 'Torfaen' },
+  { code: 'WA-VGL', country_code: 'WA', name: 'Vale of Glamorgan' },
+  { code: 'WA-WRX', country_code: 'WA', name: 'Wrexham' },
+
+  // ── Northern Ireland (11 districts) ─────────────────────────────────────────
+  { code: 'NI-ANN', country_code: 'NI', name: 'Antrim and Newtownabbey' },
+  { code: 'NI-AND', country_code: 'NI', name: 'Ards and North Down' },
+  { code: 'NI-ABC', country_code: 'NI', name: 'Armagh City, Banbridge and Craigavon' },
+  { code: 'NI-BFS', country_code: 'NI', name: 'Belfast' },
+  { code: 'NI-CCG', country_code: 'NI', name: 'Causeway Coast and Glens' },
+  { code: 'NI-DRS', country_code: 'NI', name: 'Derry City and Strabane' },
+  { code: 'NI-FMO', country_code: 'NI', name: 'Fermanagh and Omagh' },
+  { code: 'NI-LBC', country_code: 'NI', name: 'Lisburn and Castlereagh' },
+  { code: 'NI-MEA', country_code: 'NI', name: 'Mid and East Antrim' },
+  { code: 'NI-MUL', country_code: 'NI', name: 'Mid Ulster' },
+  { code: 'NI-NMD', country_code: 'NI', name: 'Newry, Mourne and Down' },
 
   // ── Netherlands (12 provinces) ──────────────────────────────────────────────
   { code: 'NL-DR', country_code: 'NL', name: 'Drenthe' },

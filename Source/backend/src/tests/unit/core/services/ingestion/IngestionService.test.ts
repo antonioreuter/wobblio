@@ -12,6 +12,7 @@ import type { ITagGenerator } from '@core/ports/data-intelligence/ITagGenerator'
 import type { IInvoiceRepository } from '@core/ports/ingestion/IInvoiceRepository';
 import type { IPriceObservationStore } from '@core/ports/data-intelligence/IPriceObservationStore';
 import type { IContributorContextRepository } from '@core/ports/data-intelligence/IContributorContextRepository';
+import type { IRegionReference } from '@core/ports/data-intelligence/IRegionReference';
 import type { ParsedReceipt } from '@core/domain/ingestion';
 
 const MESSAGE = { invoiceId: 'inv-1', tenantId: 'tenant-1', s3Key: 'receipts/tenant-1/abc.jpg' };
@@ -53,6 +54,7 @@ describe('IngestionService', () => {
   let invoiceRepo: MockedObject<IInvoiceRepository>;
   let priceObservationStore: MockedObject<IPriceObservationStore>;
   let contributorContext: MockedObject<IContributorContextRepository>;
+  let regionReference: MockedObject<IRegionReference>;
   let sut: IngestionService;
 
   beforeEach(() => {
@@ -69,7 +71,11 @@ describe('IngestionService', () => {
       getById: vi.fn(),
       findSameTenantByHash: vi.fn(),
       findFuzzyDuplicate: vi.fn(),
+      hasEmittedDuplicateByHash: vi.fn(),
       persistParsed: vi.fn(),
+      confirmLocation: vi.fn(),
+      getForReEmission: vi.fn(),
+      markLocationResolved: vi.fn(),
       updateStatus: vi.fn(),
       softDelete: vi.fn(),
       listForTenant: vi.fn(),
@@ -79,11 +85,17 @@ describe('IngestionService', () => {
     contributorContext = {
       getContext: vi.fn().mockResolvedValue({ optedOut: false, regionCode: 'NL-NB', countryCode: 'NL', trustScore: 50 }),
     };
+    regionReference = {
+      listCountries: vi.fn(),
+      listSubdivisions: vi.fn(),
+      isValidRegion: vi.fn(),
+      isMappedLocation: vi.fn().mockResolvedValue(true),
+    };
     sut = new IngestionService(
       tenantContext, ledger, storage,
       visionParser as unknown as VisionParseService,
       merchantResolver, productNormalizer, classifier, tagGenerator, invoiceRepo,
-      priceObservationStore, contributorContext,
+      priceObservationStore, contributorContext, regionReference,
     );
   });
 
@@ -96,6 +108,7 @@ describe('IngestionService', () => {
     classifier.classify.mockResolvedValue('groceries');
     tagGenerator.generate.mockResolvedValue(['weekly-groceries']);
     invoiceRepo.findFuzzyDuplicate.mockResolvedValue(false);
+    invoiceRepo.hasEmittedDuplicateByHash.mockResolvedValue(false);
   };
 
   it('short-circuits a duplicate SQS delivery after setting tenant context', async () => {
@@ -141,13 +154,21 @@ describe('IngestionService', () => {
     expect(outcome.status).toBe('NEEDS_REVIEW');
   });
 
-  it('flags SUSPECTED_DUPLICATE when a fuzzy fingerprint matches', async () => {
+  it('flags an exact re-upload of an already-emitted receipt as SUSPECTED_DUPLICATE without emitting', async () => {
     arrangeHappyPath();
-    invoiceRepo.findFuzzyDuplicate.mockResolvedValue(true);
+    invoiceRepo.hasEmittedDuplicateByHash.mockResolvedValue(true);
+    const pricedLine: NormalizedLine = {
+      productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
+      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
+      confidence: 0.95, lowConfidence: false,
+    };
+    productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine, normalizedLine()], suggestedTags: [] });
 
     const outcome = await sut.process(MESSAGE);
 
+    expect(invoiceRepo.hasEmittedDuplicateByHash).toHaveBeenCalledWith('inv-1');
     expect(outcome.status).toBe('SUSPECTED_DUPLICATE');
+    expect(priceObservationStore.emit).not.toHaveBeenCalled();
   });
 
   it('does not emit price observations when no line yields a priced product', async () => {
@@ -199,5 +220,56 @@ describe('IngestionService', () => {
     const outcome = await sut.process(MESSAGE);
 
     expect(outcome.status).toBe('NEEDS_REVIEW');
+  });
+
+  it('persists location RESOLVED from the profile region and emits when mapped', async () => {
+    arrangeHappyPath();
+    const pricedLine: NormalizedLine = {
+      productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
+      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
+      confidence: 0.95, lowConfidence: false,
+    };
+    productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine, normalizedLine()], suggestedTags: [] });
+
+    await sut.process(MESSAGE);
+
+    expect(regionReference.isMappedLocation).toHaveBeenCalledWith('NL', 'NL-NB');
+    const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
+    expect(persisted.location).toEqual({ countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'PROFILE' });
+    expect(priceObservationStore.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds the invoice PENDING and defers emission when the profile region is unmapped', async () => {
+    arrangeHappyPath();
+    regionReference.isMappedLocation.mockResolvedValue(false);
+    const pricedLine: NormalizedLine = {
+      productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
+      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
+      confidence: 0.95, lowConfidence: false,
+    };
+    productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine, normalizedLine()], suggestedTags: [] });
+
+    await sut.process(MESSAGE);
+
+    const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
+    expect(persisted.location.status).toBe('PENDING');
+    expect(priceObservationStore.emit).not.toHaveBeenCalled();
+  });
+
+  it('persists the merchant + product provisional flags for faithful re-emission', async () => {
+    arrangeHappyPath();
+    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', branchId: 'b1', brandName: 'Albert Heijn', provisional: true, confidence: 0.9 });
+    const provisionalLine: NormalizedLine = {
+      productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
+      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: true,
+      confidence: 0.95, lowConfidence: false,
+    };
+    productNormalizer.normalize.mockResolvedValue({ lines: [provisionalLine, normalizedLine()], suggestedTags: [] });
+
+    await sut.process(MESSAGE);
+
+    const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
+    expect(persisted.merchantProvisional).toBe(true);
+    expect(persisted.lines[0].productProvisional).toBe(true);
   });
 });

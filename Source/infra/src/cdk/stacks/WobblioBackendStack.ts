@@ -99,6 +99,7 @@ export class WobblioBackendStack extends Stack {
       handlerDir: string,
       concurrency: number,
       extraEnv: Record<string, string> = {},
+      timeoutSeconds = 30,
     ): NodejsFunction =>
       new NodejsFunction(this, handlerDir, {
         entry: path.join(backendRoot, `src/handlers/${handlerDir}/index.ts`),
@@ -106,7 +107,7 @@ export class WobblioBackendStack extends Stack {
         runtime: lambda.Runtime.NODEJS_24_X,
         architecture: lambda.Architecture.ARM_64,
         memorySize: 512,
-        timeout: Duration.seconds(30),
+        timeout: Duration.seconds(timeoutSeconds),
         reservedConcurrentExecutions: concurrency,
         projectRoot: backendRoot,
         depsLockFilePath: path.join(backendRoot, 'package-lock.json'),
@@ -142,6 +143,10 @@ export class WobblioBackendStack extends Stack {
     const cronBudgetResetFn    = makeLambda('cron-budget-reset', 2, { ANALYTICS_BUCKET: storageStack.analyticsBucket.bucketName });
     const cronFxRateFetchFn    = makeLambda('cron-fx-rate-fetch', 2);
     const cronWaitlistReleaseFn = makeLambda('cron-waitlist-release', 2);
+    const cronReleaseHeldLocationsFn = makeLambda('cron-release-held-locations', 2);
+    // 300s safety-net: the advisor fans out one Bedrock call per eligible tenant
+    // under a bounded promise pool; well above the 30s API budget but async (§10).
+    const cronWeeklyAdvisorFn = makeLambda('cron-weekly-advisor', 2, {}, 300);
 
     // Public endpoints — no Cognito auth, called by unauthenticated landing-page visitors
     const waitlistStatusFn = makeLambda('waitlist-status', 5, {
@@ -192,6 +197,9 @@ export class WobblioBackendStack extends Stack {
     dbSecret.grantRead(apiHandlerFn);
     dbSecret.grantRead(ingestionWorkerFn);
     dbSecret.grantRead(cronWaitlistReleaseFn);
+    dbSecret.grantRead(cronReleaseHeldLocationsFn);
+    dbSecret.grantRead(cronBudgetResetFn);
+    dbSecret.grantRead(cronWeeklyAdvisorFn);
     dbSecret.grantRead(waitlistStatusFn);
 
     // SSM: read shared DB connection parameters
@@ -201,7 +209,7 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
       ],
     });
-    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, waitlistStatusFn]
+    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, waitlistStatusFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
 
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
@@ -233,6 +241,47 @@ export class WobblioBackendStack extends Stack {
       ],
     }));
 
+    // SSM: split-route thresholds — api-handler reads these for the optimizer (batched)
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/routing/max_stores`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/routing/min_split_saving_eur`,
+      ],
+    }));
+
+    // Bedrock InvokeModel via cross-region inference profiles needs the profile ARN AND
+    // the underlying foundation models in every member region; model IDs are runtime SSM
+    // values. None can be enumerated at synth time, so both are wildcards with a matching
+    // IAM5 suppression — extracted here so the policy and its suppression never drift.
+    const grantBedrockInference = (fn: lambda.Function): void => {
+      const resources = [
+        `arn:aws:bedrock:*::foundation-model/*`,
+        `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
+      ];
+      fn.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+        resources,
+      }));
+      NagSuppressions.addResourceSuppressions(fn, [
+        {
+          id: 'AwsSolutions-IAM5',
+          reason: 'Bedrock foundation-model + inference-profile wildcards: model IDs are runtime SSM values, and cross-region inference profiles require foundation-model access in every member region — neither can be enumerated at synth time',
+          appliesTo: resources.map((r) => `Resource::${r}`),
+        },
+      ], true);
+    };
+
+    // Weekly-advisor cron calls the Haiku-class auxiliary model (id from SSM); see
+    // docs/amendments/2026-06-17-weekly-advisor-tier-and-concurrency.md.
+    grantBedrockInference(cronWeeklyAdvisorFn);
+    cronWeeklyAdvisorFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter'],
+      resources: [
+        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/models/auxiliary`,
+      ],
+    }));
+
     // SES: cron-waitlist-release sends waitlist release notification emails
     cronWaitlistReleaseFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -242,19 +291,8 @@ export class WobblioBackendStack extends Stack {
     );
     cronWaitlistReleaseFn.addEnvironment('SES_FROM_ADDRESS', 'noreply@wobblio.com');
 
-    // Bedrock: ingestion worker calls foundation models (model IDs are runtime SSM values).
-    // Models are invoked through cross-region inference profiles (e.g. eu.amazon.nova-lite),
-    // which require permission on the profile ARN AND the underlying foundation models in
-    // every member region — hence the all-region foundation-model wildcard.
-    ingestionWorkerFn.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
-        resources: [
-          `arn:aws:bedrock:*::foundation-model/*`,
-          `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
-        ],
-      }),
-    );
+    // Ingestion worker invokes the vision/auxiliary/embedder models (ids from SSM).
+    grantBedrockInference(ingestionWorkerFn);
 
     // SSM: ingestion worker resolves swappable model IDs (vision/auxiliary/embedder/insight)
     // and the per-tenant daily AI-spend cap at runtime, one GetParameter per param.
@@ -392,9 +430,11 @@ export class WobblioBackendStack extends Stack {
         enabled: config.stage === 'prod',
       });
 
+    // Nightly: recompute budget accumulation, fire 85%/100% alerts, roll periods
+    // over, and purge expired notifications (§10 budget-recycler).
     makeCron(
       'BudgetResetCron',
-      events.Schedule.cron({ minute: '0', hour: '0', weekDay: 'MON' }),
+      events.Schedule.cron({ minute: '0', hour: '2' }),
       cronBudgetResetFn,
     );
 
@@ -410,10 +450,26 @@ export class WobblioBackendStack extends Stack {
       cronWaitlistReleaseFn,
     );
 
+    // Weekly, after reference-data updates land: release HELD_UNMAPPED invoices whose
+    // region is now mapped so their deferred price observations aren't stranded (§6.5).
+    makeCron(
+      'ReleaseHeldLocationsCron',
+      events.Schedule.cron({ minute: '30', hour: '7', weekDay: 'MON' }),
+      cronReleaseHeldLocationsFn,
+    );
+
+    // Weekly (Sunday night): one insight-model savings summary per active Premium
+    // user with recent activity (§10 weekly AI savings advisor).
+    makeCron(
+      'WeeklyAdvisorCron',
+      events.Schedule.cron({ minute: '0', hour: '22', weekDay: 'SUN' }),
+      cronWeeklyAdvisorFn,
+    );
+
     const allLambdas = [
       apiHandlerFn, ingestionWorkerFn,
-      cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn,
-      waitlistStatusFn, analyticsEventsFn,
+      cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn,
+      cronWeeklyAdvisorFn, waitlistStatusFn, analyticsEventsFn,
     ];
 
     // ── Lambda log retention ──────────────────────────────────────────────────
@@ -465,17 +521,6 @@ export class WobblioBackendStack extends Stack {
         id: 'AwsSolutions-IAM5',
         reason: 'SES identity/* wildcard is scoped to this account and region; specific domain identity cannot be referenced before DNS verification',
         appliesTo: [`Resource::arn:aws:ses:${this.region}:${this.account}:identity/*`],
-      },
-    ], true);
-
-    NagSuppressions.addResourceSuppressions(ingestionWorkerFn, [
-      {
-        id: 'AwsSolutions-IAM5',
-        reason: 'Bedrock foundation-model + inference-profile wildcards: model IDs are runtime SSM values, and cross-region inference profiles require foundation-model access in every member region — neither can be enumerated at synth time',
-        appliesTo: [
-          `Resource::arn:aws:bedrock:*::foundation-model/*`,
-          `Resource::arn:aws:bedrock:${this.region}:${this.account}:inference-profile/*`,
-        ],
       },
     ], true);
 
