@@ -110,11 +110,14 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
         imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
       });
       await repo.persistParsed({
-        invoiceId, merchantId: null, branchId: null, transactionDate: '2026-06-10',
+        invoiceId, merchantId: null, merchantProvisional: false, branchId: null,
+        transactionDate: '2026-06-10',
         currency: 'EUR', total: 4.0, categoryId: null, searchTags: ['weekly-groceries'],
         status: 'PARSED',
+        location: { countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'PROFILE' },
         lines: [{
-          rawText: 'Melk', productId: null, categoryId: null, quantity: 1, packQuantity: null,
+          rawText: 'Melk', productId: null, productProvisional: false, categoryId: null,
+          quantity: 1, packQuantity: null,
           baseUnit: null, unitPrice: 4.0, normalizedUnitPrice: null, lineTotal: 4.0,
           isDiscount: false, isDepositOrFee: false, confidence: 0.9,
         }],
@@ -137,11 +140,14 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
         imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
       });
       await repo.persistParsed({
-        invoiceId, merchantId: null, branchId: null, transactionDate: '2026-06-10',
+        invoiceId, merchantId: null, merchantProvisional: false, branchId: null,
+        transactionDate: '2026-06-10',
         currency: 'EUR', total: 5.0, categoryId: null, searchTags: ['weekly-groceries'],
         status: 'PARSED',
+        location: { countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'PROFILE' },
         lines: [{
-          rawText: 'Melk', productId: null, categoryId: null, quantity: 1, packQuantity: null,
+          rawText: 'Melk', productId: null, productProvisional: false, categoryId: null,
+          quantity: 1, packQuantity: null,
           baseUnit: null, unitPrice: 5.0, normalizedUnitPrice: null, lineTotal: 5.0,
           isDiscount: false, isDepositOrFee: false, confidence: 0.9,
         }],
