@@ -14,7 +14,20 @@ export class S3FileStorageAdapter implements IS3FileStorage {
   private readonly client: S3Client;
 
   constructor(region: string, private readonly bucket: string) {
-    this.client = new S3Client({ region });
+    // Locally (AWS_ENDPOINT_URL → LocalStack) use path-style addressing so
+    // presigned URLs resolve at http://localhost:4566/<bucket>/… instead of a
+    // virtual-hosted <bucket>.localhost subdomain (DNS-fragile across browsers
+    // and an extra CSP origin). On AWS the endpoint is unset and addressing
+    // stays virtual-hosted. Mirrors S3BillingArchiveAdapter.
+    this.client = new S3Client({
+      region,
+      // AWS SDK v3 (≥3.729) embeds a default CRC32 checksum into presigned PUT
+      // URLs computed over empty content; the browser then PUTs real bytes and
+      // S3 rejects the mismatch with 400. WHEN_REQUIRED stops that injection so
+      // presigned PUTs accept an arbitrary body (browsers can't send the trailer).
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      ...(process.env.AWS_ENDPOINT_URL ? { forcePathStyle: true } : {}),
+    });
   }
 
   async presignPut(key: string, contentType: string, ttlSeconds: number): Promise<string> {
