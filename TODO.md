@@ -16,3 +16,6 @@ Onboarding:
 
 Admin:
 Adicionar uma funçao para dar mais ou menos creditos de invoice para um usuario nao semana corrente. Em caso de falha em uma invoice a mesma nao deve ser contabilizada para deduzir do numero de invoices que um usuario pode submeter.
+
+Cost:
+KMS key can be very expensive. How often do we invoke them, and is there an alternative to them or to mitigate the cost?
