@@ -7,6 +7,7 @@ function isPublic(pathname: string): boolean {
   return (
     PUBLIC_PATHS.has(pathname) ||
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/waitlist') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon')
   )
@@ -30,7 +31,7 @@ function buildCsp(nonce: string): string {
   const uploadsOrigin =
     process.env.UPLOADS_BUCKET_ORIGIN ?? process.env.NEXT_PUBLIC_UPLOADS_BUCKET_ORIGIN ?? ''
 
-  return [
+  const directives = [
     "default-src 'self'",
     // nonce + strict-dynamic: modern browsers trust nonce and ignore 'unsafe-inline';
     // 'unsafe-inline' is the fallback for legacy browsers only.
@@ -43,8 +44,16 @@ function buildCsp(nonce: string): string {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "upgrade-insecure-requests",
   ]
+
+  // Force HTTPS only in production. Local `next dev` serves http, and this
+  // directive would upgrade same-origin redirects (e.g. /login) to https →
+  // ERR_SSL_PROTOCOL_ERROR. Deployed stages run NODE_ENV=production behind TLS.
+  if (process.env.NODE_ENV === 'production') {
+    directives.push('upgrade-insecure-requests')
+  }
+
+  return directives
     .map((directive) => directive.trim().replace(/\s+/g, ' '))
     .join('; ')
 }

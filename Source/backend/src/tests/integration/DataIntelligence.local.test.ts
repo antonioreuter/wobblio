@@ -118,7 +118,7 @@ describe('Data-intelligence adapters — Postgres', () => {
     it('lists seeded countries and subdivisions and validates region membership', async () => {
       const reference = new RegionReferenceAdapter(pool);
       const countries = await reference.listCountries();
-      expect(countries.length).toBe(13);
+      expect(countries.length).toBe(16);
 
       const nlSubdivisions = await reference.listSubdivisions('NL');
       expect(nlSubdivisions.length).toBe(12);

@@ -150,12 +150,14 @@ if [[ $SKIP_CDK -eq 0 ]]; then
   step "Phase 4: LocalStack CDK Bootstrap (WobblioLocalBootstrapStack)"
 
   cd "$INFRA_DIR"
-  info "Deploying WobblioLocalBootstrapStack-local via cdklocal..."
-  AWS_ENDPOINT_URL=http://localhost:4566 \
-    STAGE=local \
-    npm run cdk:deploy:local -- WobblioLocalBootstrapStack-local \
-    2>&1 | grep -E '(✅|❌|CREATE_COMPLETE|UPDATE_COMPLETE|Error|error|already exists)' || true
-  ok "S3 buckets, SQS queues, SSM parameters, Secrets Manager stubs ready"
+  info "Deploying WobblioLocalBootstrapStack via cdklocal..."
+  # AWS_ENDPOINT_URL + AWS_ENDPOINT_URL_S3 come from config/local.env (sourced above).
+  # Fail loudly: a masked failure here leaves the app with no S3 buckets or SQS queues.
+  if STAGE=local npm run cdk:deploy:local -- WobblioLocalBootstrapStack; then
+    ok "S3 buckets, SQS queues, SSM parameters, Secrets Manager stubs ready"
+  else
+    fail "CDK bootstrap deploy failed — S3 buckets / SQS queues not provisioned (see output above)"
+  fi
 
   info "Verifying LocalStack resources..."
   # S3 buckets
@@ -211,6 +213,43 @@ if [[ $SKIP_SEED -eq 0 ]]; then
   fi
 else
   info "Skipping Phase 6: Seed Reference Data"
+fi
+
+
+# ── Phase 7: Dev User DB Profile ─────────────────────────────────────────────
+# init-cognito.sh (Phase 1b) creates the Cognito test user, but the matching
+# app_user row is provisioned separately (prod: post-confirmation Lambda; local
+# UI: register flow). Without it, login authenticates yet /me/profile finds no
+# user → the onboarding gate force-signs-out to the landing page. Provision it
+# here — after migrations (Phase 5) and cognito (Phase 1b) are both ready — as an
+# onboarded user so the seeded login lands straight on the dashboard. Idempotent.
+if [[ $SKIP_SEED -eq 0 && $SKIP_DB -eq 0 ]]; then
+  step "Phase 7: Dev User DB Profile (dev@wobblio.local)"
+  # Re-source config: init-cognito.sh may have written a fresh pool/client id.
+  set -a; source "$CONFIG_FILE"; set +a
+
+  DEV_SUB=$(aws cognito-idp list-users \
+    --user-pool-id "$COGNITO_USER_POOL_ID" \
+    --filter 'email = "dev@wobblio.local"' \
+    --endpoint-url "${COGNITO_ENDPOINT:-http://localhost:9229}" \
+    --region "${AWS_REGION:-eu-west-1}" \
+    --query "Users[0].Username" --output text 2>/dev/null || echo "")
+
+  if [[ -z "$DEV_SUB" || "$DEV_SUB" == "None" ]]; then
+    warn "Cognito test user not found — skipping app_user provisioning"
+  else
+    psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -v sub="$DEV_SUB" >/dev/null <<'SQL'
+SELECT provision_new_user(:'sub', 'dev@wobblio.local', 'ACTIVE', 'Dev User');
+UPDATE app_user
+   SET onboarded_at    = COALESCE(onboarded_at, now()),
+       gdpr_consent_at = COALESCE(gdpr_consent_at, now()),
+       birthdate       = COALESCE(birthdate, '1990-01-01')
+ WHERE cognito_sub = :'sub';
+SQL
+    ok "app_user provisioned + onboarded for dev@wobblio.local"
+  fi
+else
+  info "Skipping Phase 7: Dev User DB Profile"
 fi
 
 
