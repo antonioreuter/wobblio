@@ -34,7 +34,7 @@ describe('TagGenerator', () => {
   });
 
   it('merges valid LLM-suggested tags', async () => {
-    const tags = await new TagGenerator().generate(input({ merchantBrand: null, normalized: [norm(null), norm(null)], categoryId: null, suggestedTags: ['organic'] }));
-    expect(tags).toEqual(['organic']);
+    const tags = await new TagGenerator().generate(input({ merchantBrand: null, normalized: [norm(null), norm(null)], categoryId: null, suggestedTags: ['groceries'] }));
+    expect(tags).toEqual(['groceries']);
   });
 });

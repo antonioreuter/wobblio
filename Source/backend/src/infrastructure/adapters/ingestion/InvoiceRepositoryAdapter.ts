@@ -11,9 +11,11 @@ import type {
   InvoiceDetail,
   InvoiceDetailLine,
 } from '@core/ports/ingestion/IInvoiceRepository';
-import type { InvoiceStatus } from '@core/domain/ingestion';
+import type { InvoiceStatus, InvoiceVerdict } from '@core/domain/ingestion';
 import type { InvoiceLocationStatus } from '@core/domain/region';
 import type { ObservationLine } from '@core/domain/priceObservation';
+import { categoryNameFor } from '@core/domain/categoryTaxonomy';
+import { tagLabelFor } from '@core/domain/tagVocabulary';
 
 interface InvoiceListRow {
   id: string;
@@ -37,10 +39,12 @@ const toListItem = (row: InvoiceListRow): InvoiceListItem => ({
   status: row.status,
   merchantName: row.merchant_name,
   categoryId: row.category_id,
+  categoryName: categoryNameFor(row.category_id),
   transactionDate: row.transaction_date,
   total: num(row.total),
   currency: row.currency,
   searchTags: row.search_tags,
+  searchTagLabels: row.search_tags.map(tagLabelFor),
   createdAt: row.created_at,
   locationStatus: row.location_status,
   locationCountryCode: row.location_country_code,
@@ -134,25 +138,27 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
          SET merchant_id = $2, merchant_provisional = $3, branch_id = $4,
              transaction_date = $5, currency = $6, total = $7, category_id = $8,
              search_tags = $9, status = $10, location_country_code = $11,
-             location_region_code = $12, location_status = $13, location_source = $14
+             location_region_code = $12, location_status = $13, location_source = $14,
+             price_emission_blocked = $15
        WHERE id = $1`,
       [
         input.invoiceId, input.merchantId, input.merchantProvisional, input.branchId,
         input.transactionDate, input.currency, input.total, input.categoryId,
         input.searchTags, input.status, input.location.countryCode,
         input.location.regionCode, input.location.status, input.location.source,
+        input.priceEmissionBlocked,
       ],
     );
 
     for (const line of input.lines) {
       await this.client.query(
         `INSERT INTO invoice_line
-           (invoice_id, raw_text, product_id, product_provisional, category_id, quantity,
-            pack_quantity, base_unit, unit_price, normalized_unit_price, line_total,
+           (invoice_id, line_index, raw_text, product_id, product_provisional, category_id,
+            quantity, pack_quantity, base_unit, unit_price, normalized_unit_price, line_total,
             is_discount, is_deposit_or_fee, confidence)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [
-          input.invoiceId, line.rawText, line.productId, line.productProvisional,
+          input.invoiceId, line.lineIndex, line.rawText, line.productId, line.productProvisional,
           line.categoryId, line.quantity, line.packQuantity, line.baseUnit, line.unitPrice,
           line.normalizedUnitPrice, line.lineTotal, line.isDiscount, line.isDepositOrFee,
           line.confidence,
@@ -184,7 +190,8 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       currency: string | null;
     }>(
       `SELECT merchant_id, merchant_provisional, transaction_date::text AS transaction_date, currency
-       FROM invoice WHERE id = $1 AND status IN ('PARSED', 'NEEDS_REVIEW')`,
+       FROM invoice
+       WHERE id = $1 AND status IN ('PARSED', 'NEEDS_REVIEW') AND NOT price_emission_blocked`,
       [invoiceId],
     );
     const row = head.rows[0];
@@ -204,7 +211,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
               normalized_unit_price::text AS normalized_unit_price, is_deposit_or_fee,
               quantity::text AS quantity, line_total::text AS line_total,
               unit_price::text AS unit_price
-       FROM invoice_line WHERE invoice_id = $1 ORDER BY id`,
+       FROM invoice_line WHERE invoice_id = $1 ORDER BY line_index`,
       [invoiceId],
     );
 
@@ -255,17 +262,20 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
   }
 
   async getDetail(invoiceId: string): Promise<InvoiceDetail | null> {
-    const head = await this.client.query<InvoiceListRow & { image_s3_key: string }>(
-      `SELECT ${LIST_COLUMNS}, i.image_s3_key
-       FROM invoice i LEFT JOIN merchant m ON m.id = i.merchant_id
+    const head = await this.client.query<InvoiceListRow & { image_s3_key: string; feedback_verdict: InvoiceVerdict | null }>(
+      `SELECT ${LIST_COLUMNS}, i.image_s3_key, f.verdict AS feedback_verdict
+       FROM invoice i
+       LEFT JOIN merchant m ON m.id = i.merchant_id
+       LEFT JOIN invoice_feedback f ON f.invoice_id = i.id
        WHERE i.id = $1`,
       [invoiceId],
     );
     if (!head.rows[0]) return null;
 
-    const lines = await this.client.query<{ raw_text: string; quantity: string; unit_price: string | null; line_total: string }>(
-      `SELECT raw_text, quantity::text, unit_price::text, line_total::text
-       FROM invoice_line WHERE invoice_id = $1 ORDER BY id`,
+    const lines = await this.client.query<{ raw_text: string; quantity: string; unit_price: string | null; line_total: string; category_name: string | null }>(
+      `SELECT il.raw_text, il.quantity::text, il.unit_price::text, il.line_total::text, pc.name AS category_name
+       FROM invoice_line il LEFT JOIN product_category pc ON pc.id = il.category_id
+       WHERE il.invoice_id = $1 ORDER BY il.line_index`,
       [invoiceId],
     );
 
@@ -274,9 +284,15 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       quantity: parseFloat(l.quantity),
       unitPrice: num(l.unit_price),
       lineTotal: parseFloat(l.line_total),
+      categoryName: l.category_name,
     }));
 
-    return { ...toListItem(head.rows[0]), imageS3Key: head.rows[0].image_s3_key, lines: detailLines };
+    return {
+      ...toListItem(head.rows[0]),
+      imageS3Key: head.rows[0].image_s3_key,
+      feedbackVerdict: head.rows[0].feedback_verdict,
+      lines: detailLines,
+    };
   }
 }
 
