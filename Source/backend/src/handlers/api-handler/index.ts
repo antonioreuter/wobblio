@@ -9,6 +9,10 @@ import { SsmBillingWhitelistAdapter } from '@infrastructure/adapters/billing/Ssm
 import { PaymentTransactionRepositoryAdapter } from '@infrastructure/adapters/billing/PaymentTransactionRepositoryAdapter';
 import { S3BillingArchiveAdapter } from '@infrastructure/adapters/billing/S3BillingArchiveAdapter';
 import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceRepositoryAdapter';
+import { InvoiceShareRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceShareRepositoryAdapter';
+import { InvoiceFeedbackRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceFeedbackRepositoryAdapter';
+import { SecureTokenAdapter } from '@infrastructure/adapters/security/SecureTokenAdapter';
+import { buildKmsEncryption } from '@infrastructure/adapters/security/encryptionFactory';
 import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligence/RegionReferenceAdapter';
 import { ContributorContextRepositoryAdapter } from '@infrastructure/adapters/data-intelligence/ContributorContextRepositoryAdapter';
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
@@ -16,6 +20,7 @@ import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepo
 import { WeeklyAdvisorRepositoryAdapter } from '@infrastructure/adapters/ai/WeeklyAdvisorRepositoryAdapter';
 import { S3FileStorageAdapter } from '@infrastructure/adapters/ingestion/S3FileStorageAdapter';
 import { SqsIngestionQueueAdapter } from '@infrastructure/adapters/ingestion/SqsIngestionQueueAdapter';
+import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
 import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
 import { BillingService } from '@core/services/billing/BillingService';
 import { ProfileService } from '@core/services/identity/ProfileService';
@@ -23,17 +28,21 @@ import { QuotaService } from '@core/services/quota/QuotaService';
 import { PresignService } from '@core/services/ingestion/PresignService';
 import { ConfirmService } from '@core/services/ingestion/ConfirmService';
 import { DeleteInvoiceService } from '@core/services/ingestion/DeleteInvoiceService';
+import { ShareInvoiceService } from '@core/services/ingestion/ShareInvoiceService';
 import { InvoiceLocationService } from '@core/services/ingestion/InvoiceLocationService';
+import { RecordFeedbackService } from '@core/services/ingestion/RecordFeedbackService';
 import {
   InvalidBillingPlanError,
   InvalidProfileError,
   DuplicateInvoiceError,
   QuotaExceededError,
   InvoiceNotFoundError,
+  InvoiceNotDeletableError,
   StaleUploadError,
   LocationAlreadySetError,
   LocationNotConfirmableError,
   InvalidLocationError,
+  InvalidFeedbackError,
 } from '@core/domain/errors';
 import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import type { PoolClient } from 'pg';
@@ -223,7 +232,15 @@ async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayPro
   const used = await withTenantTx(db, user.id, () =>
     quotaService.getUsed(user.id, 'UPLOADS', new Date()),
   );
-  return json(200, { used, cap, remaining: Math.max(0, cap - used) });
+  // TESTER/ADMIN have an infinite cap; Infinity is not representable in JSON
+  // (serializes to null), so signal it explicitly and null out the numerics.
+  const unlimited = !Number.isFinite(cap);
+  return json(200, {
+    used,
+    cap: unlimited ? null : cap,
+    remaining: unlimited ? null : Math.max(0, cap - used),
+    unlimited,
+  });
 }
 
 const SHA256_RE = /^[a-f0-9]{64}$/i;
@@ -243,6 +260,12 @@ async function handleInvoicesRoute(
 
   const locationMatch = path.match(/^\/invoices\/([^/]+)\/location$/);
   if (method === 'PUT' && locationMatch) return handleConfirmLocation(db, user, locationMatch[1], event, log);
+
+  const shareMatch = path.match(/^\/invoices\/([^/]+)\/share$/);
+  if (method === 'POST' && shareMatch) return handleCreateShare(db, user, shareMatch[1], log);
+
+  const feedbackMatch = path.match(/^\/invoices\/([^/]+)\/feedback$/);
+  if (method === 'POST' && feedbackMatch) return handleRecordFeedback(db, user, feedbackMatch[1], event, log);
 
   if (method === 'POST' && path === '/invoices/presign') return handlePresign(db, user, event, log);
 
@@ -273,7 +296,78 @@ async function handleInvoiceDetail(
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
   const { imageS3Key, ...rest } = detail;
   const imageUrl = await new S3FileStorageAdapter(REGION, uploadsBucket).presignGet(imageS3Key, 300);
-  return json(200, { ...rest, imageUrl });
+  const locationLabel = await resolveLocationLabel(db, rest.locationCountryCode, rest.locationRegionCode);
+  return json(200, { ...rest, imageUrl, locationLabel });
+}
+
+// Human-readable "Region, Country" for the invoice header, resolved from the global
+// ISO 3166 reference tables (no RLS). Returns null when no country is set.
+async function resolveLocationLabel(
+  db: PoolClient,
+  countryCode: string | null,
+  regionCode: string | null,
+): Promise<string | null> {
+  if (!countryCode) return null;
+  const reference = new RegionReferenceAdapter(db);
+  const countries = await reference.listCountries();
+  const countryName = countries.find((c) => c.code === countryCode)?.name ?? countryCode;
+  if (!regionCode) return countryName;
+  const subdivisions = await reference.listSubdivisions(countryCode);
+  const regionName = subdivisions.find((s) => s.code === regionCode)?.name;
+  return regionName ? `${regionName}, ${countryName}` : countryName;
+}
+
+// Issues a public read-only share link for an invoice the tenant can see. Returns
+// the /r/<token> URL (the token is the unguessable "magic id"; the invoice id is
+// never exposed). 7-day expiry, owner-revocable — mirrors the household-invite flow.
+async function handleCreateShare(
+  db: PoolClient,
+  user: AppUser,
+  invoiceId: string,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const service = new ShareInvoiceService(
+    new InvoiceRepositoryAdapter(db),
+    new InvoiceShareRepositoryAdapter(db),
+    new SecureTokenAdapter(),
+    buildKmsEncryption(REGION),
+  );
+
+  try {
+    const share = await withTenantTx(db, user.id, () => service.createShare(user.id, invoiceId));
+    log.info('invoice share created', { userId: user.id, invoiceId, shareId: share.shareId });
+    const base = process.env.WEB_APP_URL ?? '';
+    return json(201, { shareUrl: `${base}/r/${share.token}`, expiresAt: share.expiresAt });
+  } catch (err) {
+    if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
+    throw err;
+  }
+}
+
+// Persists the tenant's accuracy verdict (UP/DOWN) on a parsed receipt; upserts so a
+// re-rating overwrites the prior one. getById relies on RLS, so a cross-tenant id 404s.
+async function handleRecordFeedback(
+  db: PoolClient,
+  user: AppUser,
+  invoiceId: string,
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody(event.body);
+  const service = new RecordFeedbackService(
+    new InvoiceRepositoryAdapter(db),
+    new InvoiceFeedbackRepositoryAdapter(db),
+  );
+
+  try {
+    await withTenantTx(db, user.id, () => service.record(invoiceId, String(body.verdict ?? '')));
+    log.info('invoice feedback recorded', { userId: user.id, invoiceId, verdict: body.verdict });
+    return json(204, {});
+  } catch (err) {
+    if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
+    if (err instanceof InvalidFeedbackError) return json(400, { message: 'verdict must be UP or DOWN' });
+    throw err;
+  }
 }
 
 async function handleDeleteInvoice(
@@ -286,6 +380,7 @@ async function handleDeleteInvoice(
   const service = new DeleteInvoiceService(
     new InvoiceRepositoryAdapter(db),
     new S3FileStorageAdapter(REGION, uploadsBucket),
+    new IngestionLedgerAdapter(db),
   );
 
   try {
@@ -294,6 +389,7 @@ async function handleDeleteInvoice(
     return json(204, {});
   } catch (err) {
     if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
+    if (err instanceof InvoiceNotDeletableError) return json(409, { message: 'Invoice is still processing' });
     throw err;
   }
 }

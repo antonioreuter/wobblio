@@ -13,7 +13,7 @@ const oneItem = (overrides: Record<string, unknown> = {}) =>
         ...overrides,
       },
     ],
-    suggested_tags: ['dairy'],
+    suggested_tags: ['groceries'],
   });
 
 describe('parseProductExpansionJson', () => {
@@ -23,7 +23,7 @@ describe('parseProductExpansionJson', () => {
       ok: true,
       value: {
         items: [{ displayName: 'AH Halfvolle Melk 1L', categoryId: 'cat-dairy', baseUnit: 'L', packSizeBaseUnits: 1, isDepositOrFee: false }],
-        suggestedTags: ['dairy'],
+        suggestedTags: ['groceries'],
       },
     });
   });

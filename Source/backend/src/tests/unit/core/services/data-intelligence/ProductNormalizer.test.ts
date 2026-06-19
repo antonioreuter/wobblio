@@ -62,13 +62,13 @@ describe('ProductNormalizer', () => {
   });
 
   it('accepts a high-confidence embedding match and writes an alias', async () => {
-    callWithSpendGuard.mockResolvedValue(expansion([item()], ['dairy']));
+    callWithSpendGuard.mockResolvedValue(expansion([item()], ['groceries']));
     catalog.searchByEmbedding.mockResolvedValue([productMatch({ productId: 'p2', similarity: 0.95 })]);
 
     const result = await sut.normalize('t1', 'm1', [line('Milk')]);
 
     expect(result.lines[0]).toMatchObject({ productId: 'p2', productProvisional: false, lowConfidence: false });
-    expect(result.suggestedTags).toEqual(['dairy']);
+    expect(result.suggestedTags).toEqual(['groceries']);
     expect(catalog.writeAlias).toHaveBeenCalledWith(expect.objectContaining({ productId: 'p2', source: 'AUTO_LLM' }));
   });
 

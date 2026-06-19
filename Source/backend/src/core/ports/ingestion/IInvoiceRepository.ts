@@ -1,4 +1,4 @@
-import type { InvoiceStatus } from '@core/domain/ingestion';
+import type { InvoiceStatus, InvoiceVerdict } from '@core/domain/ingestion';
 import type { InvoiceLocationStatus, LocationSource } from '@core/domain/region';
 import type { ObservationLine } from '@core/domain/priceObservation';
 
@@ -23,6 +23,7 @@ export interface InvoiceRecord {
 
 export interface PersistedLine {
   rawText: string;
+  lineIndex: number; // 0-based position on the receipt, preserves discount↔product order
   productId: string | null;
   productProvisional: boolean;
   categoryId: string | null;
@@ -55,6 +56,9 @@ export interface PersistParsedInvoice {
   categoryId: string | null;
   searchTags: string[];
   status: InvoiceStatus;
+  // True when this invoice must never reach the price index (e.g. an exact re-upload of
+  // a previously-deleted invoice whose observations were already emitted, §6.5).
+  priceEmissionBlocked: boolean;
   location: InvoiceLocation;
   lines: PersistedLine[];
 }
@@ -89,10 +93,12 @@ export interface InvoiceListItem {
   status: InvoiceStatus;
   merchantName: string | null;
   categoryId: string | null;
+  categoryName: string | null;
   transactionDate: string | null;
   total: number | null;
   currency: string | null;
   searchTags: string[];
+  searchTagLabels: string[];
   createdAt: string;
   locationStatus: InvoiceLocationStatus;
   locationCountryCode: string | null;
@@ -104,11 +110,14 @@ export interface InvoiceDetailLine {
   quantity: number;
   unitPrice: number | null;
   lineTotal: number;
+  categoryName: string | null;
 }
 
 export interface InvoiceDetail extends InvoiceListItem {
   imageS3Key: string;
   lines: InvoiceDetailLine[];
+  // The tenant's accuracy verdict on this receipt, or null if never rated.
+  feedbackVerdict: InvoiceVerdict | null;
 }
 
 export interface IInvoiceRepository {

@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Calendar, Share2, Shield, ShieldCheck, Tag as TagIcon, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
+import { Box, Calendar, ImageIcon, MapPin, Share2, Shield, ShieldCheck, Tag as TagIcon, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
 import { Badge, MerchantIcon, Tag } from '@/components/ds'
 import { eur, fmtDate, type Invoice } from './invoice-data'
 import { InvoiceLocationGate } from './invoice-location-gate'
+import { ReceiptViewer } from './receipt-viewer'
 
 interface InvoiceDrawerProps {
   invoice: Invoice
@@ -20,23 +21,34 @@ interface DetailLine {
   quantity: number
   unitPrice: number | null
   lineTotal: number
+  categoryName: string | null
 }
 
 interface InvoiceDetail {
   imageUrl?: string
+  locationLabel?: string | null
   lines: DetailLine[]
+  feedbackVerdict?: 'UP' | 'DOWN' | null
 }
 
 export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onLocationConfirmed }: InvoiceDrawerProps) {
+  const [viewerOpen, setViewerOpen] = useState(false)
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (viewerOpen) setViewerOpen(false)
+      else onClose()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, viewerOpen])
 
   const [detail, setDetail] = useState<InvoiceDetail | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(true)
   const [detailError, setDetailError] = useState(false)
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
+  const [pop, setPop] = useState<'up' | 'down' | null>(null)
 
   useEffect(() => {
     let active = true
@@ -44,35 +56,70 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onLo
     setDetailError(false)
     fetch(`/api/invoices/${invoice.id}`, { cache: 'no-store' })
       .then((res) => { if (!res.ok) throw new Error(String(res.status)); return res.json() })
-      .then((data: InvoiceDetail) => { if (active) setDetail(data) })
+      .then((data: InvoiceDetail) => {
+        if (!active) return
+        setDetail(data)
+        setFeedback(data.feedbackVerdict ? (data.feedbackVerdict === 'UP' ? 'up' : 'down') : null)
+      })
       .catch(() => { if (active) setDetailError(true) })
       .finally(() => { if (active) setLoadingDetail(false) })
     return () => { active = false }
   }, [invoice.id])
 
-  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
-  const [pop, setPop] = useState<'up' | 'down' | null>(null)
+  // Optimistic: light the thumb immediately, persist, revert on failure.
   const giveFeedback = (v: 'up' | 'down') => {
+    const prev = feedback
     setFeedback(v)
     setPop(v)
     setTimeout(() => setPop(null), 420)
+    fetch(`/api/invoices/${invoice.id}/feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verdict: v === 'up' ? 'UP' : 'DOWN' }),
+    })
+      .then((res) => { if (!res.ok) throw new Error(String(res.status)) })
+      .catch(() => setFeedback(prev))
   }
 
   if (typeof document === 'undefined') return null
 
   return createPortal(
     <div className="drawer-overlay" onClick={onClose} data-testid="invoice-drawer">
+      {viewerOpen && detail?.imageUrl && (
+        <aside className="invoice-image-panel" onClick={(e) => e.stopPropagation()} data-testid="receipt-panel">
+          <div className="image-panel-head">
+            <span className="image-panel-title"><ImageIcon size={15} /> Receipt · {invoice.merchant}</span>
+            <button
+              type="button"
+              className="drawer-close"
+              aria-label="Close receipt"
+              onClick={() => setViewerOpen(false)}
+              data-testid="receipt-panel-close"
+            >
+              ✕
+            </button>
+          </div>
+          <ReceiptViewer imageUrl={detail.imageUrl} />
+        </aside>
+      )}
+
       <aside className="invoice-drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
           <div className="drawer-merchant">
             <MerchantIcon merchant={invoice.merchant} size={40} />
             <div>
               <div className="drawer-title">{invoice.merchant}</div>
+              {detail?.locationLabel && (
+                <div className="drawer-location"><MapPin size={13} /> {detail.locationLabel}</div>
+              )}
             </div>
           </div>
-          <button type="button" className="drawer-close" aria-label="Close" onClick={onClose}>
-            ✕
-          </button>
+          <div className="drawer-head-right">
+            <span className="drawer-total">{eur(invoice.total)}</span>
+            <button type="button" className="drawer-close" aria-label="Close" onClick={onClose}>
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="drawer-body">
@@ -100,12 +147,17 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onLo
           <InvoiceLocationGate invoice={invoice} onConfirmed={onLocationConfirmed} />
 
           {detail?.imageUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={detail.imageUrl}
-              alt={`Receipt from ${invoice.merchant}`}
-              style={{ width: '100%', borderRadius: 12, border: '1px solid var(--border)', objectFit: 'contain', maxHeight: 420 }}
-            />
+            <div className="receipt-view-wrapper">
+              <button
+                type="button"
+                className="btn btn--outline receipt-view-btn"
+                onClick={() => setViewerOpen((v) => !v)}
+                aria-pressed={viewerOpen}
+                data-testid="view-receipt"
+              >
+                <ImageIcon size={15} /> {viewerOpen ? 'Hide receipt' : 'View receipt'}
+              </button>
+            </div>
           )}
 
           <div className="drawer-receipt">
@@ -123,7 +175,10 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onLo
 
             {!loadingDetail && detail?.lines.map((it, i) => (
               <div className="receipt-row" key={i}>
-                <span className="ri-name">{it.rawText}</span>
+                <span className="ri-name">
+                  {it.rawText}
+                  {it.categoryName && <span className="ri-cat">{it.categoryName}</span>}
+                </span>
                 <span className="ri-qty">×{it.quantity}</span>
                 <span className="ri-amt">{eur(it.lineTotal)}</span>
               </div>

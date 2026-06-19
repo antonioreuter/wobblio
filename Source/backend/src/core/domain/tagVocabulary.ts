@@ -16,43 +16,46 @@ export interface TagDefinition {
   triggers: TagTrigger[];
 }
 
+// Invoice-level tags describe the *kind of invoice* — its macro spending category, the
+// occasion, and the venue/merchant type — not individual product attributes. Macro
+// triggers fire off the macro-rolled spend shares (see categoryShares / §6.4); brand
+// triggers fire off the resolved merchant.
 export const TAG_VOCABULARY: TagDefinition[] = [
+  // Macro spending category of the invoice.
+  { key: 'groceries', displayNameEn: 'Groceries', displayNameNl: 'Boodschappen', triggers: [{ categoryId: 'cat-groceries' }] },
   { key: 'weekly-groceries', displayNameEn: 'Weekly groceries', displayNameNl: 'Weekboodschappen', triggers: [{ categoryId: 'cat-groceries', minSpendShare: 0.6 }] },
-  { key: 'organic', displayNameEn: 'Organic', displayNameNl: 'Biologisch', triggers: [{ categoryId: 'cat-dairy' }, { categoryId: 'cat-produce' }] },
-  { key: 'frozen-foods', displayNameEn: 'Frozen foods', displayNameNl: 'Diepvriesproducten', triggers: [{ categoryId: 'cat-frozen' }] },
-  { key: 'snacks', displayNameEn: 'Snacks', displayNameNl: 'Snacks', triggers: [{ categoryId: 'cat-snacks' }] },
-  { key: 'beverages', displayNameEn: 'Beverages', displayNameNl: 'Dranken', triggers: [{ categoryId: 'cat-beverages' }] },
-  { key: 'alcohol', displayNameEn: 'Alcohol', displayNameNl: 'Alcohol', triggers: [{ categoryId: 'cat-alcohol' }] },
-  { key: 'bakery', displayNameEn: 'Bakery', displayNameNl: 'Bakkerij', triggers: [{ categoryId: 'cat-bakery' }] },
-  { key: 'dairy', displayNameEn: 'Dairy', displayNameNl: 'Zuivel', triggers: [{ categoryId: 'cat-dairy' }] },
-  { key: 'produce', displayNameEn: 'Produce', displayNameNl: 'Groente & Fruit', triggers: [{ categoryId: 'cat-produce' }] },
-  { key: 'meat-fish', displayNameEn: 'Meat & Fish', displayNameNl: 'Vlees & Vis', triggers: [{ categoryId: 'cat-meat-fish' }] },
-  { key: 'pantry', displayNameEn: 'Pantry staples', displayNameNl: 'Voorraadkast', triggers: [{ categoryId: 'cat-pantry' }] },
-  { key: 'household-supplies', displayNameEn: 'Household supplies', displayNameNl: 'Huishoudartikelen', triggers: [{ categoryId: 'cat-household' }] },
-  { key: 'cleaning', displayNameEn: 'Cleaning', displayNameNl: 'Schoonmaak', triggers: [{ categoryId: 'cat-household', minSpendShare: 0.2 }] },
+  { key: 'household', displayNameEn: 'Household', displayNameNl: 'Huishouden', triggers: [{ categoryId: 'cat-household' }] },
   { key: 'personal-care', displayNameEn: 'Personal care', displayNameNl: 'Persoonlijke verzorging', triggers: [{ categoryId: 'cat-personal-care' }] },
-  { key: 'pharmacy', displayNameEn: 'Pharmacy', displayNameNl: 'Apotheek', triggers: [{ categoryId: 'cat-pharmacy' }] },
-  { key: 'baby-care', displayNameEn: 'Baby care', displayNameNl: 'Babyverzorging', triggers: [{ categoryId: 'cat-baby' }] },
-  { key: 'pet-food', displayNameEn: 'Pet food', displayNameNl: 'Dierenvoeding', triggers: [{ categoryId: 'cat-pet' }] },
+  { key: 'baby-kids', displayNameEn: 'Baby & kids', displayNameNl: 'Baby & kinderen', triggers: [{ categoryId: 'cat-baby' }] },
+  { key: 'pet', displayNameEn: 'Pet', displayNameNl: 'Huisdier', triggers: [{ categoryId: 'cat-pet' }] },
   { key: 'dining-out', displayNameEn: 'Dining out', displayNameNl: 'Uit eten', triggers: [{ categoryId: 'cat-dining-out' }] },
   { key: 'takeaway', displayNameEn: 'Takeaway', displayNameNl: 'Afhalen', triggers: [{ categoryId: 'cat-dining-out', minSpendShare: 0.5 }] },
-  { key: 'fuel', displayNameEn: 'Fuel', displayNameNl: 'Brandstof', triggers: [{ categoryId: 'cat-transport' }] },
-  { key: 'transport', displayNameEn: 'Transport', displayNameNl: 'Transport', triggers: [{ categoryId: 'cat-transport' }] },
+  { key: 'bars-pubs', displayNameEn: 'Bars & pubs', displayNameNl: 'Cafés & kroegen', triggers: [{ categoryId: 'cat-bars-pubs' }] },
+  { key: 'accommodation', displayNameEn: 'Accommodation', displayNameNl: 'Accommodatie', triggers: [{ categoryId: 'cat-lodging' }] },
+  { key: 'transport', displayNameEn: 'Transport', displayNameNl: 'Vervoer', triggers: [{ categoryId: 'cat-transport' }] },
   { key: 'clothing', displayNameEn: 'Clothing', displayNameNl: 'Kleding', triggers: [{ categoryId: 'cat-clothing' }] },
   { key: 'electronics', displayNameEn: 'Electronics', displayNameNl: 'Elektronica', triggers: [{ categoryId: 'cat-electronics' }] },
   { key: 'health', displayNameEn: 'Health', displayNameNl: 'Gezondheid', triggers: [{ categoryId: 'cat-health' }] },
-  { key: 'home-garden', displayNameEn: 'Home & Garden', displayNameNl: 'Huis & Tuin', triggers: [{ categoryId: 'cat-home-garden' }] },
+  { key: 'home-garden', displayNameEn: 'Home & garden', displayNameNl: 'Huis & tuin', triggers: [{ categoryId: 'cat-home-garden' }] },
+  { key: 'hardware', displayNameEn: 'Hardware & DIY', displayNameNl: 'Bouwmarkt & klussen', triggers: [{ categoryId: 'cat-hardware' }] },
   { key: 'entertainment', displayNameEn: 'Entertainment', displayNameNl: 'Entertainment', triggers: [{ categoryId: 'cat-entertainment' }] },
   { key: 'services', displayNameEn: 'Services', displayNameNl: 'Diensten', triggers: [{ categoryId: 'cat-services' }] },
-  { key: 'kids', displayNameEn: 'Kids', displayNameNl: 'Kinderen', triggers: [{ categoryId: 'cat-baby' }] },
-  { key: 'eating-healthy', displayNameEn: 'Eating healthy', displayNameNl: 'Gezond eten', triggers: [{ categoryId: 'cat-produce' }, { categoryId: 'cat-dairy' }] },
-  { key: 'bulk-buy', displayNameEn: 'Bulk buy', displayNameNl: 'Grootverpakking', triggers: [] },
-  { key: 'discount-find', displayNameEn: 'Discount find', displayNameNl: 'Koopje gevonden', triggers: [] },
+  // Venue / merchant type.
   { key: 'supermarket-ah', displayNameEn: 'Albert Heijn', displayNameNl: 'Albert Heijn', triggers: [{ merchantBrand: 'Albert Heijn' }] },
   { key: 'supermarket-jumbo', displayNameEn: 'Jumbo', displayNameNl: 'Jumbo', triggers: [{ merchantBrand: 'Jumbo' }] },
   { key: 'supermarket-lidl', displayNameEn: 'Lidl', displayNameNl: 'Lidl', triggers: [{ merchantBrand: 'Lidl' }] },
   { key: 'drugstore', displayNameEn: 'Drugstore', displayNameNl: 'Drogisterij', triggers: [{ merchantBrand: 'Kruidvat' }, { merchantBrand: 'Etos' }, { merchantBrand: 'Trekpleister' }] },
   { key: 'variety-store', displayNameEn: 'Variety store', displayNameNl: 'Winkel met gevarieerd aanbod', triggers: [{ merchantBrand: 'HEMA' }, { merchantBrand: 'Action' }] },
+  { key: 'hotel', displayNameEn: 'Hotel', displayNameNl: 'Hotel', triggers: [{ merchantBrand: 'Booking.com' }, { categoryId: 'cat-lodging' }] },
+  { key: 'airbnb', displayNameEn: 'Airbnb', displayNameNl: 'Airbnb', triggers: [{ merchantBrand: 'Airbnb' }] },
 ];
 
 export const TAG_KEYS: ReadonlySet<string> = new Set(TAG_VOCABULARY.map(tag => tag.key));
+
+const LABEL_BY_KEY = new Map<string, string>(TAG_VOCABULARY.map(tag => [tag.key, tag.displayNameEn]));
+
+// Resolve a stored tag key to its display label for the UI. Unknown keys (e.g. tags
+// stored before a vocabulary change) fall back to the raw key.
+export function tagLabelFor(key: string): string {
+  return LABEL_BY_KEY.get(key) ?? key;
+}

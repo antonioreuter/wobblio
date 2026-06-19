@@ -10,8 +10,8 @@ const ctx = (overrides: Partial<TagGenerationContext> = {}): TagGenerationContex
 });
 
 describe('generateTags', () => {
-  it('matches a category trigger off the invoice category', () => {
-    expect(generateTags(ctx({ categoryId: 'cat-snacks' }))).toContain('snacks');
+  it('matches a macro-category trigger off the invoice category', () => {
+    expect(generateTags(ctx({ categoryId: 'cat-dining-out' }))).toContain('dining-out');
   });
 
   it('matches a min-spend-share trigger when the share clears the threshold', () => {
@@ -22,8 +22,8 @@ describe('generateTags', () => {
     expect(generateTags(ctx({ categoryShares: { 'cat-groceries': 0.5 } }))).not.toContain('weekly-groceries');
   });
 
-  it('matches a category trigger via line spend share', () => {
-    expect(generateTags(ctx({ categoryShares: { 'cat-dairy': 0.2 } }))).toContain('dairy');
+  it('matches a macro-category trigger via line spend share', () => {
+    expect(generateTags(ctx({ categoryShares: { 'cat-household': 0.2 } }))).toContain('household');
   });
 
   it('matches a merchant-brand trigger', () => {
@@ -35,21 +35,22 @@ describe('generateTags', () => {
   });
 
   it('accepts LLM-suggested keys from the vocabulary and rejects unknown ones', () => {
-    const tags = generateTags(ctx({ suggestedTags: ['organic', 'not-a-real-tag'] }));
-    expect(tags).toContain('organic');
+    const tags = generateTags(ctx({ suggestedTags: ['groceries', 'not-a-real-tag'] }));
+    expect(tags).toContain('groceries');
     expect(tags).not.toContain('not-a-real-tag');
   });
 
   it('dedupes deterministic and suggested overlap', () => {
-    const tags = generateTags(ctx({ categoryId: 'cat-snacks', suggestedTags: ['snacks'] }));
-    expect(tags.filter(t => t === 'snacks')).toHaveLength(1);
+    const tags = generateTags(ctx({ categoryId: 'cat-dining-out', suggestedTags: ['dining-out'] }));
+    expect(tags.filter(t => t === 'dining-out')).toHaveLength(1);
   });
 
   it('caps the result at three tags', () => {
     const tags = generateTags(
       ctx({
-        categoryId: 'cat-dining-out',
-        categoryShares: { 'cat-dairy': 0.5, 'cat-produce': 0.5, 'cat-snacks': 0.5, 'cat-beverages': 0.5 },
+        merchantBrand: 'Albert Heijn',
+        categoryId: 'cat-groceries',
+        categoryShares: { 'cat-groceries': 0.6, 'cat-household': 0.5, 'cat-dining-out': 0.5 },
       }),
     );
     expect(tags.length).toBeLessThanOrEqual(3);
