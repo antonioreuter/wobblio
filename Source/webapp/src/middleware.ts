@@ -6,6 +6,7 @@ const PUBLIC_PATHS = new Set(['/', '/login', '/register', '/forgot-password'])
 function isPublic(pathname: string): boolean {
   return (
     PUBLIC_PATHS.has(pathname) ||
+    pathname.startsWith('/r/') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/waitlist') ||
     pathname.startsWith('/_next') ||

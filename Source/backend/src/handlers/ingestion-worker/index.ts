@@ -8,8 +8,8 @@ import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/ingestion/Inv
 import { S3FileStorageAdapter } from '@infrastructure/adapters/ingestion/S3FileStorageAdapter';
 import { AiSpendLedgerAdapter } from '@infrastructure/adapters/ai/AiSpendLedgerAdapter';
 import { SsmSpendCapAdapter } from '@infrastructure/adapters/ai/SsmSpendCapAdapter';
-import { buildConverseAdapter } from '@infrastructure/adapters/ai/converseFactory';
-import { buildEmbedderAdapter } from '@infrastructure/adapters/data-intelligence/embedderFactory';
+import { BedrockConverseAdapter } from '@infrastructure/adapters/ai/BedrockConverseAdapter';
+import { BedrockTitanEmbedderAdapter } from '@infrastructure/adapters/data-intelligence/BedrockTitanEmbedderAdapter';
 import { MerchantCatalogAdapter } from '@infrastructure/adapters/data-intelligence/MerchantCatalogAdapter';
 import { ProductCatalogAdapter } from '@infrastructure/adapters/data-intelligence/ProductCatalogAdapter';
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
@@ -32,13 +32,9 @@ const EMBEDDER_MODEL_PARAM = '/wobblio/config/models/embedder';
 
 const modelIdCache = new Map<string, string>();
 
-async function resolveModelId(param: string, localFallback: string): Promise<string> {
+async function resolveModelId(param: string): Promise<string> {
   const cached = modelIdCache.get(param);
   if (cached) return cached;
-  if (process.env.STAGE === 'local') {
-    modelIdCache.set(param, localFallback);
-    return localFallback;
-  }
   const ssm = new SSMClient({ region: REGION });
   const response = await ssm.send(new GetParameterCommand({ Name: param }));
   const value = response.Parameter?.Value ?? '';
@@ -51,12 +47,11 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   const log = createLambdaLogger('ingestion-worker', context.awsRequestId);
   const pool = await buildPool(process.env.DB_SECRET_ARN!, process.env.DB_HOST!, process.env.DB_PORT!);
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
-  const localChatModel = process.env.OLLAMA_MODEL ?? 'gemma4:31b-it-qat';
-  const visionModelId = await resolveModelId(VISION_MODEL_PARAM, localChatModel);
-  const auxiliaryModelId = await resolveModelId(AUXILIARY_MODEL_PARAM, localChatModel);
-  const embedderModelId = await resolveModelId(EMBEDDER_MODEL_PARAM, 'mock-embedder-model');
-  const converse = buildConverseAdapter(REGION);
-  const embedder = buildEmbedderAdapter(REGION, embedderModelId);
+  const visionModelId = await resolveModelId(VISION_MODEL_PARAM);
+  const auxiliaryModelId = await resolveModelId(AUXILIARY_MODEL_PARAM);
+  const embedderModelId = await resolveModelId(EMBEDDER_MODEL_PARAM);
+  const converse = new BedrockConverseAdapter(REGION);
+  const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
   const capProvider = new SsmSpendCapAdapter(REGION);
 
   const batchItemFailures: { itemIdentifier: string }[] = [];
@@ -93,6 +88,9 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         handled: outcome.handled,
         status: outcome.status,
       });
+      if (outcome.receipt) {
+        log.debug('parsed receipt', { invoiceId: message.invoiceId, receipt: outcome.receipt });
+      }
     } catch (err) {
       await client.query('ROLLBACK').catch(() => undefined);
       const cause = (err as { cause?: unknown }).cause;

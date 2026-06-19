@@ -11,11 +11,11 @@ export interface AnimatedNumberProps {
 }
 
 export function AnimatedNumber({ value, decimals = 0, prefix, suffix, className }: AnimatedNumberProps) {
-  const current = useCountUp(value)
+  const current = useCountUp(value ?? 0)
   return (
     <span className={className} style={{ fontVariantNumeric: 'tabular-nums' }}>
       {prefix}
-      {current.toFixed(decimals)}
+      {(current ?? 0).toFixed(decimals)}
       {suffix}
     </span>
   )

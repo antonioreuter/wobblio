@@ -28,8 +28,11 @@ async function fetchInvoices(): Promise<Invoice[]> {
 /** Weekly scan quota for the current tenant (§2.4). */
 export interface Usage {
   used: number
-  cap: number
-  remaining: number
+  /** null when unlimited (TESTER/ADMIN). */
+  cap: number | null
+  /** null when unlimited (TESTER/ADMIN). */
+  remaining: number | null
+  unlimited: boolean
 }
 
 async function fetchUsage(): Promise<Usage | null> {

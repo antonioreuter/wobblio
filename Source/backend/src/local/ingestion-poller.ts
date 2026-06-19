@@ -3,12 +3,16 @@
  *
  * On AWS the ingestion queue drives the worker via an SQS event source. Locally
  * we long-poll the LocalStack queue and invoke the REAL worker handler, so the
- * end-to-end path (confirm → SQS → worker → Ollama vision parse → DB) runs the
+ * end-to-end path (confirm → SQS → worker → Bedrock vision parse → DB) runs the
  * same code as production.
  */
 import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk/client-sqs';
 import type { SQSEvent, Context } from 'aws-lambda';
 import { handler as ingestionWorker } from '@handlers/ingestion-worker';
+
+// Local mirror of the SQS event-source maxConcurrency: run this many worker loops in
+// parallel so a burst of uploads parses concurrently. Override with LOCAL_POLLER_CONCURRENCY.
+const DEFAULT_CONCURRENCY = 10;
 
 export function startIngestionPoller(): void {
   const queueUrl = process.env.INGEST_QUEUE_URL;
@@ -18,6 +22,7 @@ export function startIngestionPoller(): void {
   }
 
   const client = new SQSClient({});
+  const concurrency = Number(process.env.LOCAL_POLLER_CONCURRENCY) || DEFAULT_CONCURRENCY;
 
   const loop = async (): Promise<void> => {
     for (;;) {
@@ -42,6 +47,6 @@ export function startIngestionPoller(): void {
     }
   };
 
-  void loop();
-  console.log(`[local-poller] polling ${queueUrl}`);
+  for (let i = 0; i < concurrency; i++) void loop();
+  console.log(`[local-poller] polling ${queueUrl} (${concurrency} concurrent workers)`);
 }

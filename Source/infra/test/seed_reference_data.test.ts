@@ -8,9 +8,29 @@ import {
   UK_COUNTRIES,
   UK_SUBDIVISIONS,
 } from '../src/migrations/20260617115000_uk_nations_resplit';
+import {
+  ADDED_CATEGORIES,
+  RENAMED_CATEGORIES,
+  REMOVED_CATEGORIES,
+} from '../src/migrations/20260619120000_expand_grocery_categories';
+import { DEPOSIT_CATEGORIES } from '../src/migrations/20260619130000_line_order_deposits_emission_block';
 import { categorySeed } from '../src/local/seeds/product-taxonomy';
 import { countrySeed, subdivisionSeed } from '../src/local/seeds/country-subdivisions';
 import { CATEGORY_TAXONOMY } from '../../backend/src/core/domain/categoryTaxonomy';
+
+// Effective product_category state after all migrations: the base snapshot with the
+// follow-up expansion migration's renames applied and its new leaves appended. The seed
+// and backend taxonomy must match this post-migration state, not the frozen base.
+const RENAME_BY_ID = new Map(RENAMED_CATEGORIES.map((r) => [r.id, r]));
+const REMOVED = new Set(REMOVED_CATEGORIES);
+const EFFECTIVE_CATEGORIES = [
+  ...CATEGORIES.filter((c) => !REMOVED.has(c.id)).map((c) => {
+    const renamed = RENAME_BY_ID.get(c.id);
+    return renamed ? { ...c, name: renamed.name, nameNl: renamed.nameNl } : c;
+  }),
+  ...ADDED_CATEGORIES,
+  ...DEPOSIT_CATEGORIES,
+];
 
 // Reference data lives in three independently-edited places that the migration runner and
 // the hexagonal boundary prevent from sharing imports:
@@ -23,7 +43,7 @@ import { CATEGORY_TAXONOMY } from '../../backend/src/core/domain/categoryTaxonom
 
 describe('product_category snapshot vs local seed', () => {
   it('is identical (id, parent, name, name_nl, level)', () => {
-    const fromMigration = CATEGORIES
+    const fromMigration = EFFECTIVE_CATEGORIES
       .map((c) => `${c.id}|${c.parentId ?? ''}|${c.name}|${c.nameNl}|${c.level}`)
       .sort();
     const fromSeed = categorySeed
@@ -76,7 +96,7 @@ describe('uk_nations_resplit migration vs seed snapshot', () => {
 
 describe('backend category validator is covered by the seeded snapshot', () => {
   it('every CATEGORY_TAXONOMY id exists in the migration snapshot', () => {
-    const seededIds = new Set(CATEGORIES.map((c) => c.id));
+    const seededIds = new Set(EFFECTIVE_CATEGORIES.map((c) => c.id));
     const uncovered = CATEGORY_TAXONOMY.map((c) => c.id).filter((id) => !seededIds.has(id));
     expect(uncovered).toEqual([]);
   });

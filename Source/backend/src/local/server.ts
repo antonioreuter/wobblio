@@ -18,6 +18,7 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult, Context } from 'aws-l
 import { handler as apiHandler } from '@handlers/api-handler';
 import { handler as waitlistStatusHandler } from '@handlers/waitlist-status';
 import { handler as analyticsEventsHandler } from '@handlers/analytics-events';
+import { handler as shareInvoiceHandler } from '@handlers/share-invoice';
 import { startIngestionPoller } from './ingestion-poller';
 
 type LambdaHandler = (event: APIGatewayProxyEvent, context: Context) => Promise<APIGatewayProxyResult>;
@@ -27,6 +28,9 @@ const PUBLIC_ROUTES: Record<string, LambdaHandler> = {
   '/waitlist/status': waitlistStatusHandler,
   '/analytics/events': analyticsEventsHandler,
 };
+
+// Public path-param route: GET /shared-invoices/{token} → share-invoice handler.
+const SHARED_INVOICE_PREFIX = '/shared-invoices/';
 
 function decodeSub(authorization?: string): string | undefined {
   const token = authorization?.replace(/^Bearer\s+/i, '');
@@ -53,8 +57,13 @@ const server = http.createServer((req, res) => {
       requestContext: {} as APIGatewayProxyEvent['requestContext'],
     } as APIGatewayProxyEvent;
 
-    const publicHandler = PUBLIC_ROUTES[url.pathname];
-    let handler = publicHandler;
+    let handler = PUBLIC_ROUTES[url.pathname];
+
+    if (!handler && url.pathname.startsWith(SHARED_INVOICE_PREFIX)) {
+      const token = decodeURIComponent(url.pathname.slice(SHARED_INVOICE_PREFIX.length));
+      event.pathParameters = { token };
+      handler = shareInvoiceHandler;
+    }
 
     if (!handler) {
       const sub = decodeSub(req.headers.authorization);

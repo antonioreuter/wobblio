@@ -3,7 +3,8 @@ import type { MockedObject } from 'vitest';
 import { DeleteInvoiceService } from '@core/services/ingestion/DeleteInvoiceService';
 import type { IInvoiceRepository, InvoiceRecord } from '@core/ports/ingestion/IInvoiceRepository';
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
-import { InvoiceNotFoundError } from '@core/domain/errors';
+import type { IIngestionLedger } from '@core/ports/ingestion/IIngestionLedger';
+import { InvoiceNotDeletableError, InvoiceNotFoundError } from '@core/domain/errors';
 
 const record: InvoiceRecord = {
   id: 'inv-1',
@@ -17,6 +18,7 @@ const record: InvoiceRecord = {
 describe('DeleteInvoiceService', () => {
   let invoiceRepo: MockedObject<IInvoiceRepository>;
   let storage: MockedObject<IS3FileStorage>;
+  let ledger: MockedObject<IIngestionLedger>;
   let sut: DeleteInvoiceService;
 
   beforeEach(() => {
@@ -32,7 +34,8 @@ describe('DeleteInvoiceService', () => {
       getDetail: vi.fn(),
     };
     storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
-    sut = new DeleteInvoiceService(invoiceRepo, storage);
+    ledger = { claim: vi.fn(), setStatus: vi.fn(), release: vi.fn() };
+    sut = new DeleteInvoiceService(invoiceRepo, storage, ledger);
   });
 
   it('throws InvoiceNotFoundError for an unknown (or cross-tenant) invoice', async () => {
@@ -41,22 +44,34 @@ describe('DeleteInvoiceService', () => {
     await expect(sut.delete('ghost')).rejects.toBeInstanceOf(InvoiceNotFoundError);
     expect(storage.deleteObject).not.toHaveBeenCalled();
     expect(invoiceRepo.softDelete).not.toHaveBeenCalled();
+    expect(ledger.release).not.toHaveBeenCalled();
   });
 
-  it('deletes the S3 photo, then soft-deletes the invoice', async () => {
+  it('rejects deleting an invoice still in PROCESSING', async () => {
+    invoiceRepo.getById.mockResolvedValue({ ...record, status: 'PROCESSING' });
+
+    await expect(sut.delete('inv-1')).rejects.toBeInstanceOf(InvoiceNotDeletableError);
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+    expect(invoiceRepo.softDelete).not.toHaveBeenCalled();
+    expect(ledger.release).not.toHaveBeenCalled();
+  });
+
+  it('deletes the S3 photo, soft-deletes the invoice, then releases the ledger claim', async () => {
     invoiceRepo.getById.mockResolvedValue(record);
 
     await sut.delete('inv-1');
 
     expect(storage.deleteObject).toHaveBeenCalledWith('receipts/tenant-1/abc.jpg');
     expect(invoiceRepo.softDelete).toHaveBeenCalledWith('inv-1');
+    expect(ledger.release).toHaveBeenCalledWith('receipts/tenant-1/abc.jpg');
   });
 
-  it('leaves the invoice visible if the S3 photo delete fails', async () => {
+  it('leaves the invoice visible and the ledger untouched if the S3 photo delete fails', async () => {
     invoiceRepo.getById.mockResolvedValue(record);
     storage.deleteObject.mockRejectedValue(new Error('s3 down'));
 
     await expect(sut.delete('inv-1')).rejects.toThrow('s3 down');
     expect(invoiceRepo.softDelete).not.toHaveBeenCalled();
+    expect(ledger.release).not.toHaveBeenCalled();
   });
 });

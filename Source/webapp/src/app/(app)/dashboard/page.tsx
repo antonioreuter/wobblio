@@ -69,9 +69,21 @@ export default function DashboardPage() {
               />
               <MetricCard
                 label="Scans Remaining"
-                value={usage ? <AnimatedNumber value={usage.remaining} suffix=" left" /> : '—'}
-                delta={usage ? `${usage.used} of ${usage.cap} used this week` : 'Loading…'}
-                tone={usage && usage.remaining <= 3 ? 'warning' : 'neutral'}
+                value={
+                  !usage
+                    ? '—'
+                    : usage.unlimited
+                      ? '∞ left'
+                      : <AnimatedNumber value={usage.remaining ?? 0} suffix=" left" />
+                }
+                delta={
+                  !usage
+                    ? 'Loading…'
+                    : usage.unlimited
+                      ? `${usage.used} used this week`
+                      : `${usage.used} of ${usage.cap} used this week`
+                }
+                tone={usage && !usage.unlimited && (usage.remaining ?? 0) <= 3 ? 'warning' : 'neutral'}
               />
               <MetricCard
                 className="metric-ultrawide"

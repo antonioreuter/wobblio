@@ -15,6 +15,9 @@ export class SsmUploadQuotaAdapter implements IUploadQuotaProvider {
   }
 
   async getPersonalUploadsCap(role: UserRole): Promise<number> {
+    // TESTER/ADMIN are operator-flipped internal roles (invariant #5) and upload
+    // without a weekly limit; QuotaService never blocks against an infinite cap.
+    if (role === 'TESTER' || role === 'ADMIN') return Number.POSITIVE_INFINITY;
     const caps = await this.load();
     return role === 'STANDARD' ? caps[STANDARD_PARAM] : caps[PREMIUM_PARAM];
   }

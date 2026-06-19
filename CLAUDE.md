@@ -4,6 +4,9 @@ Cloud-native personal fiscal management utility. Photographs of receipts become 
 
 **Status:** spec-complete (v2.4), implementation starting. `Source/backend/` and `Source/webapp/` are empty placeholders.
 
+## NON NEGOTIABLE
+- Under any circumstance connect to the Production environments in AWS neither execute scripts in this environment. The same is also valid for the database in prod or any db schema related to production environment. 
+
 ## Source of truth (read these before non-trivial work)
 
 - `docs/wobblio_v2.4_specification_final.md` — the authoritative spec. Section numbers below reference it.

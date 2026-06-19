@@ -18,11 +18,19 @@ export async function buildPool(
   if (pool) return pool;
 
   // Local dev (Docker Postgres) has no Secrets Manager and no TLS —
-  // connect via DATABASE_URL with SSL disabled.
-  if (process.env.STAGE === 'local' && process.env.DATABASE_URL) {
+  // connect via a DATABASE_URL with SSL disabled.
+  // The app runtime uses APP_DATABASE_URL (a non-owner, non-superuser role) so RLS
+  // is actually enforced — the owner/superuser DATABASE_URL bypasses RLS and is
+  // reserved for migrations/seeds. Falls back to DATABASE_URL when unset.
+  // Unlike AWS (one connection per isolated Lambda container), the local harness
+  // runs the API server and the ingestion poller in a single process sharing this
+  // pool. A long Bedrock-bound ingestion transaction would starve API requests off
+  // a max:1 pool and trip connectionTimeoutMillis, so allow a few connections here.
+  const localUrl = process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (process.env.STAGE === 'local' && localUrl) {
     pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 1,
+      connectionString: localUrl,
+      max: 10,
       idleTimeoutMillis: 0,
       connectionTimeoutMillis: 5000,
       options: `--statement_timeout=${statementTimeoutMs}`,
