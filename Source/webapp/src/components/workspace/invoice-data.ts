@@ -46,9 +46,9 @@ export const MERCHANTS = [
   'Restaurante Cantinho',
 ]
 export const STATUSES: Status[] = [
-  ['success', 'Processed'],
-  ['warning', 'Needs Review'],
-  ['primary', 'Auto Parsed'],
+  ['success', 'Ready'],
+  ['warning', 'Check details'],
+  ['warning', 'Possible duplicate'],
 ]
 export const TAG_POOL = ['dinner', 'weekly', 'commute', 'pantry', 'treat', 'household', 'fuel', 'organic']
 export const ALL_TAGS = TAG_POOL

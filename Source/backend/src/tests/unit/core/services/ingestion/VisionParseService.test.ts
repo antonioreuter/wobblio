@@ -22,6 +22,7 @@ const converseResult = (content: string) => ({
 });
 
 const image: BedrockImage = { format: 'jpeg', bytes: new Uint8Array([1, 2, 3]) };
+const ctx = { countryCode: 'NL', processedDate: '2026-06-18' };
 
 describe('VisionParseService', () => {
   let callWithSpendGuard: ReturnType<typeof vi.fn>;
@@ -37,10 +38,33 @@ describe('VisionParseService', () => {
   it('returns the parsed receipt on a valid first response', async () => {
     callWithSpendGuard.mockResolvedValue(converseResult(VALID_JSON));
 
-    const receipt = await sut.parse('tenant-1', image);
+    const receipt = await sut.parse('tenant-1', image, ctx);
 
     expect(receipt.merchantRaw).toBe('Albert Heijn');
     expect(callWithSpendGuard).toHaveBeenCalledTimes(1);
+    const sent = callWithSpendGuard.mock.calls[0][1].messages as Array<{ content: string }>;
+    expect(sent[0].content).toContain('<user_country>NL</user_country>');
+    expect(sent[0].content).toContain('<processed_date>2026-06-18</processed_date>');
+  });
+
+  it('strips summary/loyalty rows the model emitted despite the prompt', async () => {
+    const withPhantoms = JSON.stringify({
+      merchant_raw: 'Albert Heijn',
+      transaction_date: '2026-06-10',
+      currency: 'EUR',
+      total: 9.39,
+      parse_confidence: 0.9,
+      lines: [
+        { raw_text: 'BONUSKAART xx5482', quantity: 1, line_total: 0 },
+        { raw_text: 'COCA-COLA', quantity: 1, line_total: 9.39 },
+        { raw_text: 'TOTAAL', quantity: 1, line_total: 9.39 },
+      ],
+    });
+    callWithSpendGuard.mockResolvedValue(converseResult(withPhantoms));
+
+    const receipt = await sut.parse('tenant-1', image, ctx);
+
+    expect(receipt.lines.map(l => l.rawText)).toEqual(['COCA-COLA']);
   });
 
   it('retries once with validation errors appended, then succeeds', async () => {
@@ -48,7 +72,7 @@ describe('VisionParseService', () => {
       .mockResolvedValueOnce(converseResult('not json'))
       .mockResolvedValueOnce(converseResult(VALID_JSON));
 
-    const receipt = await sut.parse('tenant-1', image);
+    const receipt = await sut.parse('tenant-1', image, ctx);
 
     expect(receipt.total).toBe(1.29);
     expect(callWithSpendGuard).toHaveBeenCalledTimes(2);
@@ -59,7 +83,7 @@ describe('VisionParseService', () => {
   it('throws SchemaValidationError when both attempts fail validation', async () => {
     callWithSpendGuard.mockResolvedValue(converseResult('still not json'));
 
-    await expect(sut.parse('tenant-1', image)).rejects.toBeInstanceOf(SchemaValidationError);
+    await expect(sut.parse('tenant-1', image, ctx)).rejects.toBeInstanceOf(SchemaValidationError);
     expect(callWithSpendGuard).toHaveBeenCalledTimes(2);
   });
 });

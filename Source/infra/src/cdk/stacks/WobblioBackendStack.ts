@@ -158,6 +158,13 @@ export class WobblioBackendStack extends Stack {
       ANALYTICS_QUEUE_URL: analyticsEventsQueue.queueUrl,
     });
 
+    // Public read-only resolver for shared receipt links (/r/<token>). No Cognito
+    // auth — the unguessable token is the only credential; resolves under the
+    // invoice owner's RLS scope so a token exposes only its one invoice.
+    const shareInvoiceFn = makeLambda('share-invoice', 5, {
+      UPLOADS_BUCKET: storageStack.uploadsBucket.bucketName,
+    });
+
     // ── SQS event source on ingestion worker ─────────────────────────────────
     ingestionWorkerFn.addEventSource(
       new SqsEventSource(ingestionQueue, {
@@ -174,6 +181,7 @@ export class WobblioBackendStack extends Stack {
     storageStack.uploadsBucket.grantRead(apiHandlerFn);
     storageStack.uploadsBucket.grantDelete(apiHandlerFn);
     storageStack.uploadsBucket.grantRead(ingestionWorkerFn);
+    storageStack.uploadsBucket.grantRead(shareInvoiceFn);
     storageStack.exportsBucket.grantReadWrite(apiHandlerFn);
     storageStack.billingArchiveBucket.grantWrite(apiHandlerFn);
     storageStack.analyticsBucket.grantWrite(cronBudgetResetFn);
@@ -201,6 +209,7 @@ export class WobblioBackendStack extends Stack {
     dbSecret.grantRead(cronBudgetResetFn);
     dbSecret.grantRead(cronWeeklyAdvisorFn);
     dbSecret.grantRead(waitlistStatusFn);
+    dbSecret.grantRead(shareInvoiceFn);
 
     // SSM: read shared DB connection parameters
     const ssmPolicy = new iam.PolicyStatement({
@@ -209,7 +218,7 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
       ],
     });
-    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, waitlistStatusFn]
+    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, waitlistStatusFn, shareInvoiceFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
 
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
@@ -354,6 +363,13 @@ export class WobblioBackendStack extends Stack {
       authorizer: undefined,
     });
 
+    // Public shared-receipt resolver — token-gated, no Cognito (see shareInvoiceFn).
+    const sharedInvoiceResource = api.root.addResource('shared-invoices').addResource('{token}');
+    const sharedInvoiceMethod = sharedInvoiceResource.addMethod('GET', new apigw.LambdaIntegration(shareInvoiceFn), {
+      authorizationType: apigw.AuthorizationType.NONE,
+      authorizer: undefined,
+    });
+
     // Catch-all proxy for authenticated API routes — real routes added in later epics
     const proxyResource = api.root.addProxy({
       defaultIntegration: new apigw.LambdaIntegration(apiHandlerFn),
@@ -469,7 +485,7 @@ export class WobblioBackendStack extends Stack {
     const allLambdas = [
       apiHandlerFn, ingestionWorkerFn,
       cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn,
-      cronWeeklyAdvisorFn, waitlistStatusFn, analyticsEventsFn,
+      cronWeeklyAdvisorFn, waitlistStatusFn, analyticsEventsFn, shareInvoiceFn,
     ];
 
     // ── Lambda log retention ──────────────────────────────────────────────────
@@ -533,6 +549,9 @@ export class WobblioBackendStack extends Stack {
     ]);
     NagSuppressions.addResourceSuppressions(analyticsEventsMethod, [
       { id: 'AwsSolutions-COG4', reason: 'The analytics events endpoint is public and does not require authentication' },
+    ]);
+    NagSuppressions.addResourceSuppressions(sharedInvoiceMethod, [
+      { id: 'AwsSolutions-COG4', reason: 'The shared-invoice resolver is public by design; the unguessable share token is the credential' },
     ]);
 
     NagSuppressions.addResourceSuppressions(analyticsEventsQueue, [

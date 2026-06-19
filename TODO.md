@@ -17,5 +17,12 @@ Onboarding:
 Admin:
 Adicionar uma funçao para dar mais ou menos creditos de invoice para um usuario nao semana corrente. Em caso de falha em uma invoice a mesma nao deve ser contabilizada para deduzir do numero de invoices que um usuario pode submeter.
 
+Invoice:
+- Categorize the products, like vegetables and fruits, dairy, meat, etc. Something like that, feel free to come up with better classification.
+- Add test cases for the invoice generation, for example so we can ensure the parser is working.
+
 Cost:
 KMS key can be very expensive. How often do we invoke them, and is there an alternative to them or to mitigate the cost?
+
+New features:
+- Users should be able to add an expense manually without an invoice. In this case they can provide a description, a top level category, select the region, date and the currency and the value. Information like Currency we can default to his own currency, date could default to today's date. country and region could default to his country and region too. In this case we need to generate a generic invoice item with the same value of the expense and categorize with something like manual input expense (find a better name for that).

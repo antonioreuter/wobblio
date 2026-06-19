@@ -100,6 +100,20 @@ export class InvoiceNotFoundError extends Error {
   }
 }
 
+export class InvoiceNotDeletableError extends Error {
+  constructor(readonly invoiceId: string, readonly status: string) {
+    super(`Invoice ${invoiceId} cannot be deleted in status ${status}`);
+    this.name = 'InvoiceNotDeletableError';
+  }
+}
+
+export class InvalidFeedbackError extends Error {
+  constructor(readonly verdict: string) {
+    super(`Invalid feedback verdict: ${verdict}`);
+    this.name = 'InvalidFeedbackError';
+  }
+}
+
 export class LocationAlreadySetError extends Error {
   constructor(readonly invoiceId: string) {
     super(`Invoice location already set for ${invoiceId}; it can only be set once`);
@@ -190,6 +204,13 @@ export class InvalidInviteError extends Error {
   constructor(readonly reason: string) {
     super(`Invalid household invite: ${reason}`);
     this.name = 'InvalidInviteError';
+  }
+}
+
+export class InvalidShareError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid invoice share link: ${reason}`);
+    this.name = 'InvalidShareError';
   }
 }
 

@@ -62,7 +62,7 @@ bold "Step 3: LocalStack bootstrap (S3 · SQS · SSM · Secrets Manager)"
 cd "$INFRA_DIR"
 AWS_ENDPOINT_URL=http://localhost:4566 \
   STAGE=local \
-  npm run cdk:deploy:local -- WobblioLocalBootstrapStack-local \
+  npm run cdk:deploy:local -- WobblioLocalBootstrapStack \
   2>&1 | grep -E '(✅|❌|CREATE|UPDATE|DELETE|Error|error)' || true
 ok "WobblioLocalBootstrapStack deployed"
 echo ""
@@ -76,6 +76,29 @@ if ls src/migrations/*.ts 2>/dev/null | grep -qv config.ts; then
 else
   warn "No migration files found — skipping"
 fi
+echo ""
+
+# ── Step 4b: Application DB role (RLS enforcement) ────────────────────────────
+# The app runtime (config/local.env APP_DATABASE_URL) must connect as a non-owner,
+# non-superuser role so Row-Level Security is actually enforced. The owner role used
+# for migrations above bypasses RLS, which would silently expose every tenant's rows.
+bold "Step 4b: Application DB role (wobblio_app)"
+docker compose -f "$COMPOSE_FILE" exec -T -e PGPASSWORD="${DB_PASSWORD}" postgres \
+  psql -h localhost -U "${DB_USER}" -d "${DB_NAME}" <<'SQL'
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wobblio_app') THEN
+    CREATE ROLE wobblio_app LOGIN PASSWORD 'wobblio_app_secret' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+  END IF;
+END $$;
+GRANT USAGE ON SCHEMA public TO wobblio_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO wobblio_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO wobblio_app;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO wobblio_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE wobblio_dev IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO wobblio_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE wobblio_dev IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO wobblio_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE wobblio_dev IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO wobblio_app;
+SQL
+ok "wobblio_app role ensured (RLS-enforced runtime role)"
 echo ""
 
 # ── Step 5: Seed reference data ───────────────────────────────────────────────

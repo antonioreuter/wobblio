@@ -71,11 +71,16 @@ export class WobblioLocalBootstrapStack extends Stack {
     });
 
     // ── SSM Parameters ────────────────────────────────────────────────────────
+    // Real Bedrock IDs (same as the dev account): local AI calls hit real Bedrock,
+    // so the worker must resolve invokable model IDs, not mock placeholders.
+    // Vision = Qwen3-VL (on-demand by foundation-model ID, no profile). Claude
+    // models use eu.* cross-region inference profiles — not invokable on-demand
+    // by bare foundation-model ID in eu-west-1.
     const modelParams: Record<string, string> = {
-      '/wobblio/config/models/vision_parser': 'mock-vision-model',
-      '/wobblio/config/models/auxiliary': 'mock-auxiliary-model',
-      '/wobblio/config/models/embedder': 'mock-embedder-model',
-      '/wobblio/config/models/insight': 'mock-insight-model',
+      '/wobblio/config/models/vision_parser': 'qwen.qwen3-vl-235b-a22b',
+      '/wobblio/config/models/auxiliary': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
+      '/wobblio/config/models/embedder': 'amazon.titan-embed-text-v2:0',
+      '/wobblio/config/models/insight': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
     };
 
     const quotaParams: Record<string, string> = {

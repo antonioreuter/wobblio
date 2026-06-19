@@ -1,6 +1,7 @@
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import type { IBedrockEmbedder } from '@core/ports/data-intelligence/IBedrockEmbedder';
 import { BedrockCallError } from '@core/domain/errors';
+import { buildBedrockRuntimeClient } from '@infrastructure/config/bedrockClient';
 
 const EMBED_DIMENSIONS = 512; // matches the product.embedding vector(512) column
 
@@ -10,7 +11,7 @@ export class BedrockTitanEmbedderAdapter implements IBedrockEmbedder {
   private readonly client: BedrockRuntimeClient;
 
   constructor(region: string, private readonly modelId: string) {
-    this.client = new BedrockRuntimeClient({ region });
+    this.client = buildBedrockRuntimeClient(region);
   }
 
   async embed(text: string): Promise<number[]> {

@@ -20,4 +20,8 @@ export class IngestionLedgerAdapter implements IIngestionLedger {
       [s3Key, status],
     );
   }
+
+  async release(s3Key: string): Promise<void> {
+    await this.client.query(`DELETE FROM ingestion_ledger WHERE s3_key = $1`, [s3Key]);
+  }
 }

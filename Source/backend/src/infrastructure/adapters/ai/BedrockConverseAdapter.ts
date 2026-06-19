@@ -1,13 +1,14 @@
 import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 import type { IBedrockConverse, BedrockConverseRequest, BedrockConverseResult } from '@core/ports/ai/IBedrockConverse';
 import { BedrockCallError } from '@core/domain/errors';
+import { buildBedrockRuntimeClient } from '@infrastructure/config/bedrockClient';
 import { emitBedrockTokenMetric } from '../../metrics/emf';
 
 export class BedrockConverseAdapter implements IBedrockConverse {
   private readonly client: BedrockRuntimeClient;
 
   constructor(region: string) {
-    this.client = new BedrockRuntimeClient({ region });
+    this.client = buildBedrockRuntimeClient(region);
   }
 
   async converse(request: BedrockConverseRequest): Promise<BedrockConverseResult> {

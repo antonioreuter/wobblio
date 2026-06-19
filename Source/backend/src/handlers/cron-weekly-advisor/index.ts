@@ -2,7 +2,7 @@ import type { Context } from 'aws-lambda';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { createLambdaLogger } from '@infrastructure/logging/logger';
 import { buildPool } from '@infrastructure/config/db';
-import { buildConverseAdapter } from '@infrastructure/adapters/ai/converseFactory';
+import { BedrockConverseAdapter } from '@infrastructure/adapters/ai/BedrockConverseAdapter';
 import { WeeklyAdvisorRepositoryAdapter } from '@infrastructure/adapters/ai/WeeklyAdvisorRepositoryAdapter';
 import { WeeklyAdvisorService } from '@core/services/ai/WeeklyAdvisorService';
 import { WEEKLY_ADVISOR_PROMPT, WEEKLY_ADVISOR_PROMPT_VERSION } from '../../prompts/weeklyAdvisor';
@@ -13,7 +13,6 @@ const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 const AUXILIARY_MODEL_PARAM = '/wobblio/config/models/auxiliary';
 
 async function resolveAuxiliaryModel(): Promise<string> {
-  if (process.env.STAGE === 'local') return process.env.OLLAMA_MODEL ?? 'gemma4:31b-it-qat';
   const ssm = new SSMClient({ region: REGION });
   const response = await ssm.send(new GetParameterCommand({ Name: AUXILIARY_MODEL_PARAM }));
   const value = response.Parameter?.Value ?? '';
@@ -32,7 +31,7 @@ export const handler = async (_event: unknown, context: Context): Promise<void> 
 
   const service = new WeeklyAdvisorService(
     new WeeklyAdvisorRepositoryAdapter(pool),
-    buildConverseAdapter(REGION),
+    new BedrockConverseAdapter(REGION),
     await resolveAuxiliaryModel(),
     WEEKLY_ADVISOR_PROMPT,
     WEEKLY_ADVISOR_PROMPT_VERSION,

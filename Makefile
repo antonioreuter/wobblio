@@ -1,7 +1,8 @@
-.PHONY: setup bootstrap deploy restart stop migrate cognito-init validate help
+.PHONY: setup bootstrap deploy restart stop migrate cognito-init validate help dev-backend dev-frontend dev
 
 REPO_ROOT         := $(shell pwd)
 BACKEND_DIR       := $(REPO_ROOT)/Source/backend
+WEBAPP_DIR        := $(REPO_ROOT)/Source/webapp
 INFRA_DIR         := $(REPO_ROOT)/Source/infra
 BOOTSTRAP_SCRIPT  := $(REPO_ROOT)/scripts/local/bootstrap.sh
 DEPLOY_SCRIPT     := $(REPO_ROOT)/scripts/local/deploy.sh
@@ -52,6 +53,18 @@ migrate:
 ## dev-backend: Run the backend API locally on :3001 (parity with the AWS Lambda fleet)
 dev-backend:
 	cd $(BACKEND_DIR) && npm run dev
+
+## dev-frontend: Run the Next.js webapp locally on :3000
+dev-frontend:
+	cd $(WEBAPP_DIR) && npm run dev
+
+## dev: Run backend (:3001) and frontend (:3000) together; Ctrl-C stops both
+dev:
+	@echo "Starting backend (:3001) and frontend (:3000)... Ctrl-C to stop both"
+	@trap 'kill 0' EXIT INT TERM; \
+	( cd $(BACKEND_DIR) && npm run dev ) & \
+	( cd $(WEBAPP_DIR) && npm run dev ) & \
+	wait
 
 ## validate: Run hexagonal architecture validator + GDPR security auditor
 validate:

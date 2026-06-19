@@ -12,6 +12,7 @@ import type { IRegionReference } from '../../ports/data-intelligence/IRegionRefe
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
 import type { VisionParseService } from './VisionParseService';
 import { decideStatus, isArithmeticConsistent, type InvoiceStatus, type ParsedLine, type ParsedReceipt } from '../../domain/ingestion';
+import { depositCategoryFor, discountCategoryFor } from '../../domain/categoryTaxonomy';
 import { buildPriceObservations, type ContributorContext, type ObservationLine } from '../../domain/priceObservation';
 import { resolveObservationRegion, type InvoiceLocationStatus } from '../../domain/region';
 
@@ -20,6 +21,7 @@ const LAUNCH_COUNTRY = 'NL';
 export interface IngestionOutcome {
   handled: boolean; // false => duplicate SQS delivery, skipped
   status?: InvoiceStatus;
+  receipt?: ParsedReceipt; // the vision-parse result, for debug logging at the handler
 }
 
 // Runs the §6 pipeline for one receipt. The caller owns the DB transaction; on a
@@ -47,8 +49,17 @@ export class IngestionService {
     const claimed = await this.ledger.claim(message.s3Key, message.tenantId);
     if (!claimed) return { handled: false };
 
+    // Contributor country + today's date sharpen date/currency disambiguation in the
+    // vision prompt; the same context resolves the sharing location below.
+    const context = await this.contributorContext.getContext(message.tenantId);
+    const processedDate = new Date().toISOString().slice(0, 10);
+
     const bytes = await this.fileStorage.getObjectBytes(message.s3Key);
-    const receipt = await this.visionParser.parse(message.tenantId, { format: 'jpeg', bytes });
+    const receipt = await this.visionParser.parse(
+      message.tenantId,
+      { format: 'jpeg', bytes },
+      { countryCode: context.countryCode, processedDate },
+    );
 
     const merchant = await this.merchantResolver.resolve(message.tenantId, receipt.merchantRaw, LAUNCH_COUNTRY);
     const { lines: normalized, suggestedTags } = await this.productNormalizer.normalize(message.tenantId, merchant.merchantId, receipt.lines);
@@ -73,11 +84,15 @@ export class IngestionService {
       total: receipt.total,
       lineCount: receipt.lines.length,
     });
-    // An exact re-upload of a receipt this tenant already contributed (even one later
-    // deleted) must not emit a second, non-retractable observation set (§6.5). It is
-    // still a real upload: it keeps its quota slot and stays visible in the list.
+    // An exact re-upload of a receipt this tenant already contributed must not emit a
+    // second, non-retractable observation set (§6.5). Presign rejects live same-hash
+    // uploads, so this can only match a previously-DELETED invoice — there is nothing
+    // for the user to compare against, so it stays a normal invoice (not flagged) and is
+    // permanently kept out of the price index via priceEmissionBlocked.
     const alreadyContributed = await this.invoiceRepo.hasEmittedDuplicateByHash(message.invoiceId);
-    const isSuspectedDuplicate = fuzzyDuplicate || alreadyContributed;
+    // Only a live fuzzy twin (PARSED/NEEDS_REVIEW) is an actionable duplicate the user can resolve.
+    const isSuspectedDuplicate = fuzzyDuplicate;
+    const suppressEmission = fuzzyDuplicate || alreadyContributed;
 
     const status = decideStatus({
       parseConfidence: receipt.parseConfidence,
@@ -87,10 +102,9 @@ export class IngestionService {
       isSuspectedDuplicate,
     });
 
-    // Resolve the sharing location from the contributor profile. When it can't be
-    // mapped to reference data, the invoice is held PENDING and emission is deferred
-    // until the user confirms a location (§6.5 data-quality gate).
-    const context = await this.contributorContext.getContext(message.tenantId);
+    // Resolve the sharing location from the contributor profile (fetched above).
+    // When it can't be mapped to reference data, the invoice is held PENDING and
+    // emission is deferred until the user confirms a location (§6.5 data-quality gate).
     const regionCode = resolveObservationRegion(context.regionCode, context.countryCode);
     const locationMapped = await this.regionReference.isMappedLocation(context.countryCode, regionCode);
     const locationStatus: InvoiceLocationStatus = locationMapped ? 'RESOLVED' : 'PENDING';
@@ -106,25 +120,26 @@ export class IngestionService {
       categoryId,
       searchTags: tags,
       status,
+      priceEmissionBlocked: suppressEmission,
       location: {
         countryCode: context.countryCode,
         regionCode,
         status: locationStatus,
         source: 'PROFILE',
       },
-      lines: receipt.lines.map((line, index) => toPersistedLine(line, normalized[index])),
+      lines: receipt.lines.map((line, index) => toPersistedLine(line, normalized[index], index)),
     });
 
-    // A duplicate (fuzzy fingerprint or exact re-upload) stays out of the price index:
-    // confirmed duplicates contribute no observations (§6.8) and emitted rows are
-    // de-identified and cannot be retracted. The reserved quota slot is kept — the scan
-    // still cost an AI parse, so it counts against the §2.4 cap (Epic 09 cost control).
-    if (status !== 'SUSPECTED_DUPLICATE' && locationStatus === 'RESOLVED') {
+    // A duplicate (fuzzy fingerprint or exact re-upload of a deleted invoice) stays out
+    // of the price index: confirmed duplicates contribute no observations (§6.8) and
+    // emitted rows are de-identified and cannot be retracted. The reserved quota slot is
+    // kept — the scan still cost an AI parse, so it counts against the §2.4 cap (Epic 09).
+    if (!suppressEmission && locationStatus === 'RESOLVED') {
       await this.emitPriceObservations(merchant, receipt, normalized, context);
     }
 
     await this.ledger.setStatus(message.s3Key, 'DONE');
-    return { handled: true, status };
+    return { handled: true, status, receipt };
   }
 
   // Stage 5 (§6.5): emit de-identified price observations into the RLS-exempt store.
@@ -161,20 +176,31 @@ function toObservationLine(line: ParsedLine, norm: NormalizedLine): ObservationL
   };
 }
 
-function toPersistedLine(line: ParsedLine, norm: NormalizedLine): PersistedLine {
+function toPersistedLine(line: ParsedLine, norm: NormalizedLine, index: number): PersistedLine {
+  const isDiscount = line.lineTotal < 0;
   return {
     rawText: line.rawText,
+    lineIndex: index,
     productId: norm.productId,
     productProvisional: norm.productProvisional,
-    categoryId: norm.categoryId,
+    categoryId: resolveLineCategory(norm, isDiscount),
     quantity: line.quantity,
     packQuantity: norm.packQuantity,
     baseUnit: norm.baseUnit,
     unitPrice: line.unitPrice ?? null,
     normalizedUnitPrice: norm.normalizedUnitPrice,
     lineTotal: line.lineTotal,
-    isDiscount: line.lineTotal < 0,
+    isDiscount,
     isDepositOrFee: norm.isDepositOrFee,
     confidence: norm.confidence,
   };
+}
+
+// Deposits and discounts are structural — a negative total or a deposit flag is a far
+// more reliable signal than the LLM's per-line category, so override it deterministically
+// to the matching per-macro bucket (keeps the LLM's macro, just fixes the leaf).
+function resolveLineCategory(norm: NormalizedLine, isDiscount: boolean): string | null {
+  if (norm.isDepositOrFee) return depositCategoryFor(norm.categoryId);
+  if (isDiscount) return discountCategoryFor(norm.categoryId);
+  return norm.categoryId;
 }

@@ -59,7 +59,7 @@ describe('IngestionService', () => {
 
   beforeEach(() => {
     tenantContext = { setTenantId: vi.fn() };
-    ledger = { claim: vi.fn(), setStatus: vi.fn() };
+    ledger = { claim: vi.fn(), setStatus: vi.fn(), release: vi.fn() };
     storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     visionParser = { parse: vi.fn() };
     merchantResolver = { resolve: vi.fn() };
@@ -126,16 +126,29 @@ describe('IngestionService', () => {
 
     const outcome = await sut.process(MESSAGE);
 
-    expect(outcome).toEqual({ handled: true, status: 'PARSED' });
+    expect(outcome).toMatchObject({ handled: true, status: 'PARSED' });
     expect(invoiceRepo.findFuzzyDuplicate).toHaveBeenCalledWith('inv-1', {
       merchantId: 'm1', transactionDate: '2026-06-10', total: 3.0, lineCount: 2,
     });
     const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
     expect(persisted.status).toBe('PARSED');
+    expect(persisted.priceEmissionBlocked).toBe(false);
     expect(persisted.searchTags).toEqual(['weekly-groceries']);
-    expect(persisted.lines[0]).toMatchObject({ unitPrice: 2.0, isDiscount: false });
-    expect(persisted.lines[1]).toMatchObject({ unitPrice: null, isDiscount: true });
+    expect(persisted.lines[0]).toMatchObject({ lineIndex: 0, unitPrice: 2.0, isDiscount: false });
+    // Negative line → discount; category is forced to the deterministic discount leaf.
+    expect(persisted.lines[1]).toMatchObject({ lineIndex: 1, unitPrice: null, isDiscount: true, categoryId: 'cat-other-discount' });
     expect(ledger.setStatus).toHaveBeenCalledWith(MESSAGE.s3Key, 'DONE');
+  });
+
+  it('forces a deposit line to the per-macro deposit category, keeping the macro', async () => {
+    arrangeHappyPath();
+    const depositLine: NormalizedLine = { ...normalizedLine(), categoryId: 'cat-beverages', isDepositOrFee: true };
+    productNormalizer.normalize.mockResolvedValue({ lines: [depositLine, normalizedLine()], suggestedTags: [] });
+
+    await sut.process(MESSAGE);
+
+    const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
+    expect(persisted.lines[0]).toMatchObject({ isDepositOrFee: true, categoryId: 'cat-groceries-deposit' });
   });
 
   it('flags NEEDS_REVIEW when vision confidence is below threshold', async () => {
@@ -154,7 +167,7 @@ describe('IngestionService', () => {
     expect(outcome.status).toBe('NEEDS_REVIEW');
   });
 
-  it('flags an exact re-upload of an already-emitted receipt as SUSPECTED_DUPLICATE without emitting', async () => {
+  it('treats an exact re-upload of a deleted receipt as normal but blocks re-emission', async () => {
     arrangeHappyPath();
     invoiceRepo.hasEmittedDuplicateByHash.mockResolvedValue(true);
     const pricedLine: NormalizedLine = {
@@ -167,7 +180,10 @@ describe('IngestionService', () => {
     const outcome = await sut.process(MESSAGE);
 
     expect(invoiceRepo.hasEmittedDuplicateByHash).toHaveBeenCalledWith('inv-1');
-    expect(outcome.status).toBe('SUSPECTED_DUPLICATE');
+    // Not flagged as a duplicate — the original was deleted, nothing to compare against.
+    expect(outcome.status).toBe('PARSED');
+    const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
+    expect(persisted.priceEmissionBlocked).toBe(true);
     expect(priceObservationStore.emit).not.toHaveBeenCalled();
   });
 
@@ -210,6 +226,7 @@ describe('IngestionService', () => {
     const outcome = await sut.process(MESSAGE);
 
     expect(outcome.status).toBe('SUSPECTED_DUPLICATE');
+    expect(invoiceRepo.persistParsed.mock.calls[0][0].priceEmissionBlocked).toBe(true);
     expect(priceObservationStore.emit).not.toHaveBeenCalled();
   });
 

@@ -24,10 +24,15 @@ export async function seedSsmParameters(): Promise<void> {
   console.log('\nSeeding SSM parameters...');
 
   const params: Record<string, string> = {
-    '/wobblio/config/models/vision_parser': 'mock-vision-model',
-    '/wobblio/config/models/auxiliary': 'mock-auxiliary-model',
-    '/wobblio/config/models/embedder': 'mock-embedder-model',
-    '/wobblio/config/models/insight': 'mock-insight-model',
+    // Real Bedrock IDs (same as the dev account): local AI calls hit real Bedrock,
+    // so the worker must resolve invokable model IDs, not mock placeholders.
+    // Vision = Qwen3-VL (on-demand by foundation-model ID, no profile). Claude
+    // models use eu.* cross-region inference profiles — not invokable on-demand
+    // by bare foundation-model ID in eu-west-1.
+    '/wobblio/config/models/vision_parser': 'qwen.qwen3-vl-235b-a22b',
+    '/wobblio/config/models/auxiliary': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
+    '/wobblio/config/models/embedder': 'amazon.titan-embed-text-v2:0',
+    '/wobblio/config/models/insight': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
     '/wobblio/config/quotas/standard_uploads_per_week': '3',
     '/wobblio/config/quotas/premium_uploads_per_week': '10',
     '/wobblio/config/quotas/household_uploads_per_week': '20',

@@ -14,6 +14,21 @@ export function isLocationConfirmable(status: InvoiceStatus): boolean {
   return status === 'PARSED' || status === 'NEEDS_REVIEW';
 }
 
+// PROCESSING is the only non-terminal status; deleting an in-flight invoice would
+// leave the worker writing to a discarded row and strand its content-addressed ledger
+// claim. Every terminal status (incl. FAILED_PROCESSING/SUSPECTED_DUPLICATE) is deletable.
+export function isDeletable(status: InvoiceStatus): boolean {
+  return status !== 'PROCESSING';
+}
+
+// User's accuracy rating on a parsed receipt (§ invoice_feedback). One verdict per
+// invoice; re-rating overwrites the prior one.
+export type InvoiceVerdict = 'UP' | 'DOWN';
+
+export function isInvoiceVerdict(value: unknown): value is InvoiceVerdict {
+  return value === 'UP' || value === 'DOWN';
+}
+
 export interface ParsedLine {
   rawText: string;
   quantity: number;

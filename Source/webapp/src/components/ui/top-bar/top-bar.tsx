@@ -40,7 +40,8 @@ export function TopBar({
   const title = deriveTitle(pathname)
   const usageUsed = usage?.used ?? 0
   const usageLimit = usage?.cap ?? 0
-  const pct = Math.max(0, Math.min(100, (usageUsed / Math.max(1, usageLimit)) * 100))
+  const unlimited = usage?.unlimited ?? false
+  const pct = unlimited ? 0 : Math.max(0, Math.min(100, (usageUsed / Math.max(1, usageLimit)) * 100))
 
   return (
     <header className="app-topbar">
@@ -68,7 +69,7 @@ export function TopBar({
             <div className="usage-top">
               <span className="usage-label">Invoices this week</span>
               <span className="usage-count">
-                {usage ? <><strong>{usageUsed}</strong> / {usageLimit}</> : '—'}
+                {usage ? <><strong>{usageUsed}</strong> / {unlimited ? '∞' : usageLimit}</> : '—'}
               </span>
             </div>
             <div className="usage-bar">
