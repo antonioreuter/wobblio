@@ -44,7 +44,7 @@ export function SharedInvoiceView({ invoice }: { invoice: SharedInvoice | null }
     return (
       <div className="min-h-screen flex flex-col bg-bg text-primary">
         <nav className="border-b border-glass-border bg-glass-bg backdrop-blur-md">
-          <div className="mx-auto flex max-w-6xl h-16 items-center justify-between px-6">
+          <div className="mx-auto flex max-w-6xl h-16 items-center justify-between px-4 sm:px-6">
             <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
               <WobblioLogo size={32} withWordmark />
             </Link>
@@ -75,7 +75,7 @@ export function SharedInvoiceView({ invoice }: { invoice: SharedInvoice | null }
     <div className="min-h-screen flex flex-col bg-bg text-primary">
       {/* Premium Navbar */}
       <nav className="sticky top-0 z-50 w-full border-b border-glass-border bg-glass-bg/85 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl h-16 items-center justify-between px-6">
+        <div className="mx-auto flex max-w-6xl h-16 items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
             <WobblioLogo size={32} withWordmark />
           </Link>
@@ -84,21 +84,21 @@ export function SharedInvoiceView({ invoice }: { invoice: SharedInvoice | null }
       </nav>
 
       {/* Main Grid */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-8 md:py-12" data-testid="shared-invoice">
-        <div className="mb-8">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 md:py-12" data-testid="shared-invoice">
+        <div className="mb-6 md:mb-8">
           <div className="flex items-center gap-2 text-xs font-semibold text-brand uppercase tracking-wider mb-2">
             <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />
             Shared Receipt Link
           </div>
-          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight bg-gradient-heading bg-clip-text text-transparent">
+          <h2 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight bg-gradient-heading bg-clip-text text-transparent">
             Verify & Inspect Receipt
           </h2>
-          <p className="text-sm text-secondary mt-1">
-            This receipt details were extracted automatically using AI. Check the parsed items side-by-side with the original image.
+          <p className="text-sm text-secondary mt-1 max-w-2xl">
+            These receipt details were extracted automatically using AI. Check the parsed items side-by-side with the original image.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           {/* Left Column: Digital Receipt Card */}
           <div className="lg:col-span-7">
             <Card className="p-6 md:p-8 flex flex-col gap-6 relative overflow-hidden">
@@ -112,7 +112,7 @@ export function SharedInvoiceView({ invoice }: { invoice: SharedInvoice | null }
                     <MerchantIcon merchant={invoice.merchant ?? ''} size={48} />
                     <div>
                       <span className="text-xs font-semibold text-brand tracking-wider uppercase">Extracted Details</span>
-                      <h1 className="text-2xl font-bold tracking-tight mt-0.5 text-primary">
+                      <h1 className="text-xl sm:text-2xl font-bold tracking-tight mt-0.5 text-primary break-words">
                         {invoice.merchant ?? 'Receipt'}
                       </h1>
                     </div>
@@ -188,7 +188,7 @@ export function SharedInvoiceView({ invoice }: { invoice: SharedInvoice | null }
 
           {/* Right Column: Original Receipt Image & Viewer */}
           <div className="lg:col-span-5">
-            <Card className="p-6 flex flex-col gap-4 min-h-[500px] lg:h-[calc(100vh-280px)] lg:min-h-[550px]">
+            <Card className="p-4 sm:p-6 flex flex-col gap-4 min-h-[340px] sm:min-h-[440px] lg:sticky lg:top-24 lg:h-[calc(100vh-280px)] lg:min-h-[550px]">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-muted uppercase tracking-wider">
                   <FileText size={14} className="text-brand" />
