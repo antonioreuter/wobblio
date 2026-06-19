@@ -154,6 +154,16 @@ export const handler = async (
     }
 
     return json(200, { status: 'ok' });
+  } catch (err) {
+    // Sub-handlers map their own domain errors; anything reaching here is an
+    // unexpected fault (missing SSM config, DB blip, …). Without this catch it
+    // leaks as an opaque 500 with no log — surface it as a structured error.
+    log.error('unhandled api-handler error', {
+      path: event.path,
+      method: event.httpMethod,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return json(500, { message: 'Internal Server Error' });
   } finally {
     client.release();
   }

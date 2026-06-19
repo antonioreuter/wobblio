@@ -20,6 +20,8 @@ Adicionar uma funçao para dar mais ou menos creditos de invoice para um usuario
 Invoice:
 - Categorize the products, like vegetables and fruits, dairy, meat, etc. Something like that, feel free to come up with better classification.
 - Add test cases for the invoice generation, for example so we can ensure the parser is working.
+- Include the location in the invoice header
+
 
 Cost:
 KMS key can be very expensive. How often do we invoke them, and is there an alternative to them or to mitigate the cost?
