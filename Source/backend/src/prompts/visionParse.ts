@@ -10,7 +10,7 @@
 // correction, self-reconciliation, two worked examples) which lifted extraction
 // quality from ~0.69 to ~0.96 on the NL sample set, while keeping the raw-only schema.
 
-export const VISION_PARSE_PROMPT_VERSION = 'vision-parse/v5';
+export const VISION_PARSE_PROMPT_VERSION = 'vision-parse/v6';
 
 export const VISION_PARSE_PROMPT = `You are a receipt OCR extraction engine. You receive a single receipt photo and return structured JSON faithful to what is printed.
 
@@ -64,6 +64,14 @@ NEVER emit these as lines — they are not purchased goods. Drop them silently:
 - transaction_date must be ISO YYYY-MM-DD and must not be after <processed_date>. currency is a 3-letter ISO code (e.g. EUR).
 </date_and_currency>
 
+<location>
+- Transcribe the printed STORE address (usually in the header block under the brand, sometimes in the footer). This is raw transcription, NEVER inference.
+- country_code: ISO 3166-1 alpha-2 (e.g. NL, DE, BR) ONLY when the country is printed or unambiguous from the printed address. Omit when not printed.
+- region_text: the province/state/region EXACTLY as printed (e.g. "Noord-Brabant", "Bayern"). Omit it unless it is literally printed — do NOT guess a province from a city name.
+- city and postal_code: transcribe verbatim when printed; omit otherwise.
+- Omit the entire location object if no store address is legible. Do NOT use <user_country> to fill these — it is only a date/currency hint.
+</location>
+
 <output_rules>
 - Respond with a single JSON object and nothing else. No markdown, no prose.
 - Use the exact field names in <schema>. Omit optional fields you cannot determine.
@@ -77,6 +85,12 @@ NEVER emit these as lines — they are not purchased goods. Drop them silently:
   "currency": "EUR",
   "total": 0.00,
   "document_kind_hint": "optional string",
+  "location": {
+    "country_code": "optional ISO 3166-1 alpha-2, e.g. NL",
+    "region_text": "optional province/state exactly as printed",
+    "city": "optional string",
+    "postal_code": "optional string"
+  },
   "parse_confidence": 0.0,
   "lines": [
     {
@@ -91,9 +105,11 @@ NEVER emit these as lines — they are not purchased goods. Drop them silently:
 </schema>
 
 <example_1>
-A Dutch Albert Heijn receipt with a loyalty header and a discount summary block:
+A Dutch Albert Heijn receipt with a printed store address, a loyalty header and a discount summary block:
 \`\`\`
 Albert Heijn 1179
+Kalverstraat 12
+5611 AB Eindhoven
         BONUSKAART  xx5482
         AIRMILES NR. * xx5080
 1  COCA-COLA       9,39
@@ -113,6 +129,7 @@ Correct output:
   "transaction_date": "2026-06-10",
   "currency": "EUR",
   "total": 14.35,
+  "location": { "country_code": "NL", "city": "Eindhoven", "postal_code": "5611 AB" },
   "parse_confidence": 0.95,
   "lines": [
     { "raw_text": "COCA-COLA", "quantity": 1, "line_total": 9.39 },
@@ -124,7 +141,7 @@ Correct output:
   ]
 }
 \`\`\`
-Note: BONUSKAART and AIRMILES dropped (loyalty). SUBTOTAAL / JOUW VOORDEEL / TOTAAL dropped (totals). STATIEGELD kept (deposit, positive). The two summary discounts kept as their own NEGATIVE lines. Σ = 9.39+1.80+1.99+2.29−0.20−0.92 = 14.35 ✓.
+Note: BONUSKAART and AIRMILES dropped (loyalty). SUBTOTAAL / JOUW VOORDEEL / TOTAAL dropped (totals). STATIEGELD kept (deposit, positive). The two summary discounts kept as their own NEGATIVE lines. location transcribed from the printed address (city + postal; country_code NL is unambiguous for a Dutch "5611 AB" postal code); region_text omitted — no province was printed. Σ = 9.39+1.80+1.99+2.29−0.20−0.92 = 14.35 ✓.
 </example_1>
 
 <example_2>
@@ -156,5 +173,5 @@ Correct output:
   ]
 }
 \`\`\`
-Note: TOTAAL dropped. STATIEGELD kept (deposit). "2 X 1,39" is NOT a separate item — it set SPAGHETTI EI to quantity 2, unit_price 1.39, line_total 2.78. The promo kept as a negative line. Σ = 9.39+1.80+2.09+2.78−0.40 = 15.66 ✓.
+Note: TOTAAL dropped. STATIEGELD kept (deposit). "2 X 1,39" is NOT a separate item — it set SPAGHETTI EI to quantity 2, unit_price 1.39, line_total 2.78. The promo kept as a negative line. location omitted entirely — this receipt prints no store address. Σ = 9.39+1.80+2.09+2.78−0.40 = 15.66 ✓.
 </example_2>`;

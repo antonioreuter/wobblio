@@ -26,9 +26,10 @@ const banner: React.CSSProperties = {
   background: 'var(--surface)',
 }
 
-// Location quality gate (§6.5). A receipt whose location couldn't be resolved from
-// the profile is held out of the regional price index until the user confirms where
-// they shopped — once. Country/region are prefilled from the user's profile.
+// Location quality gate (§6.5). When a receipt's region can't be auto-resolved from
+// its printed address, the invoice is held out of the regional price index until the
+// user confirms where they shopped — once. Country/region are prefilled with the
+// backend's best guess (upload location, else profile); the user corrects it if wrong.
 export function InvoiceLocationGate({ invoice, onConfirmed }: InvoiceLocationGateProps) {
   const [country, setCountry] = useState(invoice.locationCountryCode ?? DEFAULT_COUNTRY.code)
   const [regions, setRegions] = useState<Region[]>([])
@@ -37,8 +38,8 @@ export function InvoiceLocationGate({ invoice, onConfirmed }: InvoiceLocationGat
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Prefill from the profile once: the user's home country/region is the sensible
-  // default for "where did you shop". Only override the invoice's own values.
+  // The backend already stamps a best-guess country (upload geo, else profile) on the
+  // row, so fall back to the profile fetch only when the row truly has no country.
   useEffect(() => {
     if (prefilled || invoice.locationCountryCode) return
     let active = true
@@ -117,8 +118,8 @@ export function InvoiceLocationGate({ invoice, onConfirmed }: InvoiceLocationGat
     <div style={banner} data-testid="invoice-location-gate">
       <span className="dd-label" style={{ fontWeight: 600 }}><ShieldAlert size={14} /> Confirm where you shopped</span>
       <span className="fb-hint">
-        We couldn’t tell which region this receipt is from. Confirm it so your anonymized prices
-        can help the regional index. This can only be set once.
+        We couldn’t read the region from this receipt, so we’ve set a best guess — correct it if
+        needed. Confirming lets your anonymized prices help the regional index. This can only be set once.
       </span>
 
       <label className="dd-label" style={{ gap: 6 }}><MapPin size={13} /> Country</label>

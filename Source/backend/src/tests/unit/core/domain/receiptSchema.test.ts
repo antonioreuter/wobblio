@@ -100,3 +100,43 @@ describe('parseReceiptJson — line failures', () => {
     }
   });
 });
+
+describe('parseReceiptJson — location', () => {
+  const withLocation = (location: unknown) => JSON.stringify({ ...validObject(), location });
+
+  it('parses a full printed address and uppercases the country code', () => {
+    const result = parseReceiptJson(withLocation({ country_code: 'nl', region_text: 'Noord-Brabant', city: 'Eindhoven', postal_code: '5611 AB' }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.location).toEqual({ countryCode: 'NL', regionText: 'Noord-Brabant', city: 'Eindhoven', postalCode: '5611 AB' });
+    }
+  });
+
+  it('parses a partial address, leaving absent fields undefined', () => {
+    const result = parseReceiptJson(withLocation({ city: 'Eindhoven' }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.location).toEqual({ countryCode: undefined, regionText: undefined, city: 'Eindhoven', postalCode: undefined });
+    }
+  });
+
+  it('treats explicit null location fields as absent', () => {
+    const result = parseReceiptJson(withLocation({ country_code: null, region_text: null, city: null, postal_code: null }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.location).toBeUndefined();
+  });
+
+  it('omits the location entirely when not present', () => {
+    const result = parseReceiptJson(JSON.stringify(validObject()));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.location).toBeUndefined();
+  });
+
+  it('rejects a country_code that is not two letters', () => {
+    expectIssue(withLocation({ country_code: 'NLD' }), 'location.country_code');
+  });
+
+  it('rejects a non-object location', () => {
+    expectIssue(withLocation('Eindhoven'), 'location must be an object');
+  });
+});

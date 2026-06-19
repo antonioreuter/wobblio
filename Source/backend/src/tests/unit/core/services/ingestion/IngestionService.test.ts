@@ -23,6 +23,7 @@ const receipt = (parseConfidence = 0.9): ParsedReceipt => ({
   transactionDate: '2026-06-10',
   currency: 'EUR',
   total: 3.0,
+  location: { countryCode: 'NL', regionText: 'Noord-Brabant' },
   lines: [
     { rawText: 'Melk', quantity: 1, lineTotal: 4.0, unitPrice: 2.0 },
     { rawText: 'Korting', quantity: 1, lineTotal: -1.0 },
@@ -90,6 +91,7 @@ describe('IngestionService', () => {
       listSubdivisions: vi.fn(),
       isValidRegion: vi.fn(),
       isMappedLocation: vi.fn().mockResolvedValue(true),
+      resolveReceiptLocation: vi.fn(),
     };
     sut = new IngestionService(
       tenantContext, ledger, storage,
@@ -109,6 +111,9 @@ describe('IngestionService', () => {
     tagGenerator.generate.mockResolvedValue(['weekly-groceries']);
     invoiceRepo.findFuzzyDuplicate.mockResolvedValue(false);
     invoiceRepo.hasEmittedDuplicateByHash.mockResolvedValue(false);
+    // No upload-geo on the row by default; the receipt address resolves (tier 1).
+    invoiceRepo.getById.mockResolvedValue(null);
+    regionReference.resolveReceiptLocation.mockResolvedValue({ countryCode: 'NL', regionCode: 'NL-NB' });
   };
 
   it('short-circuits a duplicate SQS delivery after setting tenant context', async () => {
@@ -239,37 +244,60 @@ describe('IngestionService', () => {
     expect(outcome.status).toBe('NEEDS_REVIEW');
   });
 
-  it('persists location RESOLVED from the profile region and emits when mapped', async () => {
-    arrangeHappyPath();
-    const pricedLine: NormalizedLine = {
-      productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
-      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
-      confidence: 0.95, lowConfidence: false,
-    };
-    productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine, normalizedLine()], suggestedTags: [] });
-
-    await sut.process(MESSAGE);
-
-    expect(regionReference.isMappedLocation).toHaveBeenCalledWith('NL', 'NL-NB');
-    const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
-    expect(persisted.location).toEqual({ countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'PROFILE' });
-    expect(priceObservationStore.emit).toHaveBeenCalledTimes(1);
+  const pricedLine = (): NormalizedLine => ({
+    productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
+    normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
+    confidence: 0.95, lowConfidence: false,
   });
 
-  it('holds the invoice PENDING and defers emission when the profile region is unmapped', async () => {
+  it('tier 1: resolves location from the receipt address and emits with the receipt region', async () => {
     arrangeHappyPath();
-    regionReference.isMappedLocation.mockResolvedValue(false);
-    const pricedLine: NormalizedLine = {
-      productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
-      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
-      confidence: 0.95, lowConfidence: false,
-    };
-    productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine, normalizedLine()], suggestedTags: [] });
+    // A BR/Bahia contributor scanning a Dutch receipt — the printed address wins.
+    contributorContext.getContext.mockResolvedValue({ optedOut: false, regionCode: 'BR-BA', countryCode: 'BR', trustScore: 50 });
+    productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine(), normalizedLine()], suggestedTags: [] });
 
     await sut.process(MESSAGE);
 
     const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
-    expect(persisted.location.status).toBe('PENDING');
+    expect(persisted.location).toEqual({ countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'RECEIPT' });
+    expect(priceObservationStore.emit).toHaveBeenCalledTimes(1);
+    // Emitted against the receipt region, never the contributor's BR/Bahia profile.
+    expect(priceObservationStore.emit.mock.calls[0][0][0]).toMatchObject({ countryCode: 'NL', regionCode: 'NL-NB' });
+  });
+
+  it('tier 1: appends the receipt city to search tags', async () => {
+    arrangeHappyPath();
+    visionParser.parse.mockResolvedValue({ ...receipt(), location: { countryCode: 'NL', regionText: 'Noord-Brabant', city: 'Eindhoven' } });
+
+    await sut.process(MESSAGE);
+
+    const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
+    expect(persisted.searchTags).toEqual(['weekly-groceries', 'Eindhoven']);
+  });
+
+  it('tier 2: no receipt region but upload-geo on the row → PENDING/GEO, no emit', async () => {
+    arrangeHappyPath();
+    regionReference.resolveReceiptLocation.mockResolvedValue({ countryCode: null, regionCode: null });
+    invoiceRepo.getById.mockResolvedValue({ uploadCountryCode: 'NL', uploadRegionCode: 'NL-NB' } as never);
+    productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine(), normalizedLine()], suggestedTags: [] });
+
+    await sut.process(MESSAGE);
+
+    const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
+    expect(persisted.location).toEqual({ countryCode: 'NL', regionCode: 'NL-NB', status: 'PENDING', source: 'GEO' });
+    expect(priceObservationStore.emit).not.toHaveBeenCalled();
+  });
+
+  it('tier 3: no receipt region and no upload-geo → PENDING/PROFILE, no emit', async () => {
+    arrangeHappyPath();
+    regionReference.resolveReceiptLocation.mockResolvedValue({ countryCode: null, regionCode: null });
+    invoiceRepo.getById.mockResolvedValue(null);
+    productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine(), normalizedLine()], suggestedTags: [] });
+
+    await sut.process(MESSAGE);
+
+    const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
+    expect(persisted.location).toEqual({ countryCode: 'NL', regionCode: 'NL-NB', status: 'PENDING', source: 'PROFILE' });
     expect(priceObservationStore.emit).not.toHaveBeenCalled();
   });
 

@@ -1,5 +1,45 @@
 import { describe, it, expect } from 'vitest';
-import { resolveObservationRegion } from '@core/domain/region';
+import { resolveObservationRegion, resolveIngestionLocation } from '@core/domain/region';
+
+describe('resolveIngestionLocation', () => {
+  const profile = { countryCode: 'BR', regionCode: 'BR-BA' };
+
+  it('tier 1: a receipt with a mapped region auto-resolves to RECEIPT', () => {
+    const result = resolveIngestionLocation({
+      receipt: { countryCode: 'NL', regionCode: 'NL-NB' },
+      uploadGeo: { countryCode: 'DE', regionCode: 'DE-BY' },
+      profile,
+    });
+    expect(result).toEqual({ countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'RECEIPT' });
+  });
+
+  it('tier 2: no receipt region falls through to upload-geo as PENDING/GEO', () => {
+    const result = resolveIngestionLocation({
+      receipt: { countryCode: 'NL', regionCode: null },
+      uploadGeo: { countryCode: 'NL', regionCode: 'NL-NB' },
+      profile,
+    });
+    expect(result).toEqual({ countryCode: 'NL', regionCode: 'NL-NB', status: 'PENDING', source: 'GEO' });
+  });
+
+  it('tier 2: preserves a null upload-geo region prefill', () => {
+    const result = resolveIngestionLocation({
+      receipt: { countryCode: null, regionCode: null },
+      uploadGeo: { countryCode: 'NL', regionCode: null },
+      profile,
+    });
+    expect(result).toEqual({ countryCode: 'NL', regionCode: null, status: 'PENDING', source: 'GEO' });
+  });
+
+  it('tier 3: no receipt and no upload-geo falls back to the profile as PENDING/PROFILE', () => {
+    const result = resolveIngestionLocation({
+      receipt: { countryCode: null, regionCode: null },
+      uploadGeo: null,
+      profile,
+    });
+    expect(result).toEqual({ countryCode: 'BR', regionCode: 'BR-BA', status: 'PENDING', source: 'PROFILE' });
+  });
+});
 
 describe('resolveObservationRegion', () => {
   it('uses the contributor region when present', () => {

@@ -66,10 +66,13 @@ interface InvoiceRow {
   household_id: string | null;
   location_status: InvoiceLocationStatus;
   location_confirmed_at: string | null;
+  upload_country_code: string | null;
+  upload_region_code: string | null;
 }
 
 const RECORD_COLUMNS = `id, tenant_id, status, image_s3_key, image_sha256, household_id,
-  location_status, location_confirmed_at::text AS location_confirmed_at`;
+  location_status, location_confirmed_at::text AS location_confirmed_at,
+  upload_country_code, upload_region_code`;
 
 // All methods rely on RLS (app.current_tenant_id) set on this client's transaction.
 export class InvoiceRepositoryAdapter implements IInvoiceRepository {
@@ -78,10 +81,14 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
   async createPending(input: CreatePendingInvoice): Promise<string> {
     const result = await this.client.query<{ id: string }>(
       `INSERT INTO invoice
-         (tenant_id, household_id, uploaded_by_user_id, image_s3_key, image_sha256, status)
-       VALUES ($1, $2, $3, $4, $5, 'PROCESSING')
+         (tenant_id, household_id, uploaded_by_user_id, image_s3_key, image_sha256, status,
+          upload_country_code, upload_region_code)
+       VALUES ($1, $2, $3, $4, $5, 'PROCESSING', $6, $7)
        RETURNING id`,
-      [input.tenantId, input.householdId, input.uploadedByUserId, input.imageS3Key, input.imageSha256],
+      [
+        input.tenantId, input.householdId, input.uploadedByUserId, input.imageS3Key,
+        input.imageSha256, input.uploadCountryCode, input.uploadRegionCode,
+      ],
     );
     return result.rows[0].id;
   }
@@ -306,5 +313,7 @@ function toRecord(row: InvoiceRow): InvoiceRecord {
     householdId: row.household_id,
     locationStatus: row.location_status,
     locationConfirmedAt: row.location_confirmed_at,
+    uploadCountryCode: row.upload_country_code,
+    uploadRegionCode: row.upload_region_code,
   };
 }

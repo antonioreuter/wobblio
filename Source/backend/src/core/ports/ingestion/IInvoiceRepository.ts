@@ -8,6 +8,10 @@ export interface CreatePendingInvoice {
   householdId: string | null;
   imageS3Key: string;
   imageSha256: string;
+  // Coarse upload geolocation (tier 2), reverse-geocoded at presign. Null when the
+  // browser denied/lacked geolocation. Raw coordinates are never persisted.
+  uploadCountryCode: string | null;
+  uploadRegionCode: string | null;
 }
 
 export interface InvoiceRecord {
@@ -19,6 +23,9 @@ export interface InvoiceRecord {
   householdId: string | null;
   locationStatus: InvoiceLocationStatus;
   locationConfirmedAt: string | null;
+  // The tier-2 upload-geo candidate the worker reads to decide the sharing location.
+  uploadCountryCode: string | null;
+  uploadRegionCode: string | null;
 }
 
 export interface PersistedLine {
@@ -42,7 +49,7 @@ export interface InvoiceLocation {
   countryCode: string | null;
   regionCode: string | null;
   status: InvoiceLocationStatus;
-  source: LocationSource;
+  source: LocationSource | null;
 }
 
 export interface PersistParsedInvoice {

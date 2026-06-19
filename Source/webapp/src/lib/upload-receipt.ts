@@ -57,13 +57,29 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
   return { blob, sha256 }
 }
 
+// Tier-2 upload location (§6.5): ask the browser where we are so the backend can
+// prefill the location gate when the receipt itself carries no address. Best-effort —
+// a denied/unsupported/slow permission just skips it (resolves undefined), and the raw
+// coordinates are reverse-geocoded server-side at presign, never persisted.
+function getUploadCoordinates(): Promise<{ lat: number; lon: number } | undefined> {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(undefined)
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => resolve(undefined),
+      { timeout: 5000, maximumAge: 600_000 },
+    )
+  })
+}
+
 export async function uploadReceipt(file: File): Promise<{ invoiceId: string }> {
   const { blob, sha256 } = await prepareImage(file)
+  const coordinates = await getUploadCoordinates()
 
   const presign = await fetch('/api/invoices/presign', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageSha256: sha256, contentType: 'image/jpeg' }),
+    body: JSON.stringify({ imageSha256: sha256, contentType: 'image/jpeg', ...coordinates }),
   })
   if (presign.status === 409) throw new UploadError('duplicate', 'This receipt was already scanned.')
   if (presign.status === 429) throw new UploadError('quota', 'You’ve reached your weekly scan limit.')

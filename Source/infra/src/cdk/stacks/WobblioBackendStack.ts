@@ -14,6 +14,7 @@ import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as location from 'aws-cdk-lib/aws-location';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import { NagSuppressions } from 'cdk-nag';
@@ -121,6 +122,17 @@ export class WobblioBackendStack extends Stack {
 
     const webAppUrl = ssm.StringParameter.valueForStringParameter(this, '/wobblio/config/web_app_url');
 
+    // Reverse-geocodes upload coordinates for tier-2 invoice location (§6.5). Skipped
+    // locally — LocalStack has no Location service, and the geocoder adapter degrades
+    // to null (location falls back to the profile tier) when LOCATION_PLACE_INDEX is unset.
+    const placeIndexName = config.resourceName('receipts-geo');
+    const placeIndex = config.isLocal
+      ? null
+      : new location.CfnPlaceIndex(this, 'ReceiptsPlaceIndex', {
+          dataSource: 'Esri',
+          indexName: placeIndexName,
+        });
+
     const apiHandlerFn = makeLambda('api-handler', 25, {
       UPLOADS_BUCKET:         storageStack.uploadsBucket.bucketName,
       EXPORTS_BUCKET:         storageStack.exportsBucket.bucketName,
@@ -128,6 +140,7 @@ export class WobblioBackendStack extends Stack {
       BILLING_ARCHIVE_BUCKET: storageStack.billingArchiveBucket.bucketName,
       WEB_APP_URL:            webAppUrl,
       COGNITO_USER_POOL_ID:   authStack.userPool.userPoolId,
+      ...(placeIndex ? { LOCATION_PLACE_INDEX: placeIndexName } : {}),
     });
 
     // Onboarding writes custom:onboarded + profile attributes back to Cognito.
@@ -135,6 +148,14 @@ export class WobblioBackendStack extends Stack {
       actions: ['cognito-idp:AdminUpdateUserAttributes'],
       resources: [authStack.userPool.userPoolArn],
     }));
+
+    // Tier-2 reverse geocode: a single scoped action on this stack's place index only.
+    if (placeIndex) {
+      apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['geo:SearchPlaceIndexForPosition'],
+        resources: [placeIndex.attrArn],
+      }));
+    }
 
     const ingestionWorkerFn = makeLambda('ingestion-worker', 5, {
       UPLOADS_BUCKET: storageStack.uploadsBucket.bucketName,
