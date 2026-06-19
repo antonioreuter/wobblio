@@ -37,12 +37,23 @@ export interface ParsedLine {
   unitSizeRaw?: string;
 }
 
+// The store address as printed on the receipt — raw OCR only, never geo-inferred.
+// Drives tier-1 location resolution (§6.5): only the printed address can auto-resolve
+// an invoice's sharing region, because a franchise/brand spans countries.
+export interface ParsedLocation {
+  countryCode?: string; // ISO 3166-1 alpha-2, only when printed/unambiguous
+  regionText?: string; // province/state as printed, raw (resolved to ISO 3166-2 downstream)
+  city?: string;
+  postalCode?: string;
+}
+
 export interface ParsedReceipt {
   merchantRaw: string;
   transactionDate: string; // ISO YYYY-MM-DD
   currency: string;
   total: number;
   documentKindHint?: string;
+  location?: ParsedLocation;
   lines: ParsedLine[];
   parseConfidence: number; // 0..1
 }

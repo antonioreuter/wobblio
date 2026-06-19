@@ -1,4 +1,4 @@
-import type { ParsedReceipt, ParsedLine } from './ingestion';
+import type { ParsedReceipt, ParsedLine, ParsedLocation } from './ingestion';
 import { extractJsonObject } from './jsonExtract';
 
 export type ReceiptParseResult =
@@ -34,6 +34,34 @@ function validateLine(line: unknown, index: number, issues: string[]): ParsedLin
   };
 }
 
+// Optional printed store address. The model emits explicit `null` (not absent) for
+// fields it can't read, so null is treated as undefined. A present country must be a
+// 2-letter code; an invalid one fails validation rather than silently mis-resolving.
+function validateLocation(raw: unknown, issues: string[]): ParsedLocation | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw !== 'object') {
+    issues.push('location must be an object');
+    return undefined;
+  }
+  const l = raw as Record<string, unknown>;
+  const str = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.trim().length > 0 ? v.trim() : undefined;
+
+  const countryCode = str(l.country_code);
+  if (countryCode !== undefined && countryCode.length !== 2) {
+    issues.push('location.country_code must be a 2-letter code');
+    return undefined;
+  }
+  const location: ParsedLocation = {
+    countryCode: countryCode?.toUpperCase(),
+    regionText: str(l.region_text),
+    city: str(l.city),
+    postalCode: str(l.postal_code),
+  };
+  // Drop an all-empty block so downstream sees `undefined`, not a hollow object.
+  return Object.values(location).some(v => v !== undefined) ? location : undefined;
+}
+
 export function parseReceiptJson(content: string): ReceiptParseResult {
   let raw: unknown;
   try {
@@ -60,6 +88,7 @@ export function parseReceiptJson(content: string): ReceiptParseResult {
     const parsed = validateLine((r.lines as unknown[])[i], i, issues);
     if (parsed) lines.push(parsed);
   }
+  const location = validateLocation(r.location, issues);
   if (issues.length > 0) return { ok: false, issues: issues.join('; ') };
 
   return {
@@ -70,6 +99,7 @@ export function parseReceiptJson(content: string): ReceiptParseResult {
       currency: (r.currency as string).toUpperCase(),
       total: r.total as number,
       documentKindHint: r.document_kind_hint as string | undefined,
+      location,
       lines,
       parseConfidence: r.parse_confidence as number,
     },

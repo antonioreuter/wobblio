@@ -14,6 +14,7 @@ import { InvoiceFeedbackRepositoryAdapter } from '@infrastructure/adapters/inges
 import { SecureTokenAdapter } from '@infrastructure/adapters/security/SecureTokenAdapter';
 import { buildKmsEncryption } from '@infrastructure/adapters/security/encryptionFactory';
 import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligence/RegionReferenceAdapter';
+import { AwsLocationReverseGeocoderAdapter } from '@infrastructure/adapters/data-intelligence/AwsLocationReverseGeocoderAdapter';
 import { ContributorContextRepositoryAdapter } from '@infrastructure/adapters/data-intelligence/ContributorContextRepositoryAdapter';
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
 import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
@@ -404,6 +405,18 @@ async function handleDeleteInvoice(
   }
 }
 
+// Optional browser geolocation (tier 2). Only a well-formed coordinate pair within
+// valid bounds is forwarded; anything else is dropped so presign falls through to the
+// profile tier rather than reverse-geocoding garbage.
+function parseCoordinates(body: Record<string, unknown>): { lat: number; lon: number } | undefined {
+  const lat = body.lat;
+  const lon = body.lon;
+  if (typeof lat !== 'number' || typeof lon !== 'number') return undefined;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return undefined;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return undefined;
+  return { lat, lon };
+}
+
 async function handlePresign(
   db: PoolClient,
   user: AppUser,
@@ -417,6 +430,7 @@ async function handlePresign(
   }
   const contentType = typeof body.contentType === 'string' ? body.contentType : 'image/jpeg';
   const householdId = typeof body.householdId === 'string' ? body.householdId : null;
+  const coordinates = parseCoordinates(body);
 
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
   const service = new PresignService(
@@ -424,6 +438,8 @@ async function handlePresign(
     new QuotaService(new QuotaRepositoryAdapter(db)),
     new SsmUploadQuotaAdapter(REGION),
     new S3FileStorageAdapter(REGION, uploadsBucket),
+    new AwsLocationReverseGeocoderAdapter(REGION, process.env.LOCATION_PLACE_INDEX ?? ''),
+    new RegionReferenceAdapter(db),
   );
 
   try {
@@ -435,6 +451,7 @@ async function handlePresign(
         householdId,
         imageSha256,
         contentType,
+        coordinates,
       }),
     );
     log.info('presign issued', { userId: user.id, invoiceId: result.invoiceId });

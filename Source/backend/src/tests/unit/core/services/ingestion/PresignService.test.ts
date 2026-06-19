@@ -6,6 +6,8 @@ import type { IInvoiceRepository, InvoiceRecord } from '@core/ports/ingestion/II
 import type { IQuotaRepository } from '@core/ports/quota/IQuotaRepository';
 import type { IUploadQuotaProvider } from '@core/ports/quota/IUploadQuotaProvider';
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
+import type { IReverseGeocoder } from '@core/ports/data-intelligence/IReverseGeocoder';
+import type { IRegionReference } from '@core/ports/data-intelligence/IRegionReference';
 import { DuplicateInvoiceError, QuotaExceededError } from '@core/domain/errors';
 
 const SHA = 'a'.repeat(64);
@@ -24,6 +26,8 @@ describe('PresignService', () => {
   let quotaRepo: MockedObject<IQuotaRepository>;
   let quotaProvider: MockedObject<IUploadQuotaProvider>;
   let storage: MockedObject<IS3FileStorage>;
+  let reverseGeocoder: MockedObject<IReverseGeocoder>;
+  let regionReference: MockedObject<IRegionReference>;
   let sut: PresignService;
 
   beforeEach(() => {
@@ -41,7 +45,12 @@ describe('PresignService', () => {
     quotaRepo = { getUsed: vi.fn(), increment: vi.fn() };
     quotaProvider = { getPersonalUploadsCap: vi.fn(), getHouseholdUploadsCap: vi.fn() };
     storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
-    sut = new PresignService(invoiceRepo, new QuotaService(quotaRepo), quotaProvider, storage);
+    reverseGeocoder = { reverseGeocode: vi.fn() };
+    regionReference = {
+      listCountries: vi.fn(), listSubdivisions: vi.fn(), isValidRegion: vi.fn(),
+      isMappedLocation: vi.fn(), resolveReceiptLocation: vi.fn(),
+    };
+    sut = new PresignService(invoiceRepo, new QuotaService(quotaRepo), quotaProvider, storage, reverseGeocoder, regionReference);
   });
 
   it('rejects a same-tenant duplicate without touching quota or creating an invoice', async () => {
@@ -88,5 +97,71 @@ describe('PresignService', () => {
 
     await expect(sut.presign(baseInput)).rejects.toBeInstanceOf(QuotaExceededError);
     expect(invoiceRepo.createPending).not.toHaveBeenCalled();
+  });
+
+  it('reverse-geocodes upload coordinates and stores the resolved coarse location', async () => {
+    invoiceRepo.findSameTenantByHash.mockResolvedValue(null);
+    quotaProvider.getPersonalUploadsCap.mockResolvedValue(3);
+    quotaRepo.getUsed.mockResolvedValue(0);
+    invoiceRepo.createPending.mockResolvedValue('inv-1');
+    storage.presignPut.mockResolvedValue('https://s3/put');
+    reverseGeocoder.reverseGeocode.mockResolvedValue({ countryCode: 'NL', regionText: 'Noord-Brabant' });
+    regionReference.resolveReceiptLocation.mockResolvedValue({ countryCode: 'NL', regionCode: 'NL-NB' });
+
+    await sut.presign({ ...baseInput, coordinates: { lat: 51.4, lon: 5.5 } });
+
+    expect(reverseGeocoder.reverseGeocode).toHaveBeenCalledWith(51.4, 5.5);
+    expect(regionReference.resolveReceiptLocation).toHaveBeenCalledWith({ countryCode: 'NL', regionText: 'Noord-Brabant' });
+    expect(invoiceRepo.createPending).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadCountryCode: 'NL', uploadRegionCode: 'NL-NB' }),
+    );
+  });
+
+  it('passes an undefined region text to region resolution when the geocoder gives no subdivision', async () => {
+    invoiceRepo.findSameTenantByHash.mockResolvedValue(null);
+    quotaProvider.getPersonalUploadsCap.mockResolvedValue(3);
+    quotaRepo.getUsed.mockResolvedValue(0);
+    invoiceRepo.createPending.mockResolvedValue('inv-1');
+    storage.presignPut.mockResolvedValue('https://s3/put');
+    reverseGeocoder.reverseGeocode.mockResolvedValue({ countryCode: 'NL', regionText: null });
+    regionReference.resolveReceiptLocation.mockResolvedValue({ countryCode: 'NL', regionCode: null });
+
+    await sut.presign({ ...baseInput, coordinates: { lat: 51.4, lon: 5.5 } });
+
+    expect(regionReference.resolveReceiptLocation).toHaveBeenCalledWith({ countryCode: 'NL', regionText: undefined });
+    expect(invoiceRepo.createPending).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadCountryCode: 'NL', uploadRegionCode: null }),
+    );
+  });
+
+  it('stores null upload location when the geocoder cannot resolve the coordinates', async () => {
+    invoiceRepo.findSameTenantByHash.mockResolvedValue(null);
+    quotaProvider.getPersonalUploadsCap.mockResolvedValue(3);
+    quotaRepo.getUsed.mockResolvedValue(0);
+    invoiceRepo.createPending.mockResolvedValue('inv-1');
+    storage.presignPut.mockResolvedValue('https://s3/put');
+    reverseGeocoder.reverseGeocode.mockResolvedValue(null);
+
+    await sut.presign({ ...baseInput, coordinates: { lat: 51.4, lon: 5.5 } });
+
+    expect(regionReference.resolveReceiptLocation).not.toHaveBeenCalled();
+    expect(invoiceRepo.createPending).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadCountryCode: null, uploadRegionCode: null }),
+    );
+  });
+
+  it('stores null upload location and skips geocoding when no coordinates are given', async () => {
+    invoiceRepo.findSameTenantByHash.mockResolvedValue(null);
+    quotaProvider.getPersonalUploadsCap.mockResolvedValue(3);
+    quotaRepo.getUsed.mockResolvedValue(0);
+    invoiceRepo.createPending.mockResolvedValue('inv-1');
+    storage.presignPut.mockResolvedValue('https://s3/put');
+
+    await sut.presign(baseInput);
+
+    expect(reverseGeocoder.reverseGeocode).not.toHaveBeenCalled();
+    expect(invoiceRepo.createPending).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadCountryCode: null, uploadRegionCode: null }),
+    );
   });
 });

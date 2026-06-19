@@ -14,7 +14,7 @@ import type { VisionParseService } from './VisionParseService';
 import { decideStatus, isArithmeticConsistent, type InvoiceStatus, type ParsedLine, type ParsedReceipt } from '../../domain/ingestion';
 import { depositCategoryFor, discountCategoryFor } from '../../domain/categoryTaxonomy';
 import { buildPriceObservations, type ContributorContext, type ObservationLine } from '../../domain/priceObservation';
-import { resolveObservationRegion, type InvoiceLocationStatus } from '../../domain/region';
+import { resolveIngestionLocation, type LocationCandidate } from '../../domain/region';
 
 const LAUNCH_COUNTRY = 'NL';
 
@@ -102,12 +102,13 @@ export class IngestionService {
       isSuspectedDuplicate,
     });
 
-    // Resolve the sharing location from the contributor profile (fetched above).
-    // When it can't be mapped to reference data, the invoice is held PENDING and
-    // emission is deferred until the user confirms a location (§6.5 data-quality gate).
-    const regionCode = resolveObservationRegion(context.regionCode, context.countryCode);
-    const locationMapped = await this.regionReference.isMappedLocation(context.countryCode, regionCode);
-    const locationStatus: InvoiceLocationStatus = locationMapped ? 'RESOLVED' : 'PENDING';
+    // Resolve the sharing location across the three tiers in one place (§6.5). Only a
+    // printed receipt address with a mapped region auto-resolves; upload geolocation
+    // and the profile are prefills held PENDING for the user to confirm via the gate.
+    const location = await this.resolveLocation(message.invoiceId, receipt, context);
+    // The receipt's city is a free-form, tenant-scoped search tag — never a price
+    // observation field; it bypasses the controlled tag vocabulary.
+    const searchTags = receipt.location?.city ? [...tags, receipt.location.city] : tags;
 
     await this.invoiceRepo.persistParsed({
       invoiceId: message.invoiceId,
@@ -118,14 +119,14 @@ export class IngestionService {
       currency: receipt.currency,
       total: receipt.total,
       categoryId,
-      searchTags: tags,
+      searchTags,
       status,
       priceEmissionBlocked: suppressEmission,
       location: {
-        countryCode: context.countryCode,
-        regionCode,
-        status: locationStatus,
-        source: 'PROFILE',
+        countryCode: location.countryCode,
+        regionCode: location.regionCode,
+        status: location.status,
+        source: location.source,
       },
       lines: receipt.lines.map((line, index) => toPersistedLine(line, normalized[index], index)),
     });
@@ -134,22 +135,44 @@ export class IngestionService {
     // of the price index: confirmed duplicates contribute no observations (§6.8) and
     // emitted rows are de-identified and cannot be retracted. The reserved quota slot is
     // kept — the scan still cost an AI parse, so it counts against the §2.4 cap (Epic 09).
-    if (!suppressEmission && locationStatus === 'RESOLVED') {
-      await this.emitPriceObservations(merchant, receipt, normalized, context);
+    if (!suppressEmission && location.status === 'RESOLVED') {
+      await this.emitPriceObservations(merchant, receipt, normalized, context, location);
     }
 
     await this.ledger.setStatus(message.s3Key, 'DONE');
     return { handled: true, status, receipt };
   }
 
+  // Decide the invoice's sharing location across all three tiers (§6.5). The receipt
+  // address is mapped to reference codes; the upload-geo prefill is read from the row
+  // (reverse-geocoded at presign); the profile is the final fallback.
+  private async resolveLocation(invoiceId: string, receipt: ParsedReceipt, context: ContributorContext) {
+    const receiptResolved = await this.regionReference.resolveReceiptLocation({
+      countryCode: receipt.location?.countryCode,
+      regionText: receipt.location?.regionText,
+    });
+    const record = await this.invoiceRepo.getById(invoiceId);
+    const uploadGeo: LocationCandidate | null = record?.uploadCountryCode
+      ? { countryCode: record.uploadCountryCode, regionCode: record.uploadRegionCode }
+      : null;
+    return resolveIngestionLocation({
+      receipt: receiptResolved,
+      uploadGeo,
+      profile: { countryCode: context.countryCode, regionCode: context.regionCode },
+    });
+  }
+
   // Stage 5 (§6.5): emit de-identified price observations into the RLS-exempt store.
   // The domain builder skips opt-out, missing-merchant, and non-priceable lines, and
-  // quarantines provisional catalog entries.
+  // quarantines provisional catalog entries. Only a RESOLVED location reaches here, so
+  // its country/region (receipt-derived) override the contributor profile — the printed
+  // address, not where the contributor lives, anchors the observation.
   private async emitPriceObservations(
     merchant: MerchantResolution,
     receipt: ParsedReceipt,
     normalized: NormalizedLine[],
     context: ContributorContext,
+    location: LocationCandidate,
   ): Promise<void> {
     const rows = buildPriceObservations({
       merchantId: merchant.merchantId,
@@ -157,7 +180,12 @@ export class IngestionService {
       transactionDate: receipt.transactionDate,
       currency: receipt.currency,
       lines: receipt.lines.map((line, index) => toObservationLine(line, normalized[index])),
-      context,
+      context: {
+        optedOut: context.optedOut,
+        regionCode: location.regionCode,
+        countryCode: location.countryCode,
+        trustScore: context.trustScore,
+      },
     });
     if (rows.length > 0) await this.priceObservationStore.emit(rows);
   }
