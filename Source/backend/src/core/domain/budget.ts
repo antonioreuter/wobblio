@@ -1,5 +1,5 @@
 export type BudgetScope = 'TOTAL' | 'CATEGORY' | 'MEMBER' | 'HOUSEHOLD';
-export type BudgetPeriod = 'WEEK' | 'MONTH';
+export type BudgetPeriod = 'DAY' | 'WEEK' | 'MONTH';
 
 export const MAX_BUDGETS_PER_TENANT = 10;
 export const ALERT_85_RATIO = 0.85;
@@ -10,7 +10,8 @@ export type AlertKind = 'BUDGET_85' | 'BUDGET_100';
 // Exclusive end of the period that starts at cycleStart (ISO yyyy-mm-dd).
 export function periodEnd(cycleStart: string, period: BudgetPeriod): string {
   const d = new Date(`${cycleStart}T00:00:00Z`);
-  if (period === 'WEEK') d.setUTCDate(d.getUTCDate() + 7);
+  if (period === 'DAY') d.setUTCDate(d.getUTCDate() + 1);
+  else if (period === 'WEEK') d.setUTCDate(d.getUTCDate() + 7);
   else addCalendarMonth(d);
   return d.toISOString().slice(0, 10);
 }

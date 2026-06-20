@@ -4,6 +4,7 @@ import type {
   HouseholdMember,
 } from '../../ports/households/IHouseholdRepository';
 import type { UserRole } from '../../ports/identity/IAppUserRepository';
+import { hasPremiumAccess } from '../../domain/access';
 import {
   PremiumRequiredError,
   AlreadyOwnsHouseholdError,
@@ -22,7 +23,7 @@ export class HouseholdService {
 
   // Create: PREMIUM only, max one owned household per user (Business Rules §09).
   async create(userId: string, role: UserRole, name: string): Promise<HouseholdSummary> {
-    if (role !== 'PREMIUM') throw new PremiumRequiredError('households');
+    if (!hasPremiumAccess(role)) throw new PremiumRequiredError('households');
 
     const cleanName = name.trim();
     if (!cleanName) throw new InvalidHouseholdError('name is required');

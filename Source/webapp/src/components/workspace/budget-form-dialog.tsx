@@ -177,6 +177,7 @@ export function BudgetFormDialog({
           >
             <option value="MONTH">Monthly</option>
             <option value="WEEK">Weekly</option>
+            <option value="DAY">Daily</option>
           </FilterSelect>
 
           <Input

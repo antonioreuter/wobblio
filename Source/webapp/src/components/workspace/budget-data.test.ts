@@ -31,6 +31,7 @@ describe('budgetPercent', () => {
 
 describe('periodLabel', () => {
   it('maps the period enum to a human label', () => {
+    expect(periodLabel('DAY')).toBe('Daily')
     expect(periodLabel('WEEK')).toBe('Weekly')
     expect(periodLabel('MONTH')).toBe('Monthly')
   })

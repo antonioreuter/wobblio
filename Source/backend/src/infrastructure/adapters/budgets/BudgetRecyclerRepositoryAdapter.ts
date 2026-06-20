@@ -25,6 +25,31 @@ interface ActiveBudgetRow {
   currency: string;
 }
 
+const ACTIVE_BUDGET_COLUMNS = `
+  id, tenant_id, scope, category_id, member_user_id,
+  amount::text AS amount, period, accumulated::text AS accumulated,
+  alert_85_fired, alert_100_fired,
+  alert_85_at::text AS alert_85_at, alert_100_at::text AS alert_100_at,
+  cycle_start::text AS cycle_start, language, currency`;
+
+const toActiveBudget = (row: ActiveBudgetRow): ActiveBudget => ({
+  id: row.id,
+  tenantId: row.tenant_id,
+  scope: row.scope,
+  categoryId: row.category_id,
+  memberUserId: row.member_user_id,
+  amount: parseFloat(row.amount),
+  period: row.period,
+  accumulated: parseFloat(row.accumulated),
+  alert85Fired: row.alert_85_fired,
+  alert100Fired: row.alert_100_fired,
+  alert85At: row.alert_85_at,
+  alert100At: row.alert_100_at,
+  cycleStart: row.cycle_start,
+  language: row.language,
+  currency: row.currency,
+});
+
 // Cron-side adapter: cross-tenant reads/writes go through SECURITY DEFINER
 // functions, so no RLS tenant context is required (and none is set).
 export class BudgetRecyclerRepositoryAdapter implements IBudgetRecyclerRepository {
@@ -32,30 +57,33 @@ export class BudgetRecyclerRepositoryAdapter implements IBudgetRecyclerRepositor
 
   async listAllActive(): Promise<ActiveBudget[]> {
     const result = await this.pool.query<ActiveBudgetRow>(
-      `SELECT id, tenant_id, scope, category_id, member_user_id,
-              amount::text AS amount, period, accumulated::text AS accumulated,
-              alert_85_fired, alert_100_fired,
-              alert_85_at::text AS alert_85_at, alert_100_at::text AS alert_100_at,
-              cycle_start::text AS cycle_start, language, currency
-       FROM list_active_budgets()`,
+      `SELECT ${ACTIVE_BUDGET_COLUMNS} FROM list_active_budgets()`,
     );
-    return result.rows.map(row => ({
-      id: row.id,
-      tenantId: row.tenant_id,
-      scope: row.scope,
-      categoryId: row.category_id,
-      memberUserId: row.member_user_id,
-      amount: parseFloat(row.amount),
-      period: row.period,
-      accumulated: parseFloat(row.accumulated),
-      alert85Fired: row.alert_85_fired,
-      alert100Fired: row.alert_100_fired,
-      alert85At: row.alert_85_at,
-      alert100At: row.alert_100_at,
-      cycleStart: row.cycle_start,
-      language: row.language,
-      currency: row.currency,
-    }));
+    return result.rows.map(toActiveBudget);
+  }
+
+  async listActiveForInvoice(invoiceId: string): Promise<ActiveBudget[]> {
+    const result = await this.pool.query<ActiveBudgetRow>(
+      `SELECT ${ACTIVE_BUDGET_COLUMNS} FROM list_active_budgets_for_invoice($1)`,
+      [invoiceId],
+    );
+    return result.rows.map(toActiveBudget);
+  }
+
+  // One tenant's active budgets, joined to the owner for locale/currency. Scoped by
+  // the explicit tenant filter so it is correct with or without an RLS context.
+  async listActiveForTenant(tenantId: string): Promise<ActiveBudget[]> {
+    const result = await this.pool.query<ActiveBudgetRow>(
+      `SELECT b.id, b.tenant_id, b.scope, b.category_id, b.member_user_id,
+              b.amount::text AS amount, b.period, b.accumulated::text AS accumulated,
+              b.alert_85_fired, b.alert_100_fired,
+              b.alert_85_at::text AS alert_85_at, b.alert_100_at::text AS alert_100_at,
+              b.cycle_start::text AS cycle_start, u.language, u.home_currency AS currency
+       FROM budget b JOIN app_user u ON u.id = b.tenant_id
+       WHERE b.tenant_id = $1`,
+      [tenantId],
+    );
+    return result.rows.map(toActiveBudget);
   }
 
   async computeSpend(input: ComputeSpendInput): Promise<number> {

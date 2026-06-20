@@ -31,7 +31,13 @@ describe('BudgetRecyclerService', () => {
   let sut: BudgetRecyclerService;
 
   beforeEach(() => {
-    budgets = { listAllActive: vi.fn().mockResolvedValue([]), computeSpend: vi.fn().mockResolvedValue(0), saveState: vi.fn() };
+    budgets = {
+      listAllActive: vi.fn().mockResolvedValue([]),
+      listActiveForInvoice: vi.fn().mockResolvedValue([]),
+      listActiveForTenant: vi.fn().mockResolvedValue([]),
+      computeSpend: vi.fn().mockResolvedValue(0),
+      saveState: vi.fn(),
+    };
     notifications = { create: vi.fn(), listActive: vi.fn(), markRead: vi.fn(), purgeExpired: vi.fn().mockResolvedValue(0) };
     push = { push: vi.fn() };
     sut = new BudgetRecyclerService(budgets, notifications, push);
@@ -94,6 +100,70 @@ describe('BudgetRecyclerService', () => {
 
     expect(outcome.alertsFired).toBe(0);
     expect(notifications.create).not.toHaveBeenCalled();
+  });
+
+  describe('evaluateForInvoice', () => {
+    it('evaluates only the invoice-affected budgets and never purges', async () => {
+      budgets.listActiveForInvoice.mockResolvedValue([budget()]);
+      budgets.computeSpend.mockResolvedValue(90);
+
+      const outcome = await sut.evaluateForInvoice('inv-1', '2026-06-10');
+
+      expect(budgets.listActiveForInvoice).toHaveBeenCalledWith('inv-1');
+      expect(budgets.listAllActive).not.toHaveBeenCalled();
+      expect(notifications.purgeExpired).not.toHaveBeenCalled();
+      expect(outcome).toEqual({ processed: 1, alertsFired: 1 });
+      expect(push.push).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires 85% then 100% across two uploads, then nothing', async () => {
+      // First upload crosses 85%.
+      budgets.listActiveForInvoice.mockResolvedValue([budget()]);
+      budgets.computeSpend.mockResolvedValue(90);
+      expect((await sut.evaluateForInvoice('inv-1', '2026-06-10')).alertsFired).toBe(1);
+
+      // Second upload crosses 100% (85 flag already set on the row).
+      budgets.listActiveForInvoice.mockResolvedValue([budget({ alert85Fired: true, alert85At: 'x' })]);
+      budgets.computeSpend.mockResolvedValue(120);
+      expect((await sut.evaluateForInvoice('inv-2', '2026-06-11')).alertsFired).toBe(1);
+
+      // Third upload, both already fired → silent.
+      budgets.listActiveForInvoice.mockResolvedValue([budget({ alert85Fired: true, alert100Fired: true })]);
+      budgets.computeSpend.mockResolvedValue(150);
+      expect((await sut.evaluateForInvoice('inv-3', '2026-06-12')).alertsFired).toBe(0);
+
+      const kinds = notifications.create.mock.calls.map(c => c[0].kind);
+      expect(kinds).toEqual(['BUDGET_85', 'BUDGET_100']);
+    });
+  });
+
+  describe('evaluateForTenant', () => {
+    it('evaluates the tenant budgets and fires a crossed threshold', async () => {
+      budgets.listActiveForTenant.mockResolvedValue([budget()]);
+      budgets.computeSpend.mockResolvedValue(90);
+
+      const outcome = await sut.evaluateForTenant('t1', '2026-06-10');
+
+      expect(budgets.listActiveForTenant).toHaveBeenCalledWith('t1');
+      expect(outcome).toEqual({ processed: 1, alertsFired: 1 });
+    });
+
+    it('never notifies more than twice (85% + 100%) within the same period', async () => {
+      // First create/edit pushes past 100% → fires 85% and 100% (two).
+      budgets.listActiveForTenant.mockResolvedValue([budget()]);
+      budgets.computeSpend.mockResolvedValue(130);
+      const first = await sut.evaluateForTenant('t1', '2026-06-10');
+
+      // A later edit in the same period (both flags already set) → fires nothing.
+      budgets.listActiveForTenant.mockResolvedValue([budget({ alert85Fired: true, alert100Fired: true })]);
+      const second = await sut.evaluateForTenant('t1', '2026-06-10');
+
+      expect(first.alertsFired).toBe(2);
+      expect(second.alertsFired).toBe(0);
+      expect(notifications.create).toHaveBeenCalledTimes(2);
+      const kinds = notifications.create.mock.calls.map(c => c[0].kind);
+      expect(kinds).toEqual(['BUDGET_85', 'BUDGET_100']);
+    });
   });
 
   it('rolls a closed period over, clearing flags and recomputing the new window', async () => {

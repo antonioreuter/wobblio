@@ -36,6 +36,7 @@ describe('BudgetService', () => {
       create: vi.fn(),
       countForTenant: vi.fn().mockResolvedValue(0),
       listForTenant: vi.fn(),
+      computeSpend: vi.fn().mockResolvedValue(0),
       get: vi.fn(),
       update: vi.fn(),
       remove: vi.fn(),
@@ -54,8 +55,14 @@ describe('BudgetService', () => {
   });
 
   describe('create', () => {
-    it('rejects non-PREMIUM users', async () => {
+    it('rejects STANDARD users', async () => {
       await expect(sut.create('u1', 'STANDARD', totalBudget)).rejects.toBeInstanceOf(PremiumRequiredError);
+    });
+
+    it('allows an ADMIN user (elevated role has premium access)', async () => {
+      repo.create.mockResolvedValue('b1');
+      repo.get.mockResolvedValue(view);
+      await expect(sut.create('u1', 'ADMIN', totalBudget)).resolves.toEqual(view);
     });
 
     it('rejects a non-positive amount', async () => {
@@ -205,8 +212,36 @@ describe('BudgetService', () => {
     });
   });
 
-  it('lists budgets for the tenant', async () => {
-    repo.listForTenant.mockResolvedValue([view]);
-    expect(await sut.list()).toEqual([view]);
+  describe('list (live spend)', () => {
+    it('overrides stored accumulated with live spend over the current window', async () => {
+      repo.listForTenant.mockResolvedValue([{ ...view, accumulated: 0 }]);
+      repo.computeSpend.mockResolvedValue(137.5);
+
+      const [result] = await sut.list('u1', '2026-06-20');
+
+      expect(result.accumulated).toBe(137.5);
+      // MONTH budget cycleStart 2026-06-01 contains 2026-06-20 → window unchanged.
+      expect(repo.computeSpend).toHaveBeenCalledWith({
+        tenantId: 'u1',
+        scope: 'TOTAL',
+        categoryId: null,
+        memberUserId: null,
+        from: '2026-06-01',
+        to: '2026-07-01',
+      });
+    });
+
+    it('rolls the window forward to the period containing today', async () => {
+      repo.listForTenant.mockResolvedValue([{ ...view, period: 'WEEK', cycleStart: '2026-06-01' }]);
+      repo.computeSpend.mockResolvedValue(10);
+
+      const [result] = await sut.list('u1', '2026-06-20');
+
+      // 2026-06-01 + weeks → the window containing 2026-06-20 starts 2026-06-15.
+      expect(result.cycleStart).toBe('2026-06-15');
+      expect(repo.computeSpend).toHaveBeenCalledWith(
+        expect.objectContaining({ from: '2026-06-15', to: '2026-06-22' }),
+      );
+    });
   });
 });

@@ -4,6 +4,7 @@ import type {
   CreateBudgetInput,
   BudgetPatch,
   BudgetView,
+  BudgetSpendQuery,
 } from '@core/ports/budgets/IBudgetRepository';
 import type { BudgetScope, BudgetPeriod } from '@core/domain/budget';
 
@@ -69,6 +70,14 @@ export class BudgetRepositoryAdapter implements IBudgetRepository {
       `SELECT ${COLUMNS} FROM budget ORDER BY cycle_start DESC, id`,
     );
     return result.rows.map(toView);
+  }
+
+  async computeSpend(query: BudgetSpendQuery): Promise<number> {
+    const result = await this.client.query<{ spend: string }>(
+      `SELECT compute_budget_spend($1, $2, $3, $4, $5, $6)::text AS spend`,
+      [query.tenantId, query.scope, query.categoryId, query.memberUserId, query.from, query.to],
+    );
+    return parseFloat(result.rows[0].spend);
   }
 
   async get(budgetId: string): Promise<BudgetView | null> {

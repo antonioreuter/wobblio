@@ -3,7 +3,7 @@
 // /api/reference/categories — no mock data.
 
 export type BudgetScope = 'TOTAL' | 'CATEGORY' | 'MEMBER' | 'HOUSEHOLD'
-export type BudgetPeriod = 'WEEK' | 'MONTH'
+export type BudgetPeriod = 'DAY' | 'WEEK' | 'MONTH'
 
 export interface Budget {
   id: string
@@ -38,7 +38,8 @@ export const MAX_BUDGETS = 10
 export const budgetPercent = (b: Budget): number =>
   b.amount > 0 ? Math.round((b.accumulated / b.amount) * 100) : 0
 
-export const periodLabel = (p: BudgetPeriod): string => (p === 'WEEK' ? 'Weekly' : 'Monthly')
+export const periodLabel = (p: BudgetPeriod): string =>
+  p === 'DAY' ? 'Daily' : p === 'WEEK' ? 'Weekly' : 'Monthly'
 
 // Human label for a budget's scope. CATEGORY/MEMBER resolve their target name
 // from the supplied lookups, falling back to a neutral label when absent.

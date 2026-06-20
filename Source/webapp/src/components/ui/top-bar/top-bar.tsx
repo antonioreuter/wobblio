@@ -6,6 +6,7 @@ import { ThemeToggle } from '@/components/ds'
 import { useNavDrawer } from '@/components/ui/left-nav'
 import { useWorkspace } from '@/components/workspace'
 import { TopBarSearch } from './topbar-search'
+import { NotificationMenu } from './notification-menu'
 import { UserMenu } from './user-menu'
 
 interface TopBarProps {
@@ -86,6 +87,7 @@ export function TopBar({
           <Upload size={15} />
           <span className="topbar-upload-label">Upload</span>
         </button>
+        <NotificationMenu />
         <ThemeToggle className="btn-icon topbar-theme" />
         <UserMenu userInitials={userInitials} userRole={userRole} />
       </div>

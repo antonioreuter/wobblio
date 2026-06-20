@@ -22,8 +22,15 @@ import { ProductNormalizer } from '@core/services/data-intelligence/ProductNorma
 import { InvoiceClassifier } from '@core/services/data-intelligence/InvoiceClassifier';
 import { TagGenerator } from '@core/services/data-intelligence/TagGenerator';
 import { IngestionService } from '@core/services/ingestion/IngestionService';
+import { BudgetRecyclerRepositoryAdapter } from '@infrastructure/adapters/budgets/BudgetRecyclerRepositoryAdapter';
+import { NotificationRepositoryAdapter } from '@infrastructure/adapters/notifications/NotificationRepositoryAdapter';
+import { MockPushAdapter } from '@infrastructure/adapters/notifications/MockPushAdapter';
+import { BudgetRecyclerService } from '@core/services/budgets/BudgetRecyclerService';
 import type { IngestionMessage } from '@core/ports/ingestion/IIngestionQueue';
 import { VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION } from '../../prompts/visionParse';
+
+// Budgets a freshly-parsed invoice can move; only PARSED/NEEDS_REVIEW invoices count.
+const COUNTS_TOWARD_BUDGET = new Set(['PARSED', 'NEEDS_REVIEW']);
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 const VISION_MODEL_PARAM = '/wobblio/config/models/vision_parser';
@@ -90,6 +97,26 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       });
       if (outcome.receipt) {
         log.debug('parsed receipt', { invoiceId: message.invoiceId, receipt: outcome.receipt });
+      }
+
+      // Fire 85%/100% budget alerts at upload time. Best-effort: a failure here must
+      // never roll back or retry the (already committed) ingestion.
+      if (outcome.handled && outcome.status && COUNTS_TOWARD_BUDGET.has(outcome.status)) {
+        try {
+          const budgetAlerts = new BudgetRecyclerService(
+            new BudgetRecyclerRepositoryAdapter(pool),
+            new NotificationRepositoryAdapter(pool),
+            new MockPushAdapter(),
+          );
+          const today = new Date().toISOString().slice(0, 10);
+          const { alertsFired } = await budgetAlerts.evaluateForInvoice(message.invoiceId, today);
+          if (alertsFired > 0) log.info('budget alerts fired', { invoiceId: message.invoiceId, alertsFired });
+        } catch (alertErr) {
+          log.error('budget alert evaluation failed', {
+            invoiceId: message.invoiceId,
+            err: alertErr instanceof Error ? alertErr : new Error(String(alertErr)),
+          });
+        }
       }
     } catch (err) {
       await client.query('ROLLBACK').catch(() => undefined);

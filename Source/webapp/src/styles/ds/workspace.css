@@ -1692,6 +1692,81 @@
 }
 .user-menu-item:hover { background: var(--glass-highlight); }
 
+/* ---- Notification bell ---- */
+.notification-menu { position: relative; display: flex; align-items: center; }
+.notification-bell { position: relative; }
+.notification-unread-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--red, #dc2626);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.notification-menu-pop {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 320px;
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-border);
+  background: var(--surface-raised, #0b0f1a);
+  box-shadow: 0 12px 32px rgba(3, 4, 9, 0.45);
+  z-index: var(--z-modal);
+}
+[data-theme="light"] .notification-menu-pop { background: #fff; }
+.notification-menu-head {
+  padding: 4px 8px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.notification-empty { padding: 12px 8px; color: var(--text-muted); font-size: 13px; }
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.notification-item:hover { background: var(--glass-highlight); }
+.notification-item--unread { background: var(--glass-highlight); }
+.notification-unread-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--brand);
+}
+.notification-item-body { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.notification-item-title { font-size: 13.5px; font-weight: 600; }
+.notification-item-text { font-size: 12.5px; color: var(--text-muted); }
+.notification-item-time { flex: none; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
 /* ---- Premium polish ---- */
 /* Currency with de-emphasised cents */
 .money { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }

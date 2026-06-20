@@ -2,6 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { periodEnd, advanceCycleStart, buildBudgetAlert } from '@core/domain/budget';
 
 describe('periodEnd', () => {
+  it('adds one day for a DAY period', () => {
+    expect(periodEnd('2026-06-15', 'DAY')).toBe('2026-06-16');
+  });
+
+  it('rolls a DAY period across a month boundary', () => {
+    expect(periodEnd('2026-06-30', 'DAY')).toBe('2026-07-01');
+  });
+
   it('adds 7 days for a WEEK period', () => {
     expect(periodEnd('2026-06-08', 'WEEK')).toBe('2026-06-15');
   });
@@ -30,6 +38,10 @@ describe('advanceCycleStart', () => {
 
   it('rolls closed months forward to the current one', () => {
     expect(advanceCycleStart('2026-04-01', 'MONTH', '2026-06-10')).toBe('2026-06-01');
+  });
+
+  it('rolls a DAY period to today', () => {
+    expect(advanceCycleStart('2026-06-01', 'DAY', '2026-06-20')).toBe('2026-06-20');
   });
 });
 

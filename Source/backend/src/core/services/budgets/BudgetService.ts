@@ -5,7 +5,14 @@ import type {
 } from '../../ports/budgets/IBudgetRepository';
 import type { IHouseholdRepository } from '../../ports/households/IHouseholdRepository';
 import type { UserRole } from '../../ports/identity/IAppUserRepository';
-import { MAX_BUDGETS_PER_TENANT, type BudgetScope, type BudgetPeriod } from '../../domain/budget';
+import {
+  MAX_BUDGETS_PER_TENANT,
+  advanceCycleStart,
+  periodEnd,
+  type BudgetScope,
+  type BudgetPeriod,
+} from '../../domain/budget';
+import { hasPremiumAccess } from '../../domain/access';
 import {
   PremiumRequiredError,
   InvalidBudgetError,
@@ -23,7 +30,7 @@ export interface NewBudget {
 }
 
 const SCOPES: BudgetScope[] = ['TOTAL', 'CATEGORY', 'MEMBER', 'HOUSEHOLD'];
-const PERIODS: BudgetPeriod[] = ['WEEK', 'MONTH'];
+const PERIODS: BudgetPeriod[] = ['DAY', 'WEEK', 'MONTH'];
 
 export class BudgetService {
   constructor(
@@ -32,7 +39,7 @@ export class BudgetService {
   ) {}
 
   async create(userId: string, role: UserRole, input: NewBudget): Promise<BudgetView> {
-    if (role !== 'PREMIUM') throw new PremiumRequiredError('budgets');
+    if (!hasPremiumAccess(role)) throw new PremiumRequiredError('budgets');
     validateNewBudget(input);
     await this.authorizeCreate(userId, input);
 
@@ -64,8 +71,25 @@ export class BudgetService {
     }
   }
 
-  list(): Promise<BudgetView[]> {
-    return this.budgets.listForTenant();
+  // Budget consumption is shown live: each budget's accumulated spend is recomputed
+  // over the current period window on read, so an upload reflects immediately instead
+  // of waiting for the nightly recycler. The stored column is only the cron's snapshot.
+  async list(tenantId: string, today: string): Promise<BudgetView[]> {
+    const budgets = await this.budgets.listForTenant();
+    return Promise.all(budgets.map(budget => this.withLiveSpend(tenantId, today, budget)));
+  }
+
+  private async withLiveSpend(tenantId: string, today: string, budget: BudgetView): Promise<BudgetView> {
+    const cycleStart = advanceCycleStart(budget.cycleStart, budget.period, today);
+    const accumulated = await this.budgets.computeSpend({
+      tenantId,
+      scope: budget.scope,
+      categoryId: budget.categoryId,
+      memberUserId: budget.memberUserId,
+      from: cycleStart,
+      to: periodEnd(cycleStart, budget.period),
+    });
+    return { ...budget, accumulated, cycleStart };
   }
 
   async update(budgetId: string, patch: BudgetPatch): Promise<void> {

@@ -4,7 +4,11 @@ import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import type { LambdaLogger } from '@infrastructure/logging/logger';
 import { BudgetRepositoryAdapter } from '@infrastructure/adapters/budgets/BudgetRepositoryAdapter';
 import { HouseholdRepositoryAdapter } from '@infrastructure/adapters/households/HouseholdRepositoryAdapter';
+import { BudgetRecyclerRepositoryAdapter } from '@infrastructure/adapters/budgets/BudgetRecyclerRepositoryAdapter';
+import { NotificationRepositoryAdapter } from '@infrastructure/adapters/notifications/NotificationRepositoryAdapter';
+import { MockPushAdapter } from '@infrastructure/adapters/notifications/MockPushAdapter';
 import { BudgetService, type NewBudget } from '@core/services/budgets/BudgetService';
+import { BudgetRecyclerService } from '@core/services/budgets/BudgetRecyclerService';
 import type { BudgetPatch } from '@core/ports/budgets/IBudgetRepository';
 import type { BudgetScope, BudgetPeriod } from '@core/domain/budget';
 import {
@@ -38,6 +42,28 @@ function service(db: PoolClient): BudgetService {
   return new BudgetService(new BudgetRepositoryAdapter(db), new HouseholdRepositoryAdapter(db));
 }
 
+// Fire 85%/100% alerts right after a budget is created/edited so an already-breached
+// budget notifies immediately (not only on the next upload or the nightly cron). The
+// one-shot flags cap it at two notifications per budget per period. Best-effort: never
+// fail the write because alerting hiccupped.
+async function fireBudgetAlerts(db: PoolClient, userId: string, log: LambdaLogger): Promise<void> {
+  try {
+    const recycler = new BudgetRecyclerService(
+      new BudgetRecyclerRepositoryAdapter(db),
+      new NotificationRepositoryAdapter(db),
+      new MockPushAdapter(),
+    );
+    const today = new Date().toISOString().slice(0, 10);
+    const { alertsFired } = await recycler.evaluateForTenant(userId, today);
+    if (alertsFired > 0) log.info('budget alerts fired', { userId, alertsFired });
+  } catch (err) {
+    log.error('budget alert evaluation failed', {
+      userId,
+      err: err instanceof Error ? err : new Error(String(err)),
+    });
+  }
+}
+
 async function guard(fn: () => Promise<APIGatewayProxyResult>): Promise<APIGatewayProxyResult> {
   try {
     return await fn();
@@ -62,14 +88,16 @@ function createBudget(
     withTenantTx(db, user.id, async () => {
       const budget = await service(db).create(user.id, user.role, input);
       log.info('budget created', { userId: user.id, budgetId: budget.id });
+      await fireBudgetAlerts(db, user.id, log);
       return json(201, budget);
     }),
   );
 }
 
 function listBudgets(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
+  const today = new Date().toISOString().slice(0, 10);
   return guard(() =>
-    withTenantTx(db, user.id, async () => json(200, { budgets: await service(db).list() })),
+    withTenantTx(db, user.id, async () => json(200, { budgets: await service(db).list(user.id, today) })),
   );
 }
 
@@ -85,6 +113,7 @@ function updateBudget(
     withTenantTx(db, user.id, async () => {
       await service(db).update(budgetId, patch);
       log.info('budget updated', { userId: user.id, budgetId });
+      await fireBudgetAlerts(db, user.id, log);
       return json(200, { updated: true });
     }),
   );

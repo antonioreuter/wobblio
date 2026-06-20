@@ -40,6 +40,30 @@ export class BudgetRecyclerService {
     return { processed: all.length, alertsFired };
   }
 
+  // Event-driven path: recompute only the budgets a freshly-parsed invoice can affect
+  // and fire any newly-crossed 85%/100% alert at upload time. One-shot flags keep it
+  // from re-firing on redelivery or on the next nightly run.
+  async evaluateForInvoice(invoiceId: string, today: string): Promise<RecyclerOutcome> {
+    const affected = await this.budgets.listActiveForInvoice(invoiceId);
+    return this.evaluateAll(affected, today);
+  }
+
+  // Fire alerts right after a budget is created or edited, in case it is already over
+  // a threshold against existing spend. Same one-shot flags → at most 85% + 100% per
+  // period regardless of how many triggers (create, upload, nightly cron) fire.
+  async evaluateForTenant(tenantId: string, today: string): Promise<RecyclerOutcome> {
+    const budgets = await this.budgets.listActiveForTenant(tenantId);
+    return this.evaluateAll(budgets, today);
+  }
+
+  private async evaluateAll(budgets: ActiveBudget[], today: string): Promise<RecyclerOutcome> {
+    let alertsFired = 0;
+    for (const budget of budgets) {
+      alertsFired += await this.reconcile(budget, today);
+    }
+    return { processed: budgets.length, alertsFired };
+  }
+
   private async reconcile(budget: ActiveBudget, today: string): Promise<number> {
     const state = this.rollOver(budget, today);
     state.accumulated = await this.budgets.computeSpend({

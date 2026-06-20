@@ -146,12 +146,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       const res = await fetch(`/api/invoices/${inv.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(String(res.status))
+      // Spend is computed live from non-DISCARDED invoices, so refetch budgets to
+      // reflect the drop without a manual reload.
+      void refreshBudgets()
       showToast(`${inv.merchant} invoice deleted.`, 'danger')
     } catch {
       void loadInvoices().catch(() => undefined)
       showToast(`Couldn’t delete the ${inv.merchant} invoice — please try again.`, 'danger')
     }
-  }, [confirmDelete, removeInvoice, showToast, loadInvoices])
+  }, [confirmDelete, removeInvoice, showToast, loadInvoices, refreshBudgets])
 
   const onLocationConfirmed = useCallback((status: 'RESOLVED' | 'HELD_UNMAPPED') => {
     setOpenInvoice(null)

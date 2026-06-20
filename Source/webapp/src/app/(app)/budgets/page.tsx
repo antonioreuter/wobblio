@@ -18,7 +18,9 @@ import {
 export default function BudgetsPage() {
   const { data: session } = useSession()
   const { budgets, loading, showToast, refreshBudgets } = useWorkspace()
-  const isPremium = session?.user?.role === 'PREMIUM'
+  // PREMIUM plus the elevated operator roles (ADMIN, TESTER) get full access.
+  const role = session?.user?.role
+  const isPremium = !!role && role !== 'STANDARD'
 
   const { categories, members, isHouseholdOwner, categoryNames, memberNames } =
     useBudgetReference(isPremium, session?.user?.id)

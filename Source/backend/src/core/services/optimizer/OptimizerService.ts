@@ -4,6 +4,7 @@ import type { IShoppingListRepository } from '../../ports/lists/IShoppingListRep
 import type { IContributorContextRepository } from '../../ports/data-intelligence/IContributorContextRepository';
 import type { UserRole } from '../../ports/identity/IAppUserRepository';
 import { optimizeRoute, type OptimizationResult } from '../../domain/routeOptimizer';
+import { hasPremiumAccess } from '../../domain/access';
 import { PremiumRequiredError, ListNotFoundError } from '../../domain/errors';
 
 export class OptimizerService {
@@ -15,7 +16,7 @@ export class OptimizerService {
   ) {}
 
   async optimize(userId: string, role: UserRole, listId: string): Promise<OptimizationResult> {
-    if (role !== 'PREMIUM') throw new PremiumRequiredError('route optimizer');
+    if (!hasPremiumAccess(role)) throw new PremiumRequiredError('route optimizer');
 
     const detail = await this.lists.getDetail(listId);
     if (!detail) throw new ListNotFoundError(listId);
