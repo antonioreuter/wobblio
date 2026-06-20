@@ -82,6 +82,31 @@ describe('HouseholdService', () => {
     });
   });
 
+  describe('getOwnHousehold', () => {
+    it('returns null when the user belongs to no household', async () => {
+      repo.findMembershipForUser.mockResolvedValue(null);
+
+      const result = await sut.getOwnHousehold('solo-user');
+
+      expect(result).toBeNull();
+      expect(repo.listMembers).not.toHaveBeenCalled();
+    });
+
+    it('returns the membership household detail with its roster', async () => {
+      const members: HouseholdMember[] = [
+        { userId: 'owner-1', email: 'o@x.com', fullName: 'Owner', isOwner: true, uploadsThisWeek: 0 },
+      ];
+      repo.findMembershipForUser.mockResolvedValue({ householdId: 'hh-1', ownerUserId: 'owner-1' });
+      repo.findForMember.mockResolvedValue(summary);
+      repo.listMembers.mockResolvedValue(members);
+
+      const result = await sut.getOwnHousehold('owner-1');
+
+      expect(result).toEqual({ ...summary, members });
+      expect(repo.findForMember).toHaveBeenCalledWith('hh-1');
+    });
+  });
+
   describe('disband / removeMember', () => {
     it('throws NotHouseholdOwnerError when disband is rejected by the repo', async () => {
       repo.disband.mockResolvedValue(false);

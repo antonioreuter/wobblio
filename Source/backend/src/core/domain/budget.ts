@@ -1,4 +1,4 @@
-export type BudgetScope = 'TOTAL' | 'CATEGORY' | 'MEMBER';
+export type BudgetScope = 'TOTAL' | 'CATEGORY' | 'MEMBER' | 'HOUSEHOLD';
 export type BudgetPeriod = 'WEEK' | 'MONTH';
 
 export const MAX_BUDGETS_PER_TENANT = 10;
@@ -37,6 +37,7 @@ const SCOPE_LABEL: Record<BudgetScope, { en: string; nl: string }> = {
   TOTAL: { en: 'total spending', nl: 'totale uitgaven' },
   CATEGORY: { en: 'category', nl: 'categorie' },
   MEMBER: { en: 'member', nl: 'lid' },
+  HOUSEHOLD: { en: 'household', nl: 'huishouden' },
 };
 
 export interface AlertText {

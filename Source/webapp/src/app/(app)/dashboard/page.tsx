@@ -2,22 +2,28 @@
 
 import { useMemo } from 'react'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import { ArrowRight, RotateCw } from 'lucide-react'
-import { AnimatedNumber, Card, MetricCard, Money } from '@/components/ds'
+import { AnimatedNumber, Card, MetricCard, Money, ProgressBar } from '@/components/ds'
 import {
+  budgetPercent,
   InvoiceTable,
   LocationPromptBanner,
   needsLocationConfirmation,
+  scopeLabel,
   SpendOverTimeChart,
+  useBudgetReference,
   useWorkspace,
 } from '@/components/workspace'
 import { computeSpendMetrics } from '@/lib/invoice-metrics'
 
 export default function DashboardPage() {
+  const { data: session } = useSession()
   const {
     invoices,
     usage,
     topMerchant,
+    budgets,
     loading,
     refreshing,
     refresh,
@@ -26,8 +32,21 @@ export default function DashboardPage() {
     setShareTarget,
   } = useWorkspace()
 
+  const { categoryNames, memberNames } = useBudgetReference(budgets.length > 0, session?.user?.id)
+
   const metrics = useMemo(() => computeSpendMetrics(invoices, new Date()), [invoices])
   const pendingLocation = useMemo(() => invoices.filter(needsLocationConfirmation), [invoices])
+
+  // Top budgets by utilisation lead the dashboard card; the health metric
+  // summarises how many are still under their 85% alert line.
+  const topBudgets = useMemo(
+    () => [...budgets].sort((a, b) => budgetPercent(b) - budgetPercent(a)).slice(0, 4),
+    [budgets],
+  )
+  const breached = budgets.filter((b) => budgetPercent(b) >= 100).length
+  const nearing = budgets.filter((b) => budgetPercent(b) >= 85 && budgetPercent(b) < 100).length
+  const onTrack = budgets.length - breached - nearing
+  const budgetTone = breached > 0 ? 'danger' : nearing > 0 ? 'warning' : 'success'
 
   const delta = metrics.deltaPct
   const spendingDown = delta !== null && delta < 0
@@ -76,9 +95,17 @@ export default function DashboardPage() {
               />
               <MetricCard
                 label="Budget Health"
-                value="-"
-                delta="Budgets arrive in a later release"
-                tone="neutral"
+                value={budgets.length === 0 ? '—' : `${onTrack}/${budgets.length} on track`}
+                delta={
+                  budgets.length === 0
+                    ? 'No budgets set'
+                    : breached > 0
+                      ? `${breached} over budget`
+                      : nearing > 0
+                        ? `${nearing} nearing the limit`
+                        : 'All within limits'
+                }
+                tone={budgets.length === 0 ? 'neutral' : budgetTone}
               />
               <MetricCard
                 label="Scans Remaining"
@@ -116,10 +143,27 @@ export default function DashboardPage() {
           <div className="panel-header" style={{ marginBottom: 4 }}>
             <span className="panel-title">Category Budgets</span>
           </div>
-          <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', margin: '12px 0 18px' }}>
-            Set monthly category budgets to track spending against your goals. Budget tracking lands
-            with the Budgets release.
-          </p>
+          {topBudgets.length === 0 ? (
+            <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', margin: '12px 0 18px' }}>
+              Set budgets to track spending against your goals and get alerted before you overspend.
+            </p>
+          ) : (
+            <div style={{ margin: '14px 0 18px' }}>
+              {topBudgets.map((b) => {
+                const pct = budgetPercent(b)
+                const tone = pct >= 100 ? 'danger' : pct >= 85 ? 'warning' : 'success'
+                return (
+                  <div className="budget-item" key={b.id}>
+                    <div className="budget-meta">
+                      <span className="name">{scopeLabel(b, categoryNames, memberNames)}</span>
+                      <span className="pct" style={{ color: `var(--${tone})` }}>{pct}%</span>
+                    </div>
+                    <ProgressBar value={pct} tone={tone} animate />
+                  </div>
+                )
+              })}
+            </div>
+          )}
           <Link href="/budgets" className="panel-footer-link" data-testid="dashboard-view-budgets">
             Go to budgets <ArrowRight size={14} />
           </Link>

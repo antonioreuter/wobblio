@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import { Client } from 'pg';
-import { merchantSeeds } from './seeds/merchant-aliases';
+import { merchantSeeds, normalizeMerchantAlias } from './seeds/merchant-aliases';
 import { categorySeed } from './seeds/product-taxonomy';
 import { countrySeed, subdivisionSeed } from './seeds/country-subdivisions';
 import { seedSsmParameters } from './seeds/ssm-parameters';
@@ -62,10 +62,10 @@ async function seedMerchants(client: Client): Promise<void> {
   for (const m of merchantSeeds) {
     for (const alias of m.aliases) {
       await client.query(
-        `INSERT INTO merchant_alias (merchant_id, alias_raw, alias_normalized, country_code)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT DO NOTHING`,
-        [m.id, alias, alias.toUpperCase().trim(), m.country_code]
+        `INSERT INTO merchant_alias (merchant_id, alias_raw, alias_normalized, country_code, source)
+         VALUES ($1, $2, $3, $4, 'SEED')
+         ON CONFLICT (alias_normalized, country_code) DO NOTHING`,
+        [m.id, alias, normalizeMerchantAlias(alias), m.country_code]
       );
       aliasCount++;
     }

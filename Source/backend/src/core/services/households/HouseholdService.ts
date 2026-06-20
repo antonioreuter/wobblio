@@ -40,6 +40,14 @@ export class HouseholdService {
     return { ...household, members };
   }
 
+  // The caller's own household with its roster, or null when they are solo.
+  // Used to populate the MEMBER-scope budget picker without a known household id.
+  async getOwnHousehold(userId: string): Promise<HouseholdDetail | null> {
+    const membership = await this.households.findMembershipForUser(userId);
+    if (!membership) return null;
+    return this.getDetail(membership.householdId);
+  }
+
   async disband(userId: string, householdId: string): Promise<void> {
     const ok = await this.households.disband(householdId, userId);
     if (!ok) throw new NotHouseholdOwnerError(householdId);

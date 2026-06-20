@@ -7,6 +7,25 @@ export interface MerchantSeed {
   aliases: string[];
 }
 
+// Alias normalization MUST mirror the backend's normalizeMerchantName (§6.2): uppercase,
+// fold accents, drop punctuation and legal-entity suffixes, collapse whitespace. Seeded
+// aliases are matched against merchant names normalized the same way at ingestion, so the
+// two algorithms diverging silently breaks exact-alias hits. The seed_merchants migration
+// carries its own frozen copy; seed_merchants.test.ts pins all three together.
+const LEGAL_SUFFIXES = new Set([
+  'BV', 'NV', 'GMBH', 'LTD', 'INC', 'LLC', 'SA', 'PLC', 'LDA', 'SL', 'SARL',
+  'SPA', 'SRL', 'AG', 'OY', 'AB', 'AS',
+]);
+
+export function normalizeMerchantAlias(raw: string): string {
+  const folded = raw.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+  const depunctuated = folded.replace(/[.,]/g, '').replace(/[^A-Z0-9]+/g, ' ');
+  const tokens = depunctuated
+    .split(/\s+/)
+    .filter((token) => token.length > 0 && !LEGAL_SUFFIXES.has(token));
+  return tokens.join(' ').trim();
+}
+
 export const merchantSeeds: MerchantSeed[] = [
   {
     id: '01900000-0001-7000-8000-000000000001',
@@ -95,5 +114,93 @@ export const merchantSeeds: MerchantSeed[] = [
     default_category_id: 'cat-other',
     website: 'https://www.action.com',
     aliases: ['ACTION', 'ACTION NEDERLAND', 'ACTION BV'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000012',
+    brand_name: 'Gamma',
+    country_code: 'NL',
+    default_category_id: 'cat-hardware',
+    website: 'https://www.gamma.nl',
+    aliases: ['GAMMA', 'GAMMA BOUWMARKT'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000013',
+    brand_name: 'Praxis',
+    country_code: 'NL',
+    default_category_id: 'cat-hardware',
+    website: 'https://www.praxis.nl',
+    aliases: ['PRAXIS', 'PRAXIS BOUWMARKT', 'PRAXIS DOE-HET-ZELF'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000014',
+    brand_name: 'Karwei',
+    country_code: 'NL',
+    default_category_id: 'cat-hardware',
+    website: 'https://www.karwei.nl',
+    aliases: ['KARWEI', 'KARWEI BOUWMARKT'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000015',
+    brand_name: 'Hornbach',
+    country_code: 'NL',
+    default_category_id: 'cat-hardware',
+    website: 'https://www.hornbach.nl',
+    aliases: ['HORNBACH', 'HORNBACH BOUWMARKT'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000016',
+    brand_name: 'MediaMarkt',
+    country_code: 'NL',
+    default_category_id: 'cat-electronics',
+    website: 'https://www.mediamarkt.nl',
+    aliases: ['MEDIAMARKT', 'MEDIA MARKT', 'MEDIA MARKT NEDERLAND'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000017',
+    brand_name: 'Coolblue',
+    country_code: 'NL',
+    default_category_id: 'cat-electronics',
+    website: 'https://www.coolblue.nl',
+    aliases: ['COOLBLUE'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000018',
+    brand_name: 'IKEA',
+    country_code: 'NL',
+    default_category_id: 'cat-home-garden',
+    website: 'https://www.ikea.com/nl',
+    aliases: ['IKEA', 'IKEA NEDERLAND'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000019',
+    brand_name: 'Blokker',
+    country_code: 'NL',
+    default_category_id: 'cat-household',
+    website: 'https://www.blokker.nl',
+    aliases: ['BLOKKER'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000020',
+    brand_name: 'Zeeman',
+    country_code: 'NL',
+    default_category_id: 'cat-clothing',
+    website: 'https://www.zeeman.com',
+    aliases: ['ZEEMAN', 'ZEEMAN TEXTIEL'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000021',
+    brand_name: 'Shell',
+    country_code: 'NL',
+    default_category_id: 'cat-transport',
+    website: 'https://www.shell.nl',
+    aliases: ['SHELL', 'SHELL NEDERLAND'],
+  },
+  {
+    id: '01900000-0001-7000-8000-000000000022',
+    brand_name: 'BP',
+    country_code: 'NL',
+    default_category_id: 'cat-transport',
+    website: 'https://www.bp.com',
+    aliases: ['BP', 'BP NEDERLAND'],
   },
 ];

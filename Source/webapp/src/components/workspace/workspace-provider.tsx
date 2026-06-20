@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { type Invoice } from './invoice-data'
+import { type Budget } from './budget-data'
 import { InvoiceDrawer } from './invoice-drawer'
 import { ConfirmDialog } from './confirm-dialog'
 import { ShareDialog } from './share-dialog'
@@ -54,13 +55,22 @@ async function fetchTopMerchant(): Promise<TopMerchant | null> {
   return data.topMerchant
 }
 
+async function fetchBudgets(): Promise<Budget[]> {
+  const res = await fetch('/api/budgets', { cache: 'no-store' })
+  if (!res.ok) return []
+  const data = (await res.json()) as { budgets: Budget[] }
+  return data.budgets
+}
+
 interface WorkspaceContextValue {
   invoices: Invoice[]
   usage: Usage | null
   topMerchant: TopMerchant | null
+  budgets: Budget[]
   loading: boolean
   refreshing: boolean
   refresh: () => void
+  refreshBudgets: () => Promise<void>
   removeInvoice: (id: string) => void
   openInvoice: Invoice | null
   setOpenInvoice: (inv: Invoice | null) => void
@@ -82,6 +92,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [usage, setUsage] = useState<Usage | null>(null)
   const [topMerchant, setTopMerchant] = useState<TopMerchant | null>(null)
+  const [budgets, setBudgets] = useState<Budget[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [openInvoice, setOpenInvoice] = useState<Invoice | null>(null)
@@ -93,12 +104,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const loadInvoices = useCallback(() => fetchInvoices().then(setInvoices), [])
   const loadUsage = useCallback(() => fetchUsage().then(setUsage), [])
   const loadTopMerchant = useCallback(() => fetchTopMerchant().then(setTopMerchant), [])
+  const loadBudgets = useCallback(() => fetchBudgets().then(setBudgets), [])
 
   useEffect(() => {
     loadInvoices().catch(() => undefined).finally(() => setLoading(false))
     loadUsage().catch(() => undefined)
     loadTopMerchant().catch(() => undefined)
-  }, [loadInvoices, loadUsage, loadTopMerchant])
+    loadBudgets().catch(() => undefined)
+  }, [loadInvoices, loadUsage, loadTopMerchant, loadBudgets])
 
   const showToast = useCallback((msg: string, tone: ToastTone = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -112,8 +125,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setRefreshing(true)
     loadUsage().catch(() => undefined)
     loadTopMerchant().catch(() => undefined)
+    loadBudgets().catch(() => undefined)
     loadInvoices().catch(() => undefined).finally(() => setRefreshing(false))
-  }, [refreshing, loadInvoices, loadUsage, loadTopMerchant])
+  }, [refreshing, loadInvoices, loadUsage, loadTopMerchant, loadBudgets])
+
+  const refreshBudgets = useCallback(() => loadBudgets().catch(() => undefined), [loadBudgets])
 
   const removeInvoice = useCallback((id: string) => {
     setInvoices((list) => list.filter((x) => x.id !== id))
@@ -191,9 +207,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     invoices,
     usage,
     topMerchant,
+    budgets,
     loading,
     refreshing,
     refresh,
+    refreshBudgets,
     removeInvoice,
     openInvoice,
     setOpenInvoice,

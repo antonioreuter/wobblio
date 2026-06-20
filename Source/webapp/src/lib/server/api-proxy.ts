@@ -11,7 +11,7 @@ const UPSTREAM_TIMEOUT_MS = 10_000
 export async function proxyToBackend(
   req: NextRequest,
   path: string,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
 ): Promise<NextResponse> {
   // A stale/corrupt session cookie (e.g. AUTH_SECRET rotation) makes getToken
   // throw on decrypt — treat that as unauthenticated, not a server fault.
@@ -38,7 +38,7 @@ export async function proxyToBackend(
     headers: { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' },
     signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
   }
-  if (method === 'POST' || method === 'PUT') init.body = await req.text()
+  if (method === 'POST' || method === 'PUT' || method === 'PATCH') init.body = await req.text()
 
   // The upstream being unreachable/slow (restart, ECONNREFUSED, timeout) must not
   // leak as an opaque 500 with no log — map it to a clear 504/502, like the

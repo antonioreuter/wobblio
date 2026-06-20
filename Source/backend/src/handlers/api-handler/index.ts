@@ -46,6 +46,7 @@ import {
   InvalidFeedbackError,
 } from '@core/domain/errors';
 import type { AppUser } from '@core/ports/identity/IAppUserRepository';
+import { CATEGORY_TAXONOMY } from '@core/domain/categoryTaxonomy';
 import type { PoolClient } from 'pg';
 import { REGION, json, parseJsonBody, withTenantTx } from './shared';
 import { handleHouseholdsRoute } from './householdRoutes';
@@ -217,15 +218,22 @@ async function handleMeRoute(
   return json(405, { message: 'Method Not Allowed' });
 }
 
-// Reference data for the onboarding region dropdown. Country comes from the
-// query string; subdivisions are the ISO 3166-2 list for that country.
+// Reference data for onboarding and budget configuration. Regions are the
+// ISO 3166-2 list for a query-string country; categories are the static spend
+// taxonomy used to scope CATEGORY budgets.
 async function handleReferenceRoute(
   db: PoolClient,
   path: string,
   method: string,
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> {
-  if (path !== '/reference/regions' || method !== 'GET') return json(404, { message: 'Not Found' });
+  if (method !== 'GET') return json(404, { message: 'Not Found' });
+
+  if (path === '/reference/categories') {
+    return json(200, { categories: CATEGORY_TAXONOMY });
+  }
+
+  if (path !== '/reference/regions') return json(404, { message: 'Not Found' });
   const country = (event.queryStringParameters?.country ?? '').toUpperCase();
   if (country.length !== 2) return json(400, { message: 'country query parameter is required' });
   const subdivisions = await new RegionReferenceAdapter(db).listSubdivisions(country);

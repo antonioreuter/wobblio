@@ -20,6 +20,7 @@ const view: BudgetView = {
 
 const totalBudget = { scope: 'TOTAL' as const, categoryId: null, memberUserId: null, amount: 200, period: 'MONTH' as const };
 const memberBudget = { scope: 'MEMBER' as const, categoryId: null, memberUserId: 'm9', amount: 200, period: 'MONTH' as const };
+const householdBudget = { scope: 'HOUSEHOLD' as const, categoryId: null, memberUserId: null, amount: 200, period: 'MONTH' as const };
 
 const member = (userId: string): HouseholdMember => ({
   userId, email: `${userId}@x`, fullName: userId, isOwner: false, uploadsThisWeek: 0,
@@ -139,6 +140,28 @@ describe('BudgetService', () => {
       households.listMembers.mockResolvedValue([member('someone-else')]);
       await expect(sut.create('u1', 'PREMIUM', memberBudget)).rejects.toBeInstanceOf(InvalidBudgetError);
       expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a solo user creating a HOUSEHOLD budget (no household to scope)', async () => {
+      await expect(sut.create('u1', 'PREMIUM', householdBudget)).rejects.toBeInstanceOf(NotHouseholdOwnerError);
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
+    it('lets the owner create a HOUSEHOLD budget with no category', async () => {
+      households.findMembershipForUser.mockResolvedValue({ householdId: 'h1', ownerUserId: 'u1' });
+      repo.create.mockResolvedValue('b1');
+      repo.get.mockResolvedValue(view);
+      await expect(sut.create('u1', 'PREMIUM', householdBudget)).resolves.toEqual(view);
+      expect(repo.create).toHaveBeenCalledWith({ tenantId: 'u1', ...householdBudget });
+    });
+
+    it('lets the owner create a HOUSEHOLD budget scoped to one category', async () => {
+      households.findMembershipForUser.mockResolvedValue({ householdId: 'h1', ownerUserId: 'u1' });
+      repo.create.mockResolvedValue('b1');
+      repo.get.mockResolvedValue(view);
+      const scoped = { ...householdBudget, categoryId: 'cat-groceries' };
+      await expect(sut.create('u1', 'PREMIUM', scoped)).resolves.toEqual(view);
+      expect(repo.create).toHaveBeenCalledWith({ tenantId: 'u1', ...scoped });
     });
   });
 

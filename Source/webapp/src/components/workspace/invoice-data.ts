@@ -115,17 +115,6 @@ export const SPEND_OVER_TIME: Array<{ month: string; total: number }> = [
   { month: 'Jun', total: 642.3 },
 ]
 
-export const BUDGETS: Array<{ name: string; pct: number }> = [
-  { name: 'Groceries', pct: 76 },
-  { name: 'Bar & Restaurants', pct: 104 },
-  { name: 'Transport', pct: 51 },
-  { name: 'Drugstore', pct: 88 },
-]
-
-export type BudgetTone = 'success' | 'warning' | 'danger'
-export const budgetColor = (pct: number): BudgetTone =>
-  pct >= 100 ? 'danger' : pct >= 85 ? 'warning' : 'success'
-
 export const PRESETS: Array<[Preset, string]> = [
   ['30d', 'Last 30 days'],
   ['month', 'This month'],

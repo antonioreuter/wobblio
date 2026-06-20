@@ -32,6 +32,7 @@ export async function handleHouseholdsRoute(
   log: LambdaLogger,
 ): Promise<APIGatewayProxyResult> {
   if (method === 'POST' && path === '/households') return createHousehold(db, user, event, log);
+  if (method === 'GET' && path === '/households/mine') return getOwnHousehold(db, user);
 
   const acceptMatch = path.match(/^\/households\/accept-invite\/([^/]+)$/);
   if (method === 'POST' && acceptMatch) return acceptInvite(db, user, acceptMatch[1], log);
@@ -109,6 +110,17 @@ function getHousehold(db: PoolClient, user: AppUser, householdId: string): Promi
       const used = await quota.getUsed(householdId, 'HOUSEHOLD_UPLOADS', new Date());
       const cap = await new SsmUploadQuotaAdapter(REGION).getHouseholdUploadsCap();
       return json(200, { ...detail, pool: { used, cap, remaining: Math.max(0, cap - used) } });
+    }),
+  );
+}
+
+// The caller's own household (roster included) or null when solo — feeds the
+// MEMBER-scope budget picker, which has no household id to address.
+function getOwnHousehold(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
+  return guard(() =>
+    withTenantTx(db, user.id, async () => {
+      const household = await householdService(db).getOwnHousehold(user.id);
+      return json(200, { household });
     }),
   );
 }

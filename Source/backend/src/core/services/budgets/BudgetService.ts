@@ -22,7 +22,7 @@ export interface NewBudget {
   period: BudgetPeriod;
 }
 
-const SCOPES: BudgetScope[] = ['TOTAL', 'CATEGORY', 'MEMBER'];
+const SCOPES: BudgetScope[] = ['TOTAL', 'CATEGORY', 'MEMBER', 'HOUSEHOLD'];
 const PERIODS: BudgetPeriod[] = ['WEEK', 'MONTH'];
 
 export class BudgetService {
@@ -46,15 +46,17 @@ export class BudgetService {
   }
 
   // Budgets are owner-managed. A household member who is not the owner may create
-  // no budgets; a solo user may create TOTAL/CATEGORY but not MEMBER (no household
-  // to scope); an owner may create any scope, with MEMBER validated against the roster.
+  // no budgets; a solo user may create TOTAL/CATEGORY but not MEMBER/HOUSEHOLD (no
+  // household to scope); an owner may create any scope, with MEMBER validated
+  // against the roster.
   private async authorizeCreate(userId: string, input: NewBudget): Promise<void> {
     const membership = await this.households.findMembershipForUser(userId);
     if (membership && membership.ownerUserId !== userId) {
       throw new NotHouseholdOwnerError(membership.householdId);
     }
-    if (input.scope !== 'MEMBER') return;
+    if (input.scope === 'TOTAL' || input.scope === 'CATEGORY') return;
     if (!membership) throw new NotHouseholdOwnerError();
+    if (input.scope === 'HOUSEHOLD') return;
 
     const members = await this.households.listMembers(membership.householdId);
     if (!members.some(member => member.userId === input.memberUserId)) {
