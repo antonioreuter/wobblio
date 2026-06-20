@@ -122,7 +122,11 @@ export class WobblioBackendStack extends Stack {
         environment: { ...commonLambdaEnv, ...extraEnv },
       });
 
-    const webAppUrl = ssm.StringParameter.valueForStringParameter(this, '/wobblio/config/web_app_url');
+    // Stage-correct webapp origin (app.wobblio.com | app.dev.wobblio.com), used to
+    // build public share links (/r/<token>). Derived from config so it can't drift
+    // from a hand-managed SSM param. BackendStack never deploys for local, so the
+    // appDomain is always a real https host here.
+    const webAppUrl = `https://${config.appDomain}`;
 
     // Reverse-geocodes upload coordinates for tier-2 invoice location (§6.5). Skipped
     // locally — LocalStack has no Location service, and the geocoder adapter degrades

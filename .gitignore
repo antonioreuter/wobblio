@@ -10,10 +10,14 @@ out/
 # OpenNext build output (cdk-nextjs-standalone)
 **/.open-next/
 
-# CDK build output
-cdk.out/
+# CDK build output (cdk.out + per-deploy variants like cdk.out.deploy-dev)
+**/cdk.out/
+**/cdk.out.*/
 cdk.context.json
 *.snap
+
+# TypeScript incremental build info
+*.tsbuildinfo
 
 # Build and distribution directories
 dist/
