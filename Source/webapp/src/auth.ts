@@ -228,6 +228,27 @@ const nextAuth = NextAuth({
       clientSecret: process.env.COGNITO_CLIENT_SECRET ?? '',
       issuer: cognitoIssuer,
     }),
+    // Hosted-UI sign-up. Cognito has no `screen_hint=signup`; its only sign-up
+    // entry point is the `/signup` Hosted-UI page, which accepts the same OAuth
+    // params as `/oauth2/authorize` and continues the authorization-code flow.
+    // Overriding just the authorization URL keeps NextAuth's state+PKCE checks
+    // intact (token/userinfo endpoints still come from issuer discovery). Only
+    // registered on AWS, where the Hosted-UI domain exists.
+    ...(process.env.COGNITO_DOMAIN
+      ? [
+          CognitoProvider({
+            id: 'cognito-signup',
+            name: 'Cognito (sign-up)',
+            clientId: process.env.COGNITO_CLIENT_ID!,
+            clientSecret: process.env.COGNITO_CLIENT_SECRET ?? '',
+            issuer: cognitoIssuer,
+            authorization: {
+              url: `https://${process.env.COGNITO_DOMAIN}/signup`,
+              params: { scope: 'openid email profile' },
+            },
+          }),
+        ]
+      : []),
     ...(process.env.COGNITO_ENDPOINT ? [buildLocalCredentialsProvider()] : []),
   ],
   pages: {

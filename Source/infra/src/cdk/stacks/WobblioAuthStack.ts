@@ -53,6 +53,7 @@ export class WobblioAuthStack extends Stack {
 
     const makeCognitoHook = (id: string, handlerDir: string): NodejsFunction =>
       new NodejsFunction(this, id, {
+        functionName: config.resourceName(handlerDir),
         entry: path.join(backendRoot, `src/handlers/${handlerDir}/index.ts`),
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_22_X,
@@ -137,7 +138,13 @@ export class WobblioAuthStack extends Stack {
       config.stage === 'prod'
         ? 'https://app.wobblio.com'
         : `https://app.${config.stage}.wobblio.com`;
-    const callbackUrl = `${appOrigin}/api/auth/callback/cognito`;
+    // One per NextAuth provider id. `cognito` = login; `cognito-signup` deep-links
+    // to the Hosted-UI /signup tab (separate provider → separate callback path).
+    // Both must be allowlisted or Cognito rejects the redirect (redirect_mismatch).
+    const callbackUrls = [
+      `${appOrigin}/api/auth/callback/cognito`,
+      `${appOrigin}/api/auth/callback/cognito-signup`,
+    ];
     // Post-logout destinations for the Cognito Hosted-UI /logout endpoint (used by
     // the federated sign-out so the IdP SSO cookie is cleared, not just the local
     // session). Each must exactly match the logout_uri the app sends.
@@ -170,7 +177,7 @@ export class WobblioAuthStack extends Stack {
       oAuth: {
         flows: { authorizationCodeGrant: true },
         scopes: [cognito.OAuthScope.EMAIL, cognito.OAuthScope.OPENID, cognito.OAuthScope.PROFILE],
-        callbackUrls: [callbackUrl],
+        callbackUrls,
         logoutUrls,
       },
       accessTokenValidity: Duration.hours(1),

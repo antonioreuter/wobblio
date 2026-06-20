@@ -1,6 +1,8 @@
 export { WorkspaceProvider, useWorkspace, type Usage } from './workspace-provider'
 export { FilterSelect } from './filter-select'
 export { InvoiceTable } from './invoice-table'
+export { LocationPromptBanner } from './location-prompt-banner'
+export { StatusHelpButton } from './status-legend'
 export { LineChart } from './line-chart'
 export { SpendOverTimeChart } from './spend-over-time-chart'
 export { ProductSearch } from './product-search'

@@ -18,8 +18,11 @@ import {
   BLANK,
   FilterSelect,
   InvoiceTable,
+  LocationPromptBanner,
+  needsLocationConfirmation,
   PAGE_SIZE,
   PRESETS,
+  StatusHelpButton,
   useWorkspace,
   type FilterDraft,
   type Invoice,
@@ -73,6 +76,7 @@ function deriveFacets(invoices: Invoice[]) {
 
 export default function InvoicesPage() {
   const { invoices, loading, setOpenInvoice, setConfirmDelete, setShareTarget } = useWorkspace()
+  const pendingLocation = useMemo(() => invoices.filter(needsLocationConfirmation), [invoices])
   const [draft, setDraft] = useState<FilterDraft>(BLANK)
   const [searching, setSearching] = useState(false)
   const [visible, setVisible] = useState(PAGE_SIZE)
@@ -118,6 +122,11 @@ export default function InvoicesPage() {
   return (
     <div className="pane">
       <p className="pane-subtitle">View, filter and manage all your scanned receipts.</p>
+
+      <LocationPromptBanner
+        count={pendingLocation.length}
+        onConfirm={() => setOpenInvoice(pendingLocation[0])}
+      />
 
       <Card className="panel filter-card">
         <div className="filter-head">
@@ -244,6 +253,7 @@ export default function InvoicesPage() {
         <div className="panel-header" style={{ padding: '20px 24px 0' }}>
           <span className="panel-title">
             All invoices <span className="count-pill">{filtered.length}</span>
+            <StatusHelpButton className="status-help--compact" />
           </span>
           <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
             Showing {shown.length} of {filtered.length}

@@ -44,6 +44,7 @@ export class WobblioBackendStack extends Stack {
 
     const commonLambdaEnv = {
       STAGE:        config.stage,
+      LOG_LEVEL:    config.logLevel,
       DB_HOST:      dbHost,
       DB_PORT:      dbPort,
       DB_SECRET_ARN: dbSecretArn,
@@ -103,6 +104,7 @@ export class WobblioBackendStack extends Stack {
       timeoutSeconds = 30,
     ): NodejsFunction =>
       new NodejsFunction(this, handlerDir, {
+        functionName: config.resourceName(handlerDir),
         entry: path.join(backendRoot, `src/handlers/${handlerDir}/index.ts`),
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_24_X,

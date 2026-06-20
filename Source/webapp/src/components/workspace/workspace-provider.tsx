@@ -41,9 +41,23 @@ async function fetchUsage(): Promise<Usage | null> {
   return (await res.json()) as Usage
 }
 
+/** Highest summed-spend merchant for the current month (§dashboard). */
+export interface TopMerchant {
+  name: string
+  total: number
+}
+
+async function fetchTopMerchant(): Promise<TopMerchant | null> {
+  const res = await fetch('/api/me/stats/top-merchant', { cache: 'no-store' })
+  if (!res.ok) return null
+  const data = (await res.json()) as { topMerchant: TopMerchant | null }
+  return data.topMerchant
+}
+
 interface WorkspaceContextValue {
   invoices: Invoice[]
   usage: Usage | null
+  topMerchant: TopMerchant | null
   loading: boolean
   refreshing: boolean
   refresh: () => void
@@ -67,6 +81,7 @@ export function useWorkspace(): WorkspaceContextValue {
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [usage, setUsage] = useState<Usage | null>(null)
+  const [topMerchant, setTopMerchant] = useState<TopMerchant | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [openInvoice, setOpenInvoice] = useState<Invoice | null>(null)
@@ -77,11 +92,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const loadInvoices = useCallback(() => fetchInvoices().then(setInvoices), [])
   const loadUsage = useCallback(() => fetchUsage().then(setUsage), [])
+  const loadTopMerchant = useCallback(() => fetchTopMerchant().then(setTopMerchant), [])
 
   useEffect(() => {
     loadInvoices().catch(() => undefined).finally(() => setLoading(false))
     loadUsage().catch(() => undefined)
-  }, [loadInvoices, loadUsage])
+    loadTopMerchant().catch(() => undefined)
+  }, [loadInvoices, loadUsage, loadTopMerchant])
 
   const showToast = useCallback((msg: string, tone: ToastTone = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -94,8 +111,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (refreshing) return
     setRefreshing(true)
     loadUsage().catch(() => undefined)
+    loadTopMerchant().catch(() => undefined)
     loadInvoices().catch(() => undefined).finally(() => setRefreshing(false))
-  }, [refreshing, loadInvoices, loadUsage])
+  }, [refreshing, loadInvoices, loadUsage, loadTopMerchant])
 
   const removeInvoice = useCallback((id: string) => {
     setInvoices((list) => list.filter((x) => x.id !== id))
@@ -172,6 +190,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const value: WorkspaceContextValue = {
     invoices,
     usage,
+    topMerchant,
     loading,
     refreshing,
     refresh,

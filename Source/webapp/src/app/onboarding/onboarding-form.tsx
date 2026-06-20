@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { federatedSignOut } from '@/lib/federated-sign-out'
-import { Cake, Check, ChevronDown, Globe, Languages, MapPin, User, Wallet } from 'lucide-react'
+import { AlertCircle, Cake, Check, ChevronDown, Globe, Languages, MapPin, User, Wallet } from 'lucide-react'
 import { Button } from '@/components/ds/Button'
 import { Input } from '@/components/ds/Input'
 import { Checkbox } from '@/components/ds/Checkbox'
@@ -209,29 +209,29 @@ export function OnboardingForm() {
       </div>
 
       {expired ? (
-        <div
-          role="alert"
-          data-testid="onboarding-session-expired"
-          style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
-        >
-          <span className="field-error">
-            Your session expired. Please sign in again to finish setting up your account.
-          </span>
-          <Button
-            type="button"
-            variant="primary"
-            style={{ width: '100%' }}
-            onClick={() => void federatedSignOut()}
-            data-testid="onboarding-reauth"
-          >
-            Sign in again
-          </Button>
+        <div role="alert" className="auth-alert" data-testid="onboarding-session-expired">
+          <AlertCircle size={16} />
+          <div className="auth-alert-body">
+            <span className="auth-alert-msg">
+              Your session expired. Please sign in again to finish setting up your account.
+            </span>
+            <Button
+              type="button"
+              variant="primary"
+              style={{ width: '100%' }}
+              onClick={() => void federatedSignOut()}
+              data-testid="onboarding-reauth"
+            >
+              Sign in again
+            </Button>
+          </div>
         </div>
       ) : (
         error && (
-          <p role="alert" className="field-error" data-testid="onboarding-error">
-            {error}
-          </p>
+          <div role="alert" className="auth-alert" data-testid="onboarding-error">
+            <AlertCircle size={16} />
+            <span className="auth-alert-msg">{error}</span>
+          </div>
         )
       )}
 

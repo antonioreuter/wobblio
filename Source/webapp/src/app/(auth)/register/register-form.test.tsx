@@ -47,6 +47,7 @@ describe('RegisterForm', () => {
     fireEvent.click(screen.getByTestId('register-submit'))
 
     expect(registerUser).not.toHaveBeenCalled()
-    expect(screen.getByTestId('register-error')).toBeInTheDocument()
+    expect(screen.getByTestId('register-mismatch')).toBeInTheDocument()
+    expect(screen.queryByTestId('register-error')).not.toBeInTheDocument()
   })
 })

@@ -17,6 +17,9 @@ export interface EnvironmentConfig {
   /** Stage-isolated shared-DB secret ARN param: prod uses the canonical name,
    *  every other stage an underscore-suffixed alias (e.g. wobblio_dev). */
   dbSecretParam: string;
+  /** Pino log level for Lambda env (LOG_LEVEL): debug surfaces troubleshooting logs.
+   *  Override at synth via LOG_LEVEL env; defaults to debug off-prod, info in prod. */
+  logLevel: string;
   resourceName(base: string): string;
   cdkEnv: { account: string; region: string };
 }
@@ -60,6 +63,7 @@ export function buildEnvironmentConfig(): EnvironmentConfig {
     dbSecretParam: stage === 'prod'
       ? '/shared/db/wobblio/secret-arn'
       : `/shared/db/wobblio_${stage}/secret-arn`,
+    logLevel: process.env.LOG_LEVEL ?? (stage === 'prod' ? 'info' : 'debug'),
     resourceName: (base: string) => `wobblio-${base}-${stage}`,
     cdkEnv: { account, region },
   };
