@@ -11,6 +11,7 @@ const budget = (over: Partial<ActiveBudget> = {}): ActiveBudget => ({
   scope: 'TOTAL',
   categoryId: null,
   memberUserId: null,
+  targetLabel: null,
   amount: 100,
   period: 'MONTH',
   accumulated: 0,

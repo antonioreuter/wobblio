@@ -118,6 +118,7 @@ export class BudgetRecyclerService {
     const { title, body } = buildBudgetAlert(
       kind,
       budget.scope,
+      budget.targetLabel,
       budget.amount,
       accumulated,
       budget.language,

@@ -7,6 +7,9 @@ export interface ActiveBudget {
   scope: BudgetScope;
   categoryId: string | null;
   memberUserId: string | null;
+  // Localized name of the budget's target (category or member); null for TOTAL
+  // and category-less HOUSEHOLD budgets.
+  targetLabel: string | null;
   amount: number;
   period: BudgetPeriod;
   accumulated: number;

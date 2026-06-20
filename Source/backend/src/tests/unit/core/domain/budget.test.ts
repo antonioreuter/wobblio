@@ -47,7 +47,7 @@ describe('advanceCycleStart', () => {
 
 describe('buildBudgetAlert', () => {
   it('builds the 85% alert in English with amounts', () => {
-    const { title, body } = buildBudgetAlert('BUDGET_85', 'TOTAL', 100, 85, 'en', 'EUR');
+    const { title, body } = buildBudgetAlert('BUDGET_85', 'TOTAL', null, 100, 85, 'en', 'EUR');
     expect(title).toBe('Budget at 85%');
     expect(body).toContain('total spending');
     expect(body).toContain('€85.00');
@@ -55,18 +55,29 @@ describe('buildBudgetAlert', () => {
   });
 
   it('builds the 100% alert in English', () => {
-    const { title, body } = buildBudgetAlert('BUDGET_100', 'CATEGORY', 50, 60, 'en', 'EUR');
+    const { title, body } = buildBudgetAlert('BUDGET_100', 'CATEGORY', 'Groceries', 50, 60, 'en', 'EUR');
     expect(title).toBe('Budget reached');
     expect(body).toContain('over the limit');
   });
 
+  it('names the specific budget (target label) instead of the scope noun', () => {
+    const { body } = buildBudgetAlert('BUDGET_85', 'CATEGORY', 'Groceries', 22, 20.54, 'en', 'EUR');
+    expect(body).toContain('Your Groceries budget is at');
+    expect(body).not.toContain('category budget');
+  });
+
+  it('falls back to the scope noun when no target label is given', () => {
+    const { body } = buildBudgetAlert('BUDGET_85', 'TOTAL', null, 100, 90, 'en', 'EUR');
+    expect(body).toContain('total spending budget');
+  });
+
   it('localizes the 85% alert to Dutch when language starts with nl', () => {
-    const { title } = buildBudgetAlert('BUDGET_85', 'TOTAL', 100, 90, 'nl', 'EUR');
+    const { title } = buildBudgetAlert('BUDGET_85', 'TOTAL', null, 100, 90, 'nl', 'EUR');
     expect(title).toBe('Budget op 85%');
   });
 
   it('localizes the 100% alert to Dutch', () => {
-    const { title, body } = buildBudgetAlert('BUDGET_100', 'MEMBER', 100, 110, 'nl-NL', 'EUR');
+    const { title, body } = buildBudgetAlert('BUDGET_100', 'MEMBER', null, 100, 110, 'nl-NL', 'EUR');
     expect(title).toBe('Budget bereikt');
     expect(body).toContain('overschreden');
   });

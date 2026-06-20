@@ -13,6 +13,7 @@ interface ActiveBudgetRow {
   scope: BudgetScope;
   category_id: string | null;
   member_user_id: string | null;
+  target_label: string | null;
   amount: string;
   period: BudgetPeriod;
   accumulated: string;
@@ -26,11 +27,24 @@ interface ActiveBudgetRow {
 }
 
 const ACTIVE_BUDGET_COLUMNS = `
-  id, tenant_id, scope, category_id, member_user_id,
+  id, tenant_id, scope, category_id, member_user_id, target_label,
   amount::text AS amount, period, accumulated::text AS accumulated,
   alert_85_fired, alert_100_fired,
   alert_85_at::text AS alert_85_at, alert_100_at::text AS alert_100_at,
   cycle_start::text AS cycle_start, language, currency`;
+
+// Localized name of a budget's target — category (CATEGORY/HOUSEHOLD) or member
+// (MEMBER). Reused by the per-tenant query and the SECURITY DEFINER functions.
+const TARGET_LABEL_SQL = `
+  CASE b.scope
+    WHEN 'CATEGORY'  THEN (SELECT CASE WHEN u.language = 'nl' THEN COALESCE(pc.name_nl, pc.name) ELSE pc.name END
+                             FROM product_category pc WHERE pc.id = b.category_id)
+    WHEN 'HOUSEHOLD' THEN (SELECT CASE WHEN u.language = 'nl' THEN COALESCE(pc.name_nl, pc.name) ELSE pc.name END
+                             FROM product_category pc WHERE pc.id = b.category_id)
+    WHEN 'MEMBER'    THEN (SELECT COALESCE(NULLIF(mu.full_name, ''), mu.email)
+                             FROM app_user mu WHERE mu.id = b.member_user_id)
+    ELSE NULL
+  END`;
 
 const toActiveBudget = (row: ActiveBudgetRow): ActiveBudget => ({
   id: row.id,
@@ -38,6 +52,7 @@ const toActiveBudget = (row: ActiveBudgetRow): ActiveBudget => ({
   scope: row.scope,
   categoryId: row.category_id,
   memberUserId: row.member_user_id,
+  targetLabel: row.target_label,
   amount: parseFloat(row.amount),
   period: row.period,
   accumulated: parseFloat(row.accumulated),
@@ -75,6 +90,7 @@ export class BudgetRecyclerRepositoryAdapter implements IBudgetRecyclerRepositor
   async listActiveForTenant(tenantId: string): Promise<ActiveBudget[]> {
     const result = await this.pool.query<ActiveBudgetRow>(
       `SELECT b.id, b.tenant_id, b.scope, b.category_id, b.member_user_id,
+              ${TARGET_LABEL_SQL} AS target_label,
               b.amount::text AS amount, b.period, b.accumulated::text AS accumulated,
               b.alert_85_fired, b.alert_100_fired,
               b.alert_85_at::text AS alert_85_at, b.alert_100_at::text AS alert_100_at,

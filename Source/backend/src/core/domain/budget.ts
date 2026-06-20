@@ -57,13 +57,15 @@ function formatMoney(amount: number, currency: string, language: string): string
 export function buildBudgetAlert(
   kind: AlertKind,
   scope: BudgetScope,
+  targetLabel: string | null,
   amount: number,
   accumulated: number,
   language: string,
   currency: string,
 ): AlertText {
   const nl = language.toLowerCase().startsWith('nl');
-  const label = nl ? SCOPE_LABEL[scope].nl : SCOPE_LABEL[scope].en;
+  // Name the specific budget (category/member) when known; fall back to the scope noun.
+  const label = targetLabel?.trim() || (nl ? SCOPE_LABEL[scope].nl : SCOPE_LABEL[scope].en);
   const spent = formatMoney(accumulated, currency, language);
   const limit = formatMoney(amount, currency, language);
 

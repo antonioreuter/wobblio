@@ -1717,7 +1717,7 @@
   position: absolute;
   top: calc(100% + 10px);
   right: 0;
-  width: 320px;
+  width: min(320px, calc(100vw - 28px));
   max-height: 420px;
   overflow-y: auto;
   display: flex;
@@ -1766,6 +1766,19 @@
 .notification-item-title { font-size: 13.5px; font-weight: 600; }
 .notification-item-text { font-size: 12.5px; color: var(--text-muted); }
 .notification-item-time { flex: none; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* Narrow screens: drop the anchored box for a centered, near-full-width sheet
+   under the top bar so it never clips off the right edge. */
+@media (max-width: 640px) {
+  .notification-menu-pop {
+    position: fixed;
+    top: 64px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: 70vh;
+  }
+}
 
 /* ---- Premium polish ---- */
 /* Currency with de-emphasised cents */
