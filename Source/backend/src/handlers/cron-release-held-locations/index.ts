@@ -37,7 +37,10 @@ export const handler = async (_event: unknown, context: Context): Promise<void> 
         if (emitted) released += 1;
       } catch (err) {
         await client.query('ROLLBACK').catch(() => undefined);
-        log.error('held release failed', { invoiceId: candidate.invoiceId, error: (err as Error).message });
+        log.error('held release failed', {
+          invoiceId: candidate.invoiceId,
+          err: err instanceof Error ? err : new Error(String(err)),
+        });
       }
     }
 

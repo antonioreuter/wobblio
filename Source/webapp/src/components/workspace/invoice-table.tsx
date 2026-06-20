@@ -1,9 +1,10 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { ReceiptText, Share2, Trash2 } from 'lucide-react'
+import { MapPin, ReceiptText, Share2, Trash2 } from 'lucide-react'
 import { Badge, MerchantIcon, Tag } from '@/components/ds'
-import { eur, fmtDate, type Invoice } from './invoice-data'
+import { eur, fmtDate, needsLocationConfirmation, type Invoice } from './invoice-data'
+import { StatusHelpButton } from './status-legend'
 
 interface InvoiceTableProps {
   invoices: Invoice[]
@@ -36,7 +37,7 @@ export function InvoiceTable({
             <th>Merchant</th>
             <th className="col-cat">Category</th>
             <th>Date</th>
-            <th>Status</th>
+            <th><span className="th-help">Status <StatusHelpButton className="status-help--inline" /></span></th>
             <th className="col-tags">Tags</th>
             <th className="num">Total</th>
             <th style={{ textAlign: 'right' }}>Actions</th>
@@ -77,7 +78,20 @@ export function InvoiceTable({
                 </td>
                 <td className="col-cat cell-cat">{inv.category}</td>
                 <td className="cell-date">{fmtDate(inv.dateISO)}</td>
-                <td className="cell-status"><Badge tone={inv.status[0]}>{inv.status[1]}</Badge></td>
+                <td className="cell-status">
+                  <Badge tone={inv.status[0]}>{inv.status[1]}</Badge>
+                  {needsLocationConfirmation(inv) && (
+                    <button
+                      type="button"
+                      className="loc-chip"
+                      title="Confirm where you shopped to share prices"
+                      onClick={(e) => { e.stopPropagation(); onOpen?.(inv) }}
+                      data-testid={`invoice-location-chip-${inv.id}`}
+                    >
+                      <MapPin size={12} /> Add location
+                    </button>
+                  )}
+                </td>
                 <td className="col-tags cell-tags">
                   <div className="tag-row">
                     {inv.tags.map((t) => <Tag key={t}>{t}</Tag>)}

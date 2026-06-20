@@ -1168,6 +1168,39 @@
 .confirm-danger { background: var(--danger); color: #fff; gap: 7px; }
 .confirm-danger:hover { background: #c93b40; }
 
+/* ── Status help (i) trigger + legend modal ─────────────────── */
+.status-help-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0;
+  border: 0; background: none; cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 999px;
+  transition: color 0.18s, background 0.18s;
+  vertical-align: middle;
+}
+.status-help-btn:hover { color: var(--text-primary); background: var(--glass-highlight); }
+.th-help { display: inline-flex; align-items: center; gap: 6px; }
+
+/* The primary trigger lives in the table header. Once the table collapses to
+   the card layout (the thead is hidden), surface this compact one in the
+   always-visible panel header instead. The @media floor approximates the
+   .table-scroll @container 640px breakpoint that hides the header. */
+.status-help--compact { display: none; margin-left: 8px; }
+@media (max-width: 780px) {
+  .status-help--compact { display: inline-flex; }
+}
+
+.status-legend { display: grid; gap: 14px; margin: 18px 0 0; }
+.status-legend-row {
+  display: grid;
+  grid-template-columns: minmax(110px, max-content) 1fr;
+  gap: 14px; align-items: start;
+}
+.status-legend-row dt { margin: 0; }
+.status-legend-row dd {
+  margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text-muted);
+}
+
 .share-card { width: min(420px, 100%); }
 .share-icon {
   width: 42px; height: 42px; border-radius: var(--radius-md);
@@ -1295,6 +1328,41 @@
   background: var(--brand-glow); color: var(--brand);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- Location confirmation prompt (§6.5 sharing gate) ---- */
+.loc-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 8px;
+  font-family: var(--font-body); font-size: 11px; font-weight: 600;
+  color: var(--warning);
+  background: var(--warning-glow);
+  border: 1px solid transparent;
+  padding: 3px 9px; border-radius: var(--radius-pill);
+  cursor: pointer; transition: all var(--transition-fast); white-space: nowrap;
+}
+.loc-chip:hover { border-color: var(--warning); }
+
+.loc-prompt {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px; padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--warning);
+  background: var(--warning-glow);
+}
+.loc-prompt-icon { display: flex; color: var(--warning); flex-shrink: 0; }
+.loc-prompt-text {
+  flex: 1; min-width: 0;
+  font-size: 13px; color: var(--text-primary); line-height: 1.4;
+}
+.loc-prompt-text strong { font-variant-numeric: tabular-nums; }
+.loc-prompt-btn {
+  flex-shrink: 0;
+  font-family: var(--font-body); font-size: 12.5px; font-weight: 600;
+  color: #fff; background: var(--warning);
+  border: 0; padding: 7px 16px; border-radius: var(--radius-md);
+  cursor: pointer; transition: opacity var(--transition-fast);
+}
+.loc-prompt-btn:hover { opacity: 0.9; }
 
 /* ==========================================================================
    Calm surface — reversible scoped variant

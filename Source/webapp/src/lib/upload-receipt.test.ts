@@ -10,8 +10,9 @@ function stubImagePipeline() {
     cb(new Blob(['jpeg-bytes'], { type: 'image/jpeg' }))
   }) as never
   // jsdom's Blob has no arrayBuffer(); prepareImage hashes the blob bytes.
-  if (!('arrayBuffer' in Blob.prototype)) {
-    Blob.prototype.arrayBuffer = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer) as never
+  const blobProto = Blob.prototype as Blob & { arrayBuffer?: () => Promise<ArrayBuffer> }
+  if (typeof blobProto.arrayBuffer !== 'function') {
+    blobProto.arrayBuffer = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer) as never
   }
   Object.defineProperty(globalThis, 'crypto', {
     configurable: true,

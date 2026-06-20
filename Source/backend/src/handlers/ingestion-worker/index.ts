@@ -96,8 +96,8 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       const cause = (err as { cause?: unknown }).cause;
       log.error('ingestion failed', {
         messageId: record.messageId,
-        error: (err as Error).message,
-        cause: cause instanceof Error ? cause.message : cause ? String(cause) : undefined,
+        err: err instanceof Error ? err : new Error(String(err)),
+        cause: cause instanceof Error ? cause : cause ? new Error(String(cause)) : undefined,
       });
       batchItemFailures.push({ itemIdentifier: record.messageId });
     } finally {

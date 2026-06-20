@@ -201,6 +201,28 @@
 .field-error { font-size: 12px; color: var(--danger); }
 .field-hint { font-size: 12px; color: var(--text-muted); }
 
+/* Form-level alert banner (validation / submit errors) */
+.auth-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  background: var(--danger-glow);
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+}
+.auth-alert svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--danger);
+}
+.auth-alert-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.auth-alert-msg { color: var(--danger); }
+
 .auth-grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

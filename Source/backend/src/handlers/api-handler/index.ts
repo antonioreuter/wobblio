@@ -162,7 +162,7 @@ export const handler = async (
     log.error('unhandled api-handler error', {
       path: event.path,
       method: event.httpMethod,
-      error: err instanceof Error ? err.message : String(err),
+      err: err instanceof Error ? err : new Error(String(err)),
     });
     return json(500, { message: 'Internal Server Error' });
   } finally {
@@ -180,6 +180,7 @@ async function handleMeRoute(
 ): Promise<APIGatewayProxyResult> {
   if (path === '/me/usage' && method === 'GET') return handleUsage(db, user);
   if (path === '/me/advisor' && method === 'GET') return handleAdvisorCard(db, user);
+  if (path === '/me/stats/top-merchant' && method === 'GET') return handleTopMerchant(db, user);
 
   if (path !== '/me/profile') {
     return json(404, { message: 'Not Found' });
@@ -235,6 +236,14 @@ async function handleReferenceRoute(
 async function handleAdvisorCard(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
   const advisor = await withTenantTx(db, user.id, () => new WeeklyAdvisorRepositoryAdapter(db).getCurrent());
   return json(200, { advisor });
+}
+
+// Highest summed-spend merchant for the current month, for the dashboard card.
+async function handleTopMerchant(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
+  const topMerchant = await withTenantTx(db, user.id, () =>
+    new InvoiceRepositoryAdapter(db).getTopMerchantThisMonth(),
+  );
+  return json(200, { topMerchant });
 }
 
 async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {

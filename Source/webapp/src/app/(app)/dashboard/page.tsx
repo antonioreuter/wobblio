@@ -4,13 +4,20 @@ import { useMemo } from 'react'
 import Link from 'next/link'
 import { ArrowRight, RotateCw } from 'lucide-react'
 import { AnimatedNumber, Card, MetricCard, Money } from '@/components/ds'
-import { InvoiceTable, SpendOverTimeChart, useWorkspace } from '@/components/workspace'
+import {
+  InvoiceTable,
+  LocationPromptBanner,
+  needsLocationConfirmation,
+  SpendOverTimeChart,
+  useWorkspace,
+} from '@/components/workspace'
 import { computeSpendMetrics } from '@/lib/invoice-metrics'
 
 export default function DashboardPage() {
   const {
     invoices,
     usage,
+    topMerchant,
     loading,
     refreshing,
     refresh,
@@ -20,6 +27,7 @@ export default function DashboardPage() {
   } = useWorkspace()
 
   const metrics = useMemo(() => computeSpendMetrics(invoices, new Date()), [invoices])
+  const pendingLocation = useMemo(() => invoices.filter(needsLocationConfirmation), [invoices])
 
   const delta = metrics.deltaPct
   const spendingDown = delta !== null && delta < 0
@@ -29,6 +37,11 @@ export default function DashboardPage() {
     <div className="pane">
       <h2 className="pane-title">Your Everyday Savings</h2>
       <p className="pane-subtitle">Overview of your household expenses and price trends.</p>
+
+      <LocationPromptBanner
+        count={pendingLocation.length}
+        onConfirm={() => setOpenInvoice(pendingLocation[0])}
+      />
 
       <div className="metrics-row">
         {loading
@@ -88,8 +101,8 @@ export default function DashboardPage() {
               <MetricCard
                 className="metric-ultrawide"
                 label="Top Merchant"
-                value={metrics.topMerchant?.name ?? '—'}
-                delta={metrics.topMerchant ? `€${metrics.topMerchant.total.toFixed(2)} this month` : 'No spend this month'}
+                value={topMerchant?.name ?? '—'}
+                delta={topMerchant ? `€${topMerchant.total.toFixed(2)} this month` : 'No spend this month'}
                 tone="neutral"
               />
             </>

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
-import { Lock, Mail, UserPlus } from 'lucide-react'
+import { AlertCircle, Lock, Mail, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ds/Button'
 import { Input } from '@/components/ds/Input'
 import { registerUser } from '../actions'
@@ -46,8 +46,9 @@ export function RegisterForm() {
     const email = form.get('email') as string
     const password = form.get('password') as string
 
+    // Mismatch is surfaced inline under the confirm field; don't duplicate it
+    // as a form-level banner — just block the submit.
     if (password !== form.get('confirm')) {
-      setError('Passwords do not match.')
       setLoading(false)
       return
     }
@@ -133,13 +134,18 @@ export function RegisterForm() {
           onChange={(e) => setConfirm(e.target.value)}
           data-testid="register-confirm"
         />
-        {mismatch && <span className="field-error">Passwords don&apos;t match.</span>}
+        {mismatch && (
+          <span className="field-error" data-testid="register-mismatch">
+            Passwords don&apos;t match.
+          </span>
+        )}
       </div>
 
       {error && (
-        <p role="alert" className="field-error" data-testid="register-error">
-          {error}
-        </p>
+        <div role="alert" className="auth-alert" data-testid="register-error">
+          <AlertCircle size={16} />
+          <span className="auth-alert-msg">{error}</span>
+        </div>
       )}
 
       <Button

@@ -1,5 +1,6 @@
 'use server'
 
+import { createHmac } from 'crypto'
 import {
   CognitoIdentityProviderClient,
   SignUpCommand,
@@ -20,6 +21,17 @@ const clientId = () => process.env.COGNITO_CLIENT_ID!
 const userPoolId = () => process.env.COGNITO_USER_POOL_ID!
 const isLocal = () => Boolean(process.env.COGNITO_ENDPOINT)
 
+// The AWS web client is created with a secret (generateSecret: true), so every
+// non-admin Cognito API call must carry a SecretHash. cognito-local issues no
+// secret, so we omit it there (returns undefined → field dropped from request).
+function secretHash(username: string): string | undefined {
+  const secret = process.env.COGNITO_CLIENT_SECRET
+  if (!secret) return undefined
+  return createHmac('sha256', secret)
+    .update(username + clientId())
+    .digest('base64')
+}
+
 export async function registerUser(
   email: string,
   password: string,
@@ -33,6 +45,7 @@ export async function registerUser(
         ClientId: clientId(),
         Username: email,
         Password: password,
+        SecretHash: secretHash(email),
         UserAttributes: [{ Name: 'email', Value: email }],
       }),
     )
@@ -77,6 +90,7 @@ export async function sendPasswordResetCode(email: string): Promise<{ error?: st
       new ForgotPasswordCommand({
         ClientId: clientId(),
         Username: email,
+        SecretHash: secretHash(email),
       }),
     )
     return {}
@@ -102,6 +116,7 @@ export async function confirmPasswordReset(
         Username: email,
         ConfirmationCode: code,
         Password: newPassword,
+        SecretHash: secretHash(email),
       }),
     )
     return {}

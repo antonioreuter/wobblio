@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { Lock, LogIn, Mail, ScanLine } from 'lucide-react'
+import { AlertCircle, Lock, LogIn, Mail, ScanLine } from 'lucide-react'
 import { Button } from '@/components/ds/Button'
 import { Checkbox } from '@/components/ds/Checkbox'
 import { Input } from '@/components/ds/Input'
@@ -67,9 +67,10 @@ export function LoginForm() {
         </div>
 
         {error && (
-          <p role="alert" className="field-error" data-testid="login-error">
-            {error}
-          </p>
+          <div role="alert" className="auth-alert" data-testid="login-error">
+            <AlertCircle size={16} />
+            <span className="auth-alert-msg">{error}</span>
+          </div>
         )}
 
         <Button

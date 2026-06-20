@@ -41,7 +41,7 @@ export function startIngestionPoller(): void {
           }
         }
       } catch (err) {
-        console.error('[local-poller] error', (err as Error).message);
+        console.error('[local-poller] error', err);
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }

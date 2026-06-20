@@ -22,6 +22,12 @@ export interface Invoice {
   locationConfirmable: boolean
 }
 
+// A parsed receipt whose prices are held out of the regional index until the user
+// confirms where they shopped (§6.5). Mirrors InvoiceLocationGate's render gate:
+// HELD_UNMAPPED has nothing for the user to do, so only PENDING + confirmable counts.
+export const needsLocationConfirmation = (inv: Invoice): boolean =>
+  inv.locationStatus === 'PENDING' && inv.locationConfirmable
+
 export type Preset = '30d' | 'month' | '90d' | 'custom'
 
 export interface FilterDraft {
@@ -47,7 +53,6 @@ export const MERCHANTS = [
 ]
 export const STATUSES: Status[] = [
   ['success', 'Ready'],
-  ['warning', 'Check details'],
   ['warning', 'Possible duplicate'],
 ]
 export const TAG_POOL = ['dinner', 'weekly', 'commute', 'pantry', 'treat', 'household', 'fuel', 'organic']
