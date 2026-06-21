@@ -57,7 +57,7 @@ export class MerchantResolver implements IMerchantResolver {
       return { merchantId: fallback.merchantId, branchId: null, brandName: fallback.brandName, provisional: false, confidence: LLM_MATCH_CONFIDENCE };
     }
 
-    const merchantId = await this.catalog.createProvisionalMerchant(fallback.brandName, countryCode);
+    const merchantId = await this.catalog.createProvisionalMerchant(fallback.brandName, countryCode, fallback.defaultCategoryId);
     await this.catalog.writeAlias({ merchantId, aliasRaw: merchantRaw, aliasNormalized: normalized, countryCode, source: 'AUTO_LLM' });
     return { merchantId, branchId: null, brandName: fallback.brandName, provisional: true, confidence: PROVISIONAL_CONFIDENCE };
   }

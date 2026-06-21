@@ -62,6 +62,9 @@ export interface PersistParsedInvoice {
   total: number;
   categoryId: string | null;
   searchTags: string[];
+  // Free-text receipt city for invoice search — never a vocabulary tag, never a price
+  // observation field. Tenant-scoped, like region. Null when no city was printed.
+  searchCity: string | null;
   status: InvoiceStatus;
   // True when this invoice must never reach the price index (e.g. an exact re-upload of
   // a previously-deleted invoice whose observations were already emitted, §6.5).
@@ -106,6 +109,7 @@ export interface InvoiceListItem {
   currency: string | null;
   searchTags: string[];
   searchTagLabels: string[];
+  searchCity: string | null;
   createdAt: string;
   locationStatus: InvoiceLocationStatus;
   locationCountryCode: string | null;

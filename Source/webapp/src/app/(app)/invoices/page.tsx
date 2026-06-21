@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Box,
   Calendar,
@@ -48,12 +49,21 @@ function matchesPreset(iso: string, draft: FilterDraft, rangeInvalid: boolean, n
   return true
 }
 
-function filterInvoices(invoices: Invoice[], draft: FilterDraft, rangeInvalid: boolean, now: Date) {
+// Free-text match from the top-bar search (?q=) across merchant, category, tags, and
+// the receipt city — the city is searchable here but is never shown as a tag chip.
+function matchesQuery(inv: Invoice, q: string): boolean {
+  if (!q) return true
+  const haystack = [inv.merchant, inv.category, inv.searchCity ?? '', ...inv.tags].join(' ').toLowerCase()
+  return haystack.includes(q)
+}
+
+function filterInvoices(invoices: Invoice[], draft: FilterDraft, rangeInvalid: boolean, now: Date, q: string) {
   return invoices.filter((inv) =>
     (draft.category === 'all' || inv.category === draft.category) &&
     (draft.merchant === 'all' || inv.merchant === draft.merchant) &&
     (draft.status === 'all' || inv.status[1] === draft.status) &&
     (draft.tags.length === 0 || draft.tags.some((t) => inv.tags.includes(t))) &&
+    matchesQuery(inv, q) &&
     matchesPreset(inv.dateISO, draft, rangeInvalid, now),
   )
 }
@@ -74,7 +84,7 @@ function deriveFacets(invoices: Invoice[]) {
   return { categories: sorted(categories), merchants: sorted(merchants), statuses: sorted(statuses), tags: sorted(tags) }
 }
 
-export default function InvoicesPage() {
+function InvoicesWorkspace() {
   const { invoices, loading, setOpenInvoice, setConfirmDelete, setShareTarget } = useWorkspace()
   const pendingLocation = useMemo(() => invoices.filter(needsLocationConfirmation), [invoices])
   const [draft, setDraft] = useState<FilterDraft>(BLANK)
@@ -95,12 +105,15 @@ export default function InvoicesPage() {
   const now = useMemo(() => new Date(), [])
   const facets = useMemo(() => deriveFacets(invoices), [invoices])
 
+  const searchParams = useSearchParams()
+  const query = (searchParams.get('q') ?? '').trim().toLowerCase()
+
   const filtered = useMemo(
-    () => filterInvoices(invoices, draft, rangeInvalid, now),
-    [invoices, draft, rangeInvalid, now],
+    () => filterInvoices(invoices, draft, rangeInvalid, now, query),
+    [invoices, draft, rangeInvalid, now, query],
   )
 
-  useEffect(() => { setVisible(PAGE_SIZE) }, [draft])
+  useEffect(() => { setVisible(PAGE_SIZE) }, [draft, query])
 
   const shown = filtered.slice(0, visible)
   const remaining = filtered.length - shown.length
@@ -297,5 +310,14 @@ export default function InvoicesPage() {
         </div>
       </Card>
     </div>
+  )
+}
+
+// useSearchParams (?q= from the top-bar search) requires a Suspense boundary.
+export default function InvoicesPage() {
+  return (
+    <Suspense>
+      <InvoicesWorkspace />
+    </Suspense>
   )
 }
