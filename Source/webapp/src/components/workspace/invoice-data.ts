@@ -13,6 +13,8 @@ export interface Invoice {
   dateISO: string
   status: Status
   tags: string[]
+  // Free-text receipt city, searchable but never rendered as a tag chip.
+  searchCity: string | null
   total: number
   locationStatus: LocationStatus
   locationCountryCode: string | null
@@ -84,6 +86,7 @@ function buildInvoices(): Invoice[] {
       dateISO: d.toISOString().slice(0, 10),
       status: STATUSES[k % STATUSES.length],
       tags,
+      searchCity: null,
       total: Math.round((8 + ((k * 7.37) % 72)) * 100) / 100,
       locationStatus: 'RESOLVED',
       locationCountryCode: null,

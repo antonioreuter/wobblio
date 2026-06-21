@@ -10,6 +10,7 @@ const invoice = (overrides: Partial<Invoice>): Invoice => ({
   dateISO: '2026-06-10',
   status: ['success', 'Ready'],
   tags: [],
+  searchCity: null,
   total: 12.5,
   locationStatus: 'RESOLVED',
   locationCountryCode: 'NL',

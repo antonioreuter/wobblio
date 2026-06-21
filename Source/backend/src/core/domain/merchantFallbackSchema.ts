@@ -1,12 +1,15 @@
 import { extractJsonObject } from './jsonExtract';
+import { isValidCategoryId, macroCategoryId } from './categoryTaxonomy';
 
 // Validates the §6.2 merchant-fallback LLM output: pick an existing candidate by id
-// or declare a new merchant with a cleaned brand name.
+// or declare a new merchant with a cleaned brand name. For a new merchant the model
+// may also propose a macro default-category prior so the classifier has an anchor.
 
 export interface MerchantFallback {
   merchantId: string | null;
   brandName: string;
   isNew: boolean;
+  defaultCategoryId: string | null;
 }
 
 export type MerchantFallbackResult =
@@ -35,6 +38,14 @@ export function parseMerchantFallbackJson(content: string): MerchantFallbackResu
       merchantId: (r.merchant_id as string | null | undefined) ?? null,
       brandName: (r.brand_name as string).trim(),
       isNew: r.is_new as boolean,
+      defaultCategoryId: toMacroPrior(r.default_category_id),
     },
   };
+}
+
+// A proposed prior is advisory: an unknown id is dropped (null) rather than failing
+// the parse, and a sub-category is rolled up to its macro (priors are macro-level).
+function toMacroPrior(value: unknown): string | null {
+  if (typeof value !== 'string' || !isValidCategoryId(value)) return null;
+  return macroCategoryId(value);
 }

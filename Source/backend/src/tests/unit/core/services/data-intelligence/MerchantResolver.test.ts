@@ -77,8 +77,19 @@ describe('MerchantResolver', () => {
     const result = await sut.resolve('t1', 'New Shop', 'NL');
 
     expect(result).toEqual({ merchantId: 'm-new', branchId: null, brandName: 'New Shop', provisional: true, confidence: 0.5 });
-    expect(catalog.createProvisionalMerchant).toHaveBeenCalledWith('New Shop', 'NL');
+    expect(catalog.createProvisionalMerchant).toHaveBeenCalledWith('New Shop', 'NL', null);
     expect(catalog.writeAlias).toHaveBeenCalledWith(expect.objectContaining({ merchantId: 'm-new', source: 'AUTO_LLM' }));
+  });
+
+  it('persists the LLM-proposed category prior onto a new provisional merchant', async () => {
+    catalog.findExactAlias.mockResolvedValue(null);
+    catalog.findFuzzyAliases.mockResolvedValue([]);
+    catalog.createProvisionalMerchant.mockResolvedValue('m-new');
+    callWithSpendGuard.mockResolvedValue(converseResult('{"merchant_id":null,"is_new":true,"brand_name":"Gamma","default_category_id":"cat-hardware"}'));
+
+    await sut.resolve('t1', 'GAMMA', 'NL');
+
+    expect(catalog.createProvisionalMerchant).toHaveBeenCalledWith('Gamma', 'NL', 'cat-hardware');
   });
 
   it('falls back to the LLM when the top fuzzy similarity is below the floor', async () => {

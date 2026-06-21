@@ -43,10 +43,11 @@ describe('Data-intelligence adapters — Postgres', () => {
     it('creates a provisional merchant and writes back a retrievable alias', async () => {
       const catalog = new MerchantCatalogAdapter(pool);
       const alias = `SHOP ${randomUUID().slice(0, 8)}`.toUpperCase();
-      const merchantId = await catalog.createProvisionalMerchant('Test Shop', 'NL');
+      const merchantId = await catalog.createProvisionalMerchant('Test Shop', 'NL', 'cat-hardware');
       await catalog.writeAlias({ merchantId, aliasRaw: alias, aliasNormalized: alias, countryCode: 'NL', source: 'AUTO_LLM' });
       const found = await catalog.findExactAlias(alias, 'NL');
       expect(found?.merchantId).toBe(merchantId);
+      expect(await catalog.getDefaultCategory(merchantId)).toBe('cat-hardware');
     });
   });
 

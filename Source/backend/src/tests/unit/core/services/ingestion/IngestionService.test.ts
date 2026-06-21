@@ -265,14 +265,23 @@ describe('IngestionService', () => {
     expect(priceObservationStore.emit.mock.calls[0][0][0]).toMatchObject({ countryCode: 'NL', regionCode: 'NL-NB' });
   });
 
-  it('tier 1: appends the receipt city to search tags', async () => {
+  it('tier 1: keeps the receipt city out of tags and stores it as searchCity', async () => {
     arrangeHappyPath();
     visionParser.parse.mockResolvedValue({ ...receipt(), location: { countryCode: 'NL', regionText: 'Noord-Brabant', city: 'Eindhoven' } });
 
     await sut.process(MESSAGE);
 
     const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
-    expect(persisted.searchTags).toEqual(['weekly-groceries', 'Eindhoven']);
+    expect(persisted.searchTags).toEqual(['weekly-groceries']);
+    expect(persisted.searchCity).toBe('Eindhoven');
+  });
+
+  it('sets searchCity to null when the receipt prints no city', async () => {
+    arrangeHappyPath();
+
+    await sut.process(MESSAGE);
+
+    expect(invoiceRepo.persistParsed.mock.calls[0][0].searchCity).toBeNull();
   });
 
   it('tier 2: no receipt region but upload-geo on the row → PENDING/GEO, no emit', async () => {

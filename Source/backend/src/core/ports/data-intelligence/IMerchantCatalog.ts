@@ -21,7 +21,7 @@ export interface WriteMerchantAliasInput {
 export interface IMerchantCatalog {
   findExactAlias(normalized: string, countryCode: string): Promise<MerchantAliasMatch | null>;
   findFuzzyAliases(normalized: string, countryCode: string, limit: number): Promise<MerchantAliasMatch[]>;
-  createProvisionalMerchant(brandName: string, countryCode: string): Promise<string>;
+  createProvisionalMerchant(brandName: string, countryCode: string, defaultCategoryId: string | null): Promise<string>;
   writeAlias(input: WriteMerchantAliasInput): Promise<void>;
   getDefaultCategory(merchantId: string): Promise<string | null>;
 }

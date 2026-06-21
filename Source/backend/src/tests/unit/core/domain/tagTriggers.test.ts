@@ -22,8 +22,15 @@ describe('generateTags', () => {
     expect(generateTags(ctx({ categoryShares: { 'cat-groceries': 0.5 } }))).not.toContain('weekly-groceries');
   });
 
-  it('matches a macro-category trigger via line spend share', () => {
-    expect(generateTags(ctx({ categoryShares: { 'cat-household': 0.2 } }))).toContain('household');
+  it('does not add a macro tag for a single off-category line', () => {
+    // A lone Gamma line mis-normalized to cat-baby must not tag the hardware invoice.
+    const tags = generateTags(ctx({ categoryId: 'cat-hardware', categoryShares: { 'cat-hardware': 0.8, 'cat-baby': 0.2 } }));
+    expect(tags).toContain('hardware');
+    expect(tags).not.toContain('baby-kids');
+  });
+
+  it('rolls a sub-category invoice category up to its macro tag', () => {
+    expect(generateTags(ctx({ categoryId: 'cat-tools-hardware' }))).toContain('hardware');
   });
 
   it('matches a merchant-brand trigger', () => {

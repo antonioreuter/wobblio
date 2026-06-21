@@ -106,10 +106,6 @@ export class IngestionService {
     // printed receipt address with a mapped region auto-resolves; upload geolocation
     // and the profile are prefills held PENDING for the user to confirm via the gate.
     const location = await this.resolveLocation(message.invoiceId, receipt, context);
-    // The receipt's city is a free-form, tenant-scoped search tag — never a price
-    // observation field; it bypasses the controlled tag vocabulary.
-    const searchTags = receipt.location?.city ? [...tags, receipt.location.city] : tags;
-
     await this.invoiceRepo.persistParsed({
       invoiceId: message.invoiceId,
       merchantId: merchant.merchantId,
@@ -119,7 +115,10 @@ export class IngestionService {
       currency: receipt.currency,
       total: receipt.total,
       categoryId,
-      searchTags,
+      searchTags: tags,
+      // The receipt city is a free-text, tenant-scoped search field — kept out of the
+      // controlled tag vocabulary and out of the price observation store (§6.5).
+      searchCity: receipt.location?.city ?? null,
       status,
       priceEmissionBlocked: suppressEmission,
       location: {

@@ -12,6 +12,7 @@ export interface BackendInvoice {
   currency: string | null
   searchTags: string[]
   searchTagLabels?: string[]
+  searchCity?: string | null
   createdAt: string
   locationStatus: LocationStatus
   locationCountryCode: string | null
@@ -74,6 +75,7 @@ export function mapInvoice(b: BackendInvoice): Invoice {
     dateISO: b.transactionDate ?? b.createdAt.slice(0, 10),
     status: STATUS_MAP[b.status] ?? ['primary', b.status],
     tags: b.searchTagLabels ?? b.searchTags ?? [],
+    searchCity: b.searchCity ?? null,
     total: b.total ?? 0,
     locationStatus: b.locationStatus ?? 'RESOLVED',
     locationCountryCode: b.locationCountryCode ?? null,

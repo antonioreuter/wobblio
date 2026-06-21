@@ -43,12 +43,12 @@ export class MerchantCatalogAdapter implements IMerchantCatalog {
     return result.rows.map(toMatch);
   }
 
-  async createProvisionalMerchant(brandName: string, countryCode: string): Promise<string> {
+  async createProvisionalMerchant(brandName: string, countryCode: string, defaultCategoryId: string | null): Promise<string> {
     const result = await this.db.query<{ id: string }>(
-      `INSERT INTO merchant (brand_name, country_code, created_via, status)
-       VALUES ($1, $2, 'AUTO', 'PROVISIONAL')
+      `INSERT INTO merchant (brand_name, country_code, default_category_id, created_via, status)
+       VALUES ($1, $2, $3, 'AUTO', 'PROVISIONAL')
        RETURNING id`,
-      [brandName, countryCode],
+      [brandName, countryCode, defaultCategoryId],
     );
     return result.rows[0].id;
   }

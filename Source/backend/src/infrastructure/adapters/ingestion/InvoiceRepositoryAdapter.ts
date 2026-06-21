@@ -27,6 +27,7 @@ interface InvoiceListRow {
   total: string | null;
   currency: string | null;
   search_tags: string[];
+  search_city: string | null;
   created_at: string;
   location_status: InvoiceLocationStatus;
   location_country_code: string | null;
@@ -46,6 +47,7 @@ const toListItem = (row: InvoiceListRow): InvoiceListItem => ({
   currency: row.currency,
   searchTags: row.search_tags,
   searchTagLabels: row.search_tags.map(tagLabelFor),
+  searchCity: row.search_city,
   createdAt: row.created_at,
   locationStatus: row.location_status,
   locationCountryCode: row.location_country_code,
@@ -55,7 +57,7 @@ const toListItem = (row: InvoiceListRow): InvoiceListItem => ({
 const LIST_COLUMNS = `
   i.id, i.status, m.brand_name AS merchant_name, i.category_id,
   i.transaction_date::text AS transaction_date, i.total::text AS total,
-  i.currency, i.search_tags, i.created_at::text AS created_at,
+  i.currency, i.search_tags, i.search_city, i.created_at::text AS created_at,
   i.location_status, i.location_country_code, i.location_region_code`;
 
 interface InvoiceRow {
@@ -147,14 +149,14 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
              transaction_date = $5, currency = $6, total = $7, category_id = $8,
              search_tags = $9, status = $10, location_country_code = $11,
              location_region_code = $12, location_status = $13, location_source = $14,
-             price_emission_blocked = $15
+             price_emission_blocked = $15, search_city = $16
        WHERE id = $1`,
       [
         input.invoiceId, input.merchantId, input.merchantProvisional, input.branchId,
         input.transactionDate, input.currency, input.total, input.categoryId,
         input.searchTags, input.status, input.location.countryCode,
         input.location.regionCode, input.location.status, input.location.source,
-        input.priceEmissionBlocked,
+        input.priceEmissionBlocked, input.searchCity,
       ],
     );
 

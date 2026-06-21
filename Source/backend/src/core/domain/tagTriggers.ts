@@ -1,4 +1,5 @@
 import { TAG_VOCABULARY, TAG_KEYS, type TagDefinition, type TagTrigger } from './tagVocabulary';
+import { macroCategoryId } from './categoryTaxonomy';
 
 // §6.10 tag generation: deterministic trigger maps first, then LLM-suggested keys
 // (validated against the closed vocabulary), deduped and capped at 3. Deterministic
@@ -16,9 +17,10 @@ export interface TagGenerationContext {
 function triggerMatches(trigger: TagTrigger, ctx: TagGenerationContext): boolean {
   if (trigger.merchantBrand) return ctx.merchantBrand === trigger.merchantBrand;
   const categoryId = trigger.categoryId as string; // vocab triggers always set one of the two
-  const share = ctx.categoryShares[categoryId] ?? 0;
-  if (trigger.minSpendShare !== undefined) return share >= trigger.minSpendShare;
-  return ctx.categoryId === categoryId || share > 0;
+  if (trigger.minSpendShare !== undefined) return (ctx.categoryShares[categoryId] ?? 0) >= trigger.minSpendShare;
+  // A bare macro tag describes the invoice's macro category — fire only when that is the
+  // invoice's resolved category, not when a single stray line merely touches the macro.
+  return ctx.categoryId !== null && macroCategoryId(ctx.categoryId) === categoryId;
 }
 
 function isTriggered(tag: TagDefinition, ctx: TagGenerationContext): boolean {
