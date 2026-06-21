@@ -79,7 +79,7 @@ Single SQS consumer Lambda implementing the §6 pipeline in this exact order:
 9. Price observation emission — **anonymized, no RLS, no tenant ref, day-precision date, postal-prefix region.**
 10. Push notification + `PARSED | NEEDS_REVIEW` status flip.
 
-Partial-batch failures via `ReportBatchItemFailures`. `maxReceiveCount=3` → DLQ. Per-stage timing/token metrics via CloudWatch EMF (dimensions: `Stage`, `ModelId`, `InputTokens`, `OutputTokens`). Per-tenant daily AI-spend soft cap read from SSM.
+Partial-batch failures via `ReportBatchItemFailures`. `maxReceiveCount=3` → DLQ. Per-stage timing/token telemetry is plain structured logs (`event: bedrock_usage`) and end-to-end processing time is logged as `ingestion timing` (`status`, `totalMs`, `workerMs`, `queueWaitMs`) — no CloudWatch EMF custom metrics. A daily cron (`cron-ingestion-metrics-rollup`) rolls those logs into `kpi_daily` via Logs Insights. Per-tenant daily AI-spend soft cap read from SSM.
 
 Tags **must never** be written to the Price Observation Store. The emission code path has no tag parameter — keep it that way.
 

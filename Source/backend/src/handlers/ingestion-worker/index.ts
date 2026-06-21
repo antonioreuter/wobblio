@@ -64,6 +64,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   const batchItemFailures: { itemIdentifier: string }[] = [];
 
   for (const record of event.Records) {
+    const workerStart = Date.now();
     const client = await pool.connect();
     try {
       const message = JSON.parse(record.body) as IngestionMessage;
@@ -95,6 +96,21 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         handled: outcome.handled,
         status: outcome.status,
       });
+
+      // End-to-end processing time, rolled up daily into kpi_daily via Logs Insights.
+      // Skip duplicate SQS deliveries (handled:false) — they did no real work.
+      if (outcome.handled) {
+        const workerMs = Date.now() - workerStart;
+        const sentTimestamp = Number(record.attributes.SentTimestamp);
+        const totalMs = Number.isFinite(sentTimestamp) ? Date.now() - sentTimestamp : workerMs;
+        log.info('ingestion timing', {
+          invoiceId: message.invoiceId,
+          status: outcome.status,
+          totalMs,
+          workerMs,
+          queueWaitMs: totalMs - workerMs,
+        });
+      }
       if (outcome.receipt) {
         log.debug('parsed receipt', { invoiceId: message.invoiceId, receipt: outcome.receipt });
       }

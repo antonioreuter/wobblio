@@ -2,7 +2,7 @@ import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-r
 import type { IBedrockConverse, BedrockConverseRequest, BedrockConverseResult } from '@core/ports/ai/IBedrockConverse';
 import { BedrockCallError } from '@core/domain/errors';
 import { buildBedrockRuntimeClient } from '@infrastructure/config/bedrockClient';
-import { emitBedrockTokenMetric } from '../../metrics/emf';
+import { logBedrockUsage } from '../../logging/bedrockUsageLog';
 
 export class BedrockConverseAdapter implements IBedrockConverse {
   private readonly client: BedrockRuntimeClient;
@@ -35,7 +35,7 @@ export class BedrockConverseAdapter implements IBedrockConverse {
       const durationMs = Date.now() - start;
       const content = extractText(response.output?.message?.content);
 
-      await emitBedrockTokenMetric(request.stage, request.modelId, inputTokens, outputTokens, durationMs);
+      logBedrockUsage(request.stage, request.modelId, inputTokens, outputTokens, durationMs);
 
       return { content, inputTokens, outputTokens, modelId: request.modelId, durationMs };
     } catch (err) {

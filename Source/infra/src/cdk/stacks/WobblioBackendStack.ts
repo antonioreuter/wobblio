@@ -175,6 +175,13 @@ export class WobblioBackendStack extends Stack {
     // under a bounded promise pool; well above the 30s API budget but async (§10).
     const cronWeeklyAdvisorFn = makeLambda('cron-weekly-advisor', 2, {}, 300);
 
+    // 120s: a single Logs Insights query (StartQuery + poll) over the prior day's
+    // ingestion-worker logs, rolling per-status averages into kpi_daily (§ observability).
+    const ingestionLogGroupName = `/aws/lambda/${ingestionWorkerFn.functionName}`;
+    const cronIngestionMetricsRollupFn = makeLambda(
+      'cron-ingestion-metrics-rollup', 2, { INGESTION_LOG_GROUP: ingestionLogGroupName }, 120,
+    );
+
     // Public endpoints — no Cognito auth, called by unauthenticated landing-page visitors
     const waitlistStatusFn = makeLambda('waitlist-status', 5, {
       MAX_FREE_USERS: ssm.StringParameter.valueForStringParameter(
@@ -235,8 +242,30 @@ export class WobblioBackendStack extends Stack {
     dbSecret.grantRead(cronReleaseHeldLocationsFn);
     dbSecret.grantRead(cronBudgetResetFn);
     dbSecret.grantRead(cronWeeklyAdvisorFn);
+    dbSecret.grantRead(cronIngestionMetricsRollupFn);
     dbSecret.grantRead(waitlistStatusFn);
     dbSecret.grantRead(shareInvoiceFn);
+
+    // Logs Insights: StartQuery is scoped to the worker log group; GetQueryResults and
+    // StopQuery operate on an ephemeral queryId and do not support resource-level IAM,
+    // so they require "*" (suppressed below).
+    cronIngestionMetricsRollupFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['logs:StartQuery'],
+      resources: [
+        `arn:aws:logs:${this.region}:${this.account}:log-group:${ingestionLogGroupName}:*`,
+      ],
+    }));
+    cronIngestionMetricsRollupFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['logs:GetQueryResults', 'logs:StopQuery'],
+      resources: ['*'],
+    }));
+    NagSuppressions.addResourceSuppressions(cronIngestionMetricsRollupFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'logs:GetQueryResults/StopQuery act on an ephemeral queryId and do not support resource-level permissions',
+        appliesTo: ['Resource::*'],
+      },
+    ], true);
 
     // SSM: read shared DB connection parameters
     const ssmPolicy = new iam.PolicyStatement({
@@ -245,7 +274,7 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
       ],
     });
-    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, waitlistStatusFn, shareInvoiceFn]
+    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, waitlistStatusFn, shareInvoiceFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
 
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
@@ -509,17 +538,26 @@ export class WobblioBackendStack extends Stack {
       cronWeeklyAdvisorFn,
     );
 
+    // Daily 01:30 UTC: roll the prior day's ingestion-timing logs into kpi_daily.
+    makeCron(
+      'IngestionMetricsRollupCron',
+      events.Schedule.cron({ minute: '30', hour: '1' }),
+      cronIngestionMetricsRollupFn,
+    );
+
     const allLambdas = [
       apiHandlerFn, ingestionWorkerFn,
       cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn,
-      cronWeeklyAdvisorFn, waitlistStatusFn, analyticsEventsFn, shareInvoiceFn,
+      cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, waitlistStatusFn, analyticsEventsFn, shareInvoiceFn,
     ];
 
     // ── Lambda log retention ──────────────────────────────────────────────────
+    // The ingestion worker keeps 7 days so the daily kpi_daily roll-up has a debug
+    // window beyond the 24h it actually queries; everything else stays at 3 days.
     allLambdas.forEach(fn =>
       new logs.LogRetention(this, `${fn.node.id}LogRetention`, {
         logGroupName: `/aws/lambda/${fn.functionName}`,
-        retention: logs.RetentionDays.THREE_DAYS,
+        retention: fn === ingestionWorkerFn ? logs.RetentionDays.ONE_WEEK : logs.RetentionDays.THREE_DAYS,
       }),
     );
 
