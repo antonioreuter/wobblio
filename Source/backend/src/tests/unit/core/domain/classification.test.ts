@@ -49,6 +49,25 @@ describe('voteCategory', () => {
     expect(result.categoryId).toBe('cat-groceries');
   });
 
+  it('excludes cat-other so an all-unknown receipt yields no winner (prior decides)', () => {
+    // A bouwmarkt receipt whose SKUs the normalizer cannot place: every line is cat-other.
+    // cat-other is the unknown bucket, not evidence — it must not win and bury the prior.
+    const result = voteCategory([
+      { categoryId: 'cat-other', lineTotal: 30 },
+      { categoryId: 'cat-other-other', lineTotal: 20 },
+    ]);
+    expect(result).toEqual({ categoryId: null, topShare: 0, needsTiebreak: true });
+  });
+
+  it('lets a real category win over a cat-other majority by ignoring the unknown spend', () => {
+    // cat-other is 60% of raw spend but is excluded; cat-hardware is the only real vote.
+    const result = voteCategory([
+      { categoryId: 'cat-other', lineTotal: 6 },
+      { categoryId: 'cat-fasteners', lineTotal: 4 },
+    ]);
+    expect(result).toEqual({ categoryId: 'cat-hardware', topShare: 1, needsTiebreak: false });
+  });
+
   it('rolls sub-categories up to their macro before voting', () => {
     const result = voteCategory([
       { categoryId: 'cat-dairy', lineTotal: 4 },

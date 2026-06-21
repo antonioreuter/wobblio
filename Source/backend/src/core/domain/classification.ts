@@ -4,6 +4,14 @@ import { macroCategoryId } from './categoryTaxonomy';
 // up to their macro so the invoice always gets a macro category; the dominant macro by
 // share wins, and if none clears 50% the caller resolves the tie (merchant prior or an
 // LLM tiebreak). Shares use absolute line totals so discounts don't skew them.
+//
+// `cat-other` is the absence-of-category bucket, not a category the line was classified
+// into — it is *not* evidence that can override the merchant prior (§6.4: prior holds
+// "unless evidence says otherwise"). A bouwmarkt receipt whose SKUs the normalizer can't
+// place would otherwise vote `cat-other` and bury the merchant's hardware prior, so it is
+// excluded from the vote; an all-unknown receipt yields no winner and falls to the prior.
+
+const OTHER_MACRO_ID = 'cat-other';
 
 export interface CategoryVoteLine {
   categoryId: string | null;
@@ -26,6 +34,7 @@ export function voteCategory(lines: CategoryVoteLine[]): CategoryVote {
     const weight = Math.abs(line.lineTotal);
     if (line.categoryId === null || weight === 0) continue;
     const macro = macroCategoryId(line.categoryId);
+    if (macro === OTHER_MACRO_ID) continue;
     totals.set(macro, (totals.get(macro) ?? 0) + weight);
     grandTotal += weight;
   }

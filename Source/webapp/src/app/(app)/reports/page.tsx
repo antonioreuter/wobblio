@@ -10,6 +10,7 @@ import {
   MAX_PRODUCTS,
   MONTHS,
   PRESETS,
+  PriceTrendsHelpButton,
   ProductSearch,
   RegionPicker,
   SERIES_COLORS,
@@ -29,7 +30,10 @@ interface ChartSeries {
   discounts: (number | null)[]
   stale: boolean
   staleDays: number
+  own: boolean // the caller's own purchases — dashed line, "Your purchases" legend
 }
+
+const OWN_LABEL = 'Your purchases'
 
 export default function ReportsPage() {
   const { data: session } = useSession()
@@ -45,9 +49,9 @@ export default function ReportsPage() {
   const [to, setTo] = useState('')
 
   // Default the region to the caller's profile (§6.5 serves their own region first);
-  // the RegionPicker lets them switch it from there.
+  // the RegionPicker lets them switch it from there. Runs for every tier — the own-purchase
+  // series is region-filtered too, so STANDARD needs the region resolved as well.
   useEffect(() => {
-    if (!isPremium) return
     fetch('/api/me/profile', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((p: { country?: string; regionCode?: string | null } | null) => {
@@ -56,10 +60,12 @@ export default function ReportsPage() {
         if (p.regionCode) setRegion(p.regionCode)
       })
       .catch(() => undefined)
-  }, [isPremium])
+  }, [])
 
   const ids = selected.map((p) => p.id)
-  const { comparison, loading } = usePriceTrends(ids, country, region, isPremium)
+  // Every tier fetches: the backend serves the caller's own purchases to all, and gates the
+  // public market trend to Premium (returns empty `lines` otherwise).
+  const { comparison, loading } = usePriceTrends(ids, country, region, true)
 
   const atMax = selected.length >= MAX_PRODUCTS
   const add = (p: TrendProduct) => {
@@ -83,28 +89,14 @@ export default function ReportsPage() {
   )
   const rangeLabel = PRESETS.find(([v]) => v === preset)?.[1] ?? 'Last 3 months'
 
-  if (!isPremium) {
-    return (
-      <div className="pane">
-        <h2 className="pane-title">Price Trends</h2>
-        <p className="pane-subtitle">Compare an item across local stores over time.</p>
-        <Card className="panel budget-upsell" data-testid="trends-upsell">
-          <div className="budget-upsell-icon"><Crown size={22} /></div>
-          <h3 className="budget-upsell-title">Price Trends is available only for Premium</h3>
-          <p className="budget-upsell-body">
-            Premium unlocks the crowdsourced price index: compare up to {MAX_PRODUCTS} products across
-            local stores over six months, with weekly medians, promo markers, and regional price trends.
-          </p>
-        </Card>
-      </div>
-    )
-  }
-
   return (
     <div className="pane">
       <div className="pane-head-row">
-        <p className="pane-subtitle">
-          Compare an item across local stores over time — one line per store. Track up to {MAX_PRODUCTS} products.
+        <p className="pane-subtitle pane-subtitle--with-help">
+          {isPremium
+            ? `Compare an item across local stores over time — one line per store. Track up to ${MAX_PRODUCTS} products.`
+            : `Track your own purchase prices over time. Upgrade to Premium to compare against local stores.`}
+          <PriceTrendsHelpButton />
         </p>
         <RegionPicker
           countryCode={country}
@@ -112,6 +104,18 @@ export default function ReportsPage() {
           onChange={(c, r) => { setCountry(c); setRegion(r) }}
         />
       </div>
+
+      {!isPremium && (
+        <Card className="panel budget-upsell" data-testid="trends-upsell">
+          <div className="budget-upsell-icon"><Crown size={22} /></div>
+          <h3 className="budget-upsell-title">Compare against local stores with Premium</h3>
+          <p className="budget-upsell-body">
+            You can already chart the prices you’ve paid. Premium adds the crowdsourced price index:
+            compare up to {MAX_PRODUCTS} products across local stores over six months, with weekly
+            medians, promo markers, and regional price trends.
+          </p>
+        </Card>
+      )}
 
       <Card className="panel filter-card">
         <div className="filter-head">
@@ -250,15 +254,17 @@ function TrendChartBody({
   if (loading && !comparison) {
     return <div className="table-empty"><span>Loading price trends…</span></div>
   }
-  // Lines exist but the chosen range hides them all; or the cell never cleared k≥3.
+  // No series at all (no own purchases here yet and no market cell cleared k≥3), or the
+  // chosen range hides every point.
   if (series.length === 0) {
-    const noServedData = !comparison || comparison.lines.length === 0
+    const noServedData =
+      !comparison || (comparison.lines.length === 0 && comparison.ownHistory.length === 0)
     return (
       <div className="table-empty" data-testid="trends-empty">
         <TrendingUp size={26} />
         <span>
           {noServedData
-            ? 'Not enough nearby data yet — we need at least 3 confirmed scans of a product in this region before a price shows. Every scan makes it smarter.'
+            ? 'No prices yet — once you’ve scanned one of these items in this region it’ll chart here. Local-store comparison needs at least 3 confirmed scans nearby. Every scan makes it smarter.'
             : 'No price points in this date range — widen the range to see more.'}
         </span>
       </div>
@@ -315,11 +321,14 @@ function buildChart(
   to: string,
   rangeInvalid: boolean,
 ): { series: ChartSeries[]; labels: string[] } {
-  if (!comparison || comparison.lines.length === 0) return { series: [], labels: [] }
+  if (!comparison || (comparison.lines.length === 0 && comparison.ownHistory.length === 0)) {
+    return { series: [], labels: [] }
+  }
 
   const nameById = new Map(products.map((p) => [p.id, p.name]))
   const weekSet = new Set<string>()
   comparison.lines.forEach((l) => l.points.forEach((pt) => weekSet.add(pt.weekStart)))
+  comparison.ownHistory.forEach((l) => l.points.forEach((pt) => weekSet.add(pt.weekStart)))
   const weeks = [...weekSet]
     .sort()
     .filter((w) => inRange(new Date(`${w}T00:00:00Z`), preset, from, to, rangeInvalid))
@@ -329,7 +338,9 @@ function buildChart(
     return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
   })
 
-  const series = comparison.lines.map((l, i) => {
+  // Market lines first (solid, one per store), then the caller's own purchases (dashed,
+  // one per product) — never blended, so own vs market stays honest (§6.5.2).
+  const marketSeries: ChartSeries[] = comparison.lines.map((l, i) => {
     const median = new Map(l.points.map((pt) => [pt.weekStart, pt.median]))
     const discount = new Map(l.points.map((pt) => [pt.weekStart, pt.discountMedian]))
     const product = nameById.get(l.productId) ?? l.productId
@@ -343,11 +354,32 @@ function buildChart(
       discounts: weeks.map((w) => discount.get(w) ?? null),
       stale: l.stale,
       staleDays: l.staleDays,
+      own: false,
+    }
+  })
+
+  const ownSeries: ChartSeries[] = comparison.ownHistory.map((l, i) => {
+    const median = new Map(l.points.map((pt) => [pt.weekStart, pt.median]))
+    const discount = new Map(l.points.map((pt) => [pt.weekStart, pt.discountMedian]))
+    const product = nameById.get(l.productId) ?? l.productId
+    return {
+      id: `own|${l.productId}`,
+      product,
+      merchant: OWN_LABEL,
+      name: `${product} · ${OWN_LABEL}`,
+      color: SERIES_COLORS[i % SERIES_COLORS.length],
+      data: weeks.map((w) => median.get(w) ?? null),
+      discounts: weeks.map((w) => discount.get(w) ?? null),
+      stale: false,
+      staleDays: 0,
+      own: true,
     }
   })
 
   // A line with no points in the visible range adds only noise to the legend.
-  const visible = series.filter((s) => s.data.some((v) => v !== null) || s.discounts.some((v) => v !== null))
+  const visible = [...marketSeries, ...ownSeries].filter(
+    (s) => s.data.some((v) => v !== null) || s.discounts.some((v) => v !== null),
+  )
   return { series: visible, labels }
 }
 

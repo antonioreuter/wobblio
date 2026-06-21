@@ -1,4 +1,5 @@
 import type { IPriceTrendQuery, PriceTrendLine } from '../../ports/data-intelligence/IPriceTrendQuery';
+import type { IOwnPurchaseHistoryQuery, OwnPurchaseLine } from '../../ports/data-intelligence/IOwnPurchaseHistoryQuery';
 import { InvalidTrendQueryError } from '../../domain/errors';
 
 // §6.5.1 / §6.5.2 serving constants. k and staleness mirror the §6.8 Gate-2 tunables.
@@ -16,15 +17,18 @@ export interface PriceTrendComparison {
   countryCode: string;
   regionCode: string;
   weeks: number;
-  lines: ServedPriceTrendLine[];
+  lines: ServedPriceTrendLine[]; // public market trend — Premium only; [] otherwise
+  ownHistory: OwnPurchaseLine[]; // the caller's own purchases — always served, no quorum gate
 }
 
-// Serves the de-identified comparison chart for the caller's region. The k≥3 cell
-// gate lives in the SQL adapter (a suppressed cell never crosses the port); this
-// service guards the request shape and decorates each served line with staleness.
+// Serves the comparison chart for the caller's region. Two series: the de-identified public
+// market trend (k≥3 gate in the SQL adapter, Premium-only via includeMarketTrend) and the
+// caller's own purchase history (RLS-scoped, no quorum gate). This service guards the request
+// shape and decorates each public line with staleness; role policy stays in the handler.
 export class PriceTrendService {
   constructor(
     private readonly trends: IPriceTrendQuery,
+    private readonly ownHistory: IOwnPurchaseHistoryQuery,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -32,6 +36,7 @@ export class PriceTrendService {
     productIds: string[],
     countryCode: string,
     regionCode: string,
+    includeMarketTrend: boolean,
   ): Promise<PriceTrendComparison> {
     const products = [...new Set(productIds.map((id) => id.trim()).filter(Boolean))];
     if (products.length === 0) throw new InvalidTrendQueryError('select at least one product');
@@ -42,14 +47,28 @@ export class PriceTrendService {
       throw new InvalidTrendQueryError('country and region are required');
     }
 
-    const lines = await this.trends.comparison({
+    const lines = includeMarketTrend
+      ? await this.trends.comparison({
+          productIds: products,
+          countryCode,
+          regionCode,
+          weeks: TREND_WINDOW_WEEKS,
+          kMin: TREND_K_MIN,
+        })
+      : [];
+    const ownHistory = await this.ownHistory.history({
       productIds: products,
       countryCode,
       regionCode,
       weeks: TREND_WINDOW_WEEKS,
-      kMin: TREND_K_MIN,
     });
-    return { countryCode, regionCode, weeks: TREND_WINDOW_WEEKS, lines: lines.map((l) => this.decorate(l)) };
+    return {
+      countryCode,
+      regionCode,
+      weeks: TREND_WINDOW_WEEKS,
+      lines: lines.map((l) => this.decorate(l)),
+      ownHistory,
+    };
   }
 
   private decorate(line: PriceTrendLine): ServedPriceTrendLine {

@@ -19,11 +19,21 @@ export interface TrendLine {
   staleDays: number
 }
 
+// The caller's own purchase history for a product — RLS-scoped, no quorum gate, so it
+// shows even when the public (market) line is still below k≥3. Keyed by product only.
+export interface OwnPurchaseLine {
+  productId: string
+  points: TrendPoint[]
+  purchaseCount: number
+  lastPurchasedOn: string
+}
+
 export interface TrendComparison {
   countryCode: string
   regionCode: string
   weeks: number
-  lines: TrendLine[]
+  lines: TrendLine[] // public market trend — empty for non-Premium callers
+  ownHistory: OwnPurchaseLine[] // the caller's own purchases — always present
 }
 
 export interface PriceTrends {

@@ -1298,6 +1298,7 @@
 }
 .status-help-btn:hover { color: var(--text-primary); background: var(--glass-highlight); }
 .th-help { display: inline-flex; align-items: center; gap: 6px; }
+.pane-subtitle--with-help { display: inline-flex; align-items: center; gap: 7px; }
 
 /* The primary trigger lives in the table header. Once the table collapses to
    the card layout (the thead is hidden), surface this compact one in the

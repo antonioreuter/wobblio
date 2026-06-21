@@ -2,18 +2,20 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import type { PoolClient } from 'pg';
 import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import { PriceTrendQueryAdapter } from '@infrastructure/adapters/data-intelligence/PriceTrendQueryAdapter';
+import { OwnPurchaseHistoryQueryAdapter } from '@infrastructure/adapters/data-intelligence/OwnPurchaseHistoryQueryAdapter';
 import { PriceTrendService } from '@core/services/data-intelligence/PriceTrendService';
 import { InvalidTrendQueryError } from '@core/domain/errors';
-import { json } from './shared';
+import { json, withTenantTx } from './shared';
 
-// §13.2 premium showcase: the comparison chart is a Premium-only feature. TESTER and
-// ADMIN see it too (operator/QA access); STANDARD gets a 403 the webapp renders as the
-// upgrade prompt.
+// §13.2 premium showcase: the de-identified market trend is Premium-only. TESTER and ADMIN
+// see it too (operator/QA access). STANDARD still gets their OWN purchase history (their own
+// data, no quorum gate) — the webapp renders an inline upgrade prompt for the market overlay.
 const PREMIUM_ROLES = new Set<AppUser['role']>(['PREMIUM', 'TESTER', 'ADMIN']);
 
 // GET /price-trends/comparison?products=<id,id,id>&country=NL&region=NL-NB
-// Reads the global price_observation store (no RLS) — country/region come from the
-// caller (defaulted client-side to their profile region, overridable via the picker).
+// Two series: the global price_observation market trend (RLS-exempt, Premium-only) and the
+// caller's own invoice_line history (RLS-scoped — hence withTenantTx). country/region come
+// from the caller (defaulted client-side to their profile region, overridable via the picker).
 export async function handlePriceTrendsRoute(
   db: PoolClient,
   user: AppUser,
@@ -22,18 +24,19 @@ export async function handlePriceTrendsRoute(
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> {
   if (method !== 'GET' || path !== '/price-trends/comparison') return json(404, { message: 'Not Found' });
-  if (!PREMIUM_ROLES.has(user.role)) {
-    return json(403, { message: 'Price Trends is available only for Premium.' });
-  }
 
   const query = event.queryStringParameters ?? {};
   const productIds = (query.products ?? '').split(',').map((id) => id.trim()).filter(Boolean);
   const countryCode = (query.country ?? '').toUpperCase();
   const regionCode = query.region ?? '';
+  const includeMarketTrend = PREMIUM_ROLES.has(user.role);
 
-  const service = new PriceTrendService(new PriceTrendQueryAdapter(db));
+  const service = new PriceTrendService(new PriceTrendQueryAdapter(db), new OwnPurchaseHistoryQueryAdapter(db));
   try {
-    return json(200, await service.comparison(productIds, countryCode, regionCode));
+    const comparison = await withTenantTx(db, user.id, () =>
+      service.comparison(productIds, countryCode, regionCode, includeMarketTrend),
+    );
+    return json(200, comparison);
   } catch (err) {
     if (err instanceof InvalidTrendQueryError) return json(400, { message: err.message });
     throw err;

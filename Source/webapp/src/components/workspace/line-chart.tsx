@@ -9,6 +9,7 @@ interface Series {
   data: (number | null)[] // weekly median (null = no data that week → line breaks)
   discounts: (number | null)[] // weekly discounted median, drawn as distinct markers
   stale: boolean // no observation in 60 days → greyed/dashed
+  own?: boolean // the caller's own purchases — drawn dashed to distinguish from market lines
 }
 
 interface LineChartProps {
@@ -83,7 +84,7 @@ export function LineChart({ series, months }: LineChartProps) {
                 strokeWidth="2.5"
                 strokeLinejoin="round"
                 strokeLinecap="round"
-                strokeDasharray={s.stale ? '5 4' : undefined}
+                strokeDasharray={s.stale || s.own ? '5 4' : undefined}
                 opacity={s.stale ? 0.5 : 1}
                 points={seg.map(([i, v]) => `${x(i)},${y(v)}`).join(' ')}
               />

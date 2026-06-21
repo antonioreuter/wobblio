@@ -5,6 +5,7 @@ import { MerchantCatalogAdapter } from '@infrastructure/adapters/data-intelligen
 import { ProductCatalogAdapter } from '@infrastructure/adapters/data-intelligence/ProductCatalogAdapter';
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
 import { PriceTrendQueryAdapter } from '@infrastructure/adapters/data-intelligence/PriceTrendQueryAdapter';
+import { OwnPurchaseHistoryQueryAdapter } from '@infrastructure/adapters/data-intelligence/OwnPurchaseHistoryQueryAdapter';
 import { PriceTrendService } from '@core/services/data-intelligence/PriceTrendService';
 import type { PriceObservationInput } from '@core/domain/priceObservation';
 
@@ -76,8 +77,8 @@ describe('PriceTrendQueryAdapter — §6.5.1 comparison over Postgres', () => {
   });
 
   it('serves weekly medians, splits promos out, and gates on k≥3 + staleness', async () => {
-    const service = new PriceTrendService(new PriceTrendQueryAdapter(pool));
-    const { weeks, lines } = await service.comparison([productId], 'NL', region);
+    const service = new PriceTrendService(new PriceTrendQueryAdapter(pool), new OwnPurchaseHistoryQueryAdapter(pool));
+    const { weeks, lines } = await service.comparison([productId], 'NL', region, true);
 
     expect(weeks).toBe(26);
     // Fresh + stale cells served; the 2-observation sparse cell is suppressed.
@@ -101,8 +102,8 @@ describe('PriceTrendQueryAdapter — §6.5.1 comparison over Postgres', () => {
   });
 
   it('suppresses every cell when no product clears the gate in the region', async () => {
-    const service = new PriceTrendService(new PriceTrendQueryAdapter(pool));
-    const { lines } = await service.comparison([randomUUID()], 'NL', region);
+    const service = new PriceTrendService(new PriceTrendQueryAdapter(pool), new OwnPurchaseHistoryQueryAdapter(pool));
+    const { lines } = await service.comparison([randomUUID()], 'NL', region, true);
     expect(lines).toEqual([]);
   });
 });
