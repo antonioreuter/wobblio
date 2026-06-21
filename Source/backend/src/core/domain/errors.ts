@@ -156,6 +156,13 @@ export class PremiumRequiredError extends Error {
   }
 }
 
+export class InvalidTrendQueryError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid price-trend query: ${reason}`);
+    this.name = 'InvalidTrendQueryError';
+  }
+}
+
 export class InvalidHouseholdError extends Error {
   constructor(readonly reason: string) {
     super(`Invalid household: ${reason}`);

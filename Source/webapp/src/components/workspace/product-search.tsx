@@ -1,26 +1,71 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Search } from 'lucide-react'
-import { TREND_PRODUCTS, MAX_PRODUCTS } from './trend-data'
+import { MAX_PRODUCTS } from './trend-data'
+
+export interface TrendProduct {
+  id: string
+  name: string
+  brand: string | null
+}
+
+interface ApiProduct {
+  productId: string
+  displayName: string
+  brand: string | null
+}
 
 interface ProductSearchProps {
-  onAdd: (id: string) => void
+  onAdd: (product: TrendProduct) => void
   disabled: boolean
   exclude: string[]
 }
 
+const MIN_QUERY = 2
+const DEBOUNCE_MS = 250
+
+// §10 product autocomplete against the real catalog (/api/products/search). Results
+// are the caller's RLS-visible ACTIVE ∪ own-PROVISIONAL products; selecting one hands
+// the parent {id, name} so the chip can show the product without a second lookup.
 export function ProductSearch({ onAdd, disabled, exclude }: ProductSearchProps) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
-  const query = q.trim().toLowerCase()
-  const matches = query
-    ? TREND_PRODUCTS
-        .filter((p) => !exclude.includes(p.id) && (p.name.toLowerCase().includes(query) || p.short.toLowerCase().includes(query)))
-        .slice(0, 8)
-    : []
+  const [results, setResults] = useState<ApiProduct[]>([])
+  const [loading, setLoading] = useState(false)
+  const query = q.trim()
 
-  const pick = (id: string) => { onAdd(id); setQ(''); setOpen(false) }
+  useEffect(() => {
+    if (query.length < MIN_QUERY) {
+      setResults([])
+      return
+    }
+    const controller = new AbortController()
+    setLoading(true)
+    const timer = setTimeout(() => {
+      fetch(`/api/products/search?q=${encodeURIComponent(query)}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+        .then((r) => (r.ok ? r.json() : { products: [] }))
+        .then((d: { products: ApiProduct[] }) => setResults(d.products ?? []))
+        .catch(() => undefined)
+        .finally(() => setLoading(false))
+    }, DEBOUNCE_MS)
+    return () => {
+      controller.abort()
+      clearTimeout(timer)
+    }
+  }, [query])
+
+  const matches = results.filter((p) => !exclude.includes(p.productId)).slice(0, 8)
+
+  const pick = (p: ApiProduct) => {
+    onAdd({ id: p.productId, name: p.displayName, brand: p.brand })
+    setQ('')
+    setResults([])
+    setOpen(false)
+  }
 
   return (
     <div className="filter-field typeahead-field">
@@ -39,26 +84,28 @@ export function ProductSearch({ onAdd, disabled, exclude }: ProductSearchProps) 
           onKeyDown={(e) => {
             if (e.key === 'Enter' && matches[0]) {
               e.preventDefault()
-              pick(matches[0].id)
+              pick(matches[0])
             }
           }}
           data-testid="trend-product-search"
         />
       </div>
-      {open && !disabled && query && (
+      {open && !disabled && query.length >= MIN_QUERY && (
         <div className="typeahead">
-          {matches.length === 0 ? (
+          {loading && matches.length === 0 ? (
+            <div className="typeahead-empty">Searching…</div>
+          ) : matches.length === 0 ? (
             <div className="typeahead-empty">No products match “{q}”.</div>
           ) : (
             matches.map((p) => (
               <button
-                key={p.id}
+                key={p.productId}
                 type="button"
                 className="typeahead-opt"
-                onMouseDown={(e) => { e.preventDefault(); pick(p.id) }}
+                onMouseDown={(e) => { e.preventDefault(); pick(p) }}
               >
-                <span className="ta-name">{p.name}</span>
-                <span className="ta-stores">{p.stores.length} stores</span>
+                <span className="ta-name">{p.displayName}</span>
+                {p.brand && <span className="ta-stores">{p.brand}</span>}
               </button>
             ))
           )}

@@ -54,6 +54,7 @@ import { handleBudgetsRoute } from './budgetRoutes';
 import { handleNotificationsRoute } from './notificationRoutes';
 import { handleListsRoute } from './listRoutes';
 import { handleProductsRoute } from './productRoutes';
+import { handlePriceTrendsRoute } from './priceTrendRoutes';
 
 export const handler = async (
   event: APIGatewayProxyEvent,
@@ -103,6 +104,7 @@ export const handler = async (
     const isNotificationsRoute = path.startsWith('/notifications');
     const isListsRoute = path.startsWith('/lists');
     const isProductsRoute = path.startsWith('/products');
+    const isPriceTrendsRoute = path.startsWith('/price-trends');
 
     // Billing (upgrade), own-profile onboarding, and reference lookups stay
     // reachable while waitlisted; everything else is gated until a slot is released.
@@ -153,6 +155,10 @@ export const handler = async (
 
     if (isProductsRoute) {
       return handleProductsRoute(client, user, path, method, event);
+    }
+
+    if (isPriceTrendsRoute) {
+      return handlePriceTrendsRoute(client, user, path, method, event);
     }
 
     return json(200, { status: 'ok' });

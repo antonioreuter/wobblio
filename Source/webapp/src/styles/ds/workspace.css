@@ -927,6 +927,28 @@
   display: flex; align-items: baseline; gap: 8px;
 }
 .legend-delta { font-family: var(--font-body); font-size: 12px; font-weight: 600; }
+.legend-stale {
+  display: inline-flex; align-items: center; gap: 3px; margin-left: 8px;
+  font-size: 11px; font-weight: 600; color: var(--amber, #d97706);
+  vertical-align: middle;
+}
+.tip-promo { color: var(--text-muted); font-weight: 600; }
+
+/* ==========================================================================
+   Price-trends region picker
+   ========================================================================== */
+.region-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--text-secondary); white-space: nowrap;
+}
+.region-label .region-modify { padding: 4px 8px; font-size: 12px; gap: 4px; }
+.region-editor {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface);
+}
+.region-editor .filter-field { min-width: 160px; }
+.region-editor-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 
 /* ==========================================================================
    Invoice drawer
@@ -1668,12 +1690,18 @@
   gap: 4px;
   padding: 10px;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--glass-border);
-  background: var(--surface-raised, #0b0f1a);
+  /* Elevated surface that reads clearly against the app bg (#161a24 dark /
+     #eaeef5 light) — lifted lighter in dark, bright white in light. */
+  border: 1px solid var(--popup-border, var(--glass-border));
+  background: var(--popup-bg, #1e2433);
   box-shadow: 0 12px 32px rgba(3, 4, 9, 0.45);
   z-index: var(--z-modal);
 }
-[data-theme="light"] .user-menu-pop { background: #fff; }
+[data-theme="light"] .user-menu-pop {
+  --popup-bg: #ffffff;
+  --popup-border: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+}
 .user-menu-pop .user-plan { padding: 6px 8px; }
 .user-menu-item {
   display: flex;
@@ -1725,12 +1753,18 @@
   gap: 4px;
   padding: 10px;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--glass-border);
-  background: var(--surface-raised, #0b0f1a);
+  /* Elevated surface that reads clearly against the app bg (#161a24 dark /
+     #eaeef5 light) — lifted lighter in dark, bright white in light. */
+  border: 1px solid var(--popup-border, var(--glass-border));
+  background: var(--popup-bg, #1e2433);
   box-shadow: 0 12px 32px rgba(3, 4, 9, 0.45);
   z-index: var(--z-modal);
 }
-[data-theme="light"] .notification-menu-pop { background: #fff; }
+[data-theme="light"] .notification-menu-pop {
+  --popup-bg: #ffffff;
+  --popup-border: rgba(15, 23, 42, 0.16);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+}
 .notification-menu-head {
   padding: 4px 8px 8px;
   font-size: 12px;

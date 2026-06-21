@@ -1,91 +1,117 @@
 'use client'
 
-import { useState } from 'react'
-import { Calendar, Clock, Search, Trash2, TrendingUp } from 'lucide-react'
-import { Button, Card } from '@/components/ds'
+import { useEffect, useMemo, useState } from 'react'
+import { useSession } from 'next-auth/react'
+import { Calendar, Clock, Crown, Trash2, TrendingUp } from 'lucide-react'
+import { Card } from '@/components/ds'
 import {
-  daysAgo,
   FilterSelect,
   LineChart,
   MAX_PRODUCTS,
-  MERCHANT_SHORT,
   MONTHS,
   PRESETS,
   ProductSearch,
+  RegionPicker,
   SERIES_COLORS,
-  TODAY,
-  TREND_DATA,
-  TREND_PRODUCTS,
-  TREND_WEEKS,
+  usePriceTrends,
   type Preset,
+  type TrendComparison,
+  type TrendProduct,
 } from '@/components/workspace'
 
+interface ChartSeries {
+  id: string
+  name: string
+  product: string
+  merchant: string
+  color: string
+  data: (number | null)[]
+  discounts: (number | null)[]
+  stale: boolean
+  staleDays: number
+}
+
 export default function ReportsPage() {
-  const [selected, setSelected] = useState<string[]>(['milk'])
+  const { data: session } = useSession()
+  const role = session?.user?.role
+  // PREMIUM plus the elevated operator roles (ADMIN, TESTER); STANDARD sees the upsell.
+  const isPremium = !!role && role !== 'STANDARD'
+
+  const [selected, setSelected] = useState<TrendProduct[]>([])
+  const [country, setCountry] = useState('')
+  const [region, setRegion] = useState('')
   const [preset, setPreset] = useState<Preset>('90d')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [searching, setSearching] = useState(false)
+
+  // Default the region to the caller's profile (§6.5 serves their own region first);
+  // the RegionPicker lets them switch it from there.
+  useEffect(() => {
+    if (!isPremium) return
+    fetch('/api/me/profile', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { country?: string; regionCode?: string | null } | null) => {
+        if (!p) return
+        if (p.country) setCountry(p.country)
+        if (p.regionCode) setRegion(p.regionCode)
+      })
+      .catch(() => undefined)
+  }, [isPremium])
+
+  const ids = selected.map((p) => p.id)
+  const { comparison, loading } = usePriceTrends(ids, country, region, isPremium)
 
   const atMax = selected.length >= MAX_PRODUCTS
-
-  const lines = selected.flatMap((id) => {
-    const pr = TREND_PRODUCTS.find((p) => p.id === id)
-    if (!pr) return []
-    return pr.stores.map(([m]) => ({
-      id: `${id}|${m}`,
-      product: pr.short,
-      merchant: MERCHANT_SHORT[m] ?? m,
-      name: `${pr.short} · ${MERCHANT_SHORT[m] ?? m}`,
-      full: TREND_DATA[`${id}|${m}`],
-    }))
-  })
-
-  const rangeDays =
-    from && to ? Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) : 0
-  const rangeInvalid = preset === 'custom' && from !== '' && to !== '' && (rangeDays < 0 || rangeDays > 92)
-
-  const inRange = (d: Date) => {
-    if (preset === '30d') return d >= daysAgo(30)
-    if (preset === 'month')
-      return d.getUTCMonth() === TODAY.getUTCMonth() && d.getUTCFullYear() === TODAY.getUTCFullYear()
-    if (preset === 'custom' && !rangeInvalid && from && to)
-      return d >= new Date(from) && d <= new Date(to)
-    return d >= daysAgo(92)
+  const add = (p: TrendProduct) => {
+    if (!atMax && !selected.some((s) => s.id === p.id)) setSelected((s) => [...s, p])
   }
-
-  const idx = TREND_WEEKS.map((d, i) => [d, i] as const).filter(([d]) => inRange(d)).map(([, i]) => i)
-  const labels = idx.map((i) => {
-    const d = TREND_WEEKS[i]
-    return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
-  })
-  const series = lines.map((ln, i) => ({
-    ...ln,
-    color: SERIES_COLORS[i % SERIES_COLORS.length],
-    data: idx.map((j) => ln.full[j]),
-  }))
-  const rangeLabel = PRESETS.find(([v]) => v === preset)?.[1] ?? 'Last 3 months'
-
-  const add = (id: string) => {
-    if (!atMax && !selected.includes(id)) setSelected((s) => [...s, id])
-  }
-  const removeProduct = (id: string) => setSelected((s) => s.filter((x) => x !== id))
+  const removeProduct = (id: string) => setSelected((s) => s.filter((p) => p.id !== id))
   const clear = () => {
     setSelected([])
     setPreset('90d')
     setFrom('')
     setTo('')
   }
-  const search = () => {
-    setSearching(true)
-    setTimeout(() => setSearching(false), 550)
+
+  const rangeDays =
+    from && to ? Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) : 0
+  const rangeInvalid = preset === 'custom' && from !== '' && to !== '' && (rangeDays < 0 || rangeDays > 92)
+
+  const { series, labels } = useMemo(
+    () => buildChart(comparison, selected, preset, from, to, rangeInvalid),
+    [comparison, selected, preset, from, to, rangeInvalid],
+  )
+  const rangeLabel = PRESETS.find(([v]) => v === preset)?.[1] ?? 'Last 3 months'
+
+  if (!isPremium) {
+    return (
+      <div className="pane">
+        <h2 className="pane-title">Price Trends</h2>
+        <p className="pane-subtitle">Compare an item across local stores over time.</p>
+        <Card className="panel budget-upsell" data-testid="trends-upsell">
+          <div className="budget-upsell-icon"><Crown size={22} /></div>
+          <h3 className="budget-upsell-title">Price Trends is available only for Premium</h3>
+          <p className="budget-upsell-body">
+            Premium unlocks the crowdsourced price index: compare up to {MAX_PRODUCTS} products across
+            local stores over six months, with weekly medians, promo markers, and regional price trends.
+          </p>
+        </Card>
+      </div>
+    )
   }
 
   return (
     <div className="pane">
-      <p className="pane-subtitle">
-        Compare an item across local stores over time — one line per store. Track up to {MAX_PRODUCTS} products.
-      </p>
+      <div className="pane-head-row">
+        <p className="pane-subtitle">
+          Compare an item across local stores over time — one line per store. Track up to {MAX_PRODUCTS} products.
+        </p>
+        <RegionPicker
+          countryCode={country}
+          regionCode={region}
+          onChange={(c, r) => { setCountry(c); setRegion(r) }}
+        />
+      </div>
 
       <Card className="panel filter-card">
         <div className="filter-head">
@@ -94,7 +120,7 @@ export default function ReportsPage() {
 
         <div className="filter-grid">
           <div className="span-2">
-            <ProductSearch onAdd={add} disabled={atMax} exclude={selected} />
+            <ProductSearch onAdd={add} disabled={atMax} exclude={ids} />
           </div>
           <FilterSelect
             label="Date range"
@@ -147,30 +173,26 @@ export default function ReportsPage() {
             {selected.length === 0 && (
               <span className="trend-empty-hint">Search above to add up to {MAX_PRODUCTS} products.</span>
             )}
-            {selected.map((id) => {
-              const pr = TREND_PRODUCTS.find((p) => p.id === id)
-              if (!pr) return null
-              return (
-                <span className="trend-chip" key={id}>
-                  {pr.short} <span className="trend-stores">{pr.stores.length} stores</span>
-                  <button
-                    type="button"
-                    className="trend-x"
-                    aria-label={`Remove ${pr.name}`}
-                    onClick={() => removeProduct(id)}
-                  >
-                    ✕
-                  </button>
-                </span>
-              )
-            })}
+            {selected.map((p) => (
+              <span className="trend-chip" key={p.id}>
+                {p.name}
+                <button
+                  type="button"
+                  className="trend-x"
+                  aria-label={`Remove ${p.name}`}
+                  onClick={() => removeProduct(p.id)}
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
           </div>
         </div>
 
         <div className="filter-foot">
           <span className={`filter-hint ${rangeInvalid ? 'invalid' : ''}`}>
             <Clock size={13} />
-            {rangeInvalid ? 'Range can’t exceed 3 months.' : `${lines.length} lines · max range 3 months`}
+            {rangeInvalid ? 'Range can’t exceed 3 months.' : `${series.length} lines · max range 6 months`}
           </span>
           <div className="filter-actions">
             <button
@@ -181,15 +203,6 @@ export default function ReportsPage() {
             >
               <Trash2 size={14} /> Clear filters
             </button>
-            <Button
-              variant="primary"
-              disabled={rangeInvalid}
-              style={{ padding: '9px 20px', fontSize: 13 }}
-              onClick={search}
-              iconLeft={searching ? null : <Search size={15} />}
-            >
-              {searching ? 'Searching…' : 'Search'}
-            </Button>
           </div>
         </div>
       </Card>
@@ -201,41 +214,153 @@ export default function ReportsPage() {
             {rangeInvalid ? 'Last 3 months' : rangeLabel}
           </span>
         </div>
-        {series.length === 0 ? (
-          <div className="table-empty">
-            <TrendingUp size={26} />
-            <span>Add a product above to start comparing prices across stores.</span>
-          </div>
-        ) : (
-          <>
-            <LineChart series={series} months={labels} />
-            <div className="trend-legend">
-              {series.map((s) => {
-                const d = ((s.data[s.data.length - 1] - s.data[0]) / s.data[0]) * 100
-                return (
-                  <div className="legend-item" key={s.id}>
-                    <span className="dot" style={{ background: s.color }} />
-                    <div className="legend-meta">
-                      <span className="legend-name">
-                        {s.product} · <strong>{s.merchant}</strong>
-                      </span>
-                      <span className="legend-now">
-                        €{s.data[s.data.length - 1].toFixed(2)}
-                        <span
-                          className="legend-delta"
-                          style={{ color: d > 0 ? 'var(--danger)' : 'var(--success)' }}
-                        >
-                          {d > 0 ? '▲' : '▼'} {Math.abs(d).toFixed(1)}%
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )}
+        <TrendChartBody
+          loading={loading}
+          hasProducts={selected.length > 0}
+          comparison={comparison}
+          series={series}
+          labels={labels}
+        />
       </Card>
     </div>
   )
+}
+
+function TrendChartBody({
+  loading,
+  hasProducts,
+  comparison,
+  series,
+  labels,
+}: {
+  loading: boolean
+  hasProducts: boolean
+  comparison: TrendComparison | null
+  series: ChartSeries[]
+  labels: string[]
+}) {
+  if (!hasProducts) {
+    return (
+      <div className="table-empty">
+        <TrendingUp size={26} />
+        <span>Add a product above to start comparing prices across stores.</span>
+      </div>
+    )
+  }
+  if (loading && !comparison) {
+    return <div className="table-empty"><span>Loading price trends…</span></div>
+  }
+  // Lines exist but the chosen range hides them all; or the cell never cleared k≥3.
+  if (series.length === 0) {
+    const noServedData = !comparison || comparison.lines.length === 0
+    return (
+      <div className="table-empty" data-testid="trends-empty">
+        <TrendingUp size={26} />
+        <span>
+          {noServedData
+            ? 'Not enough nearby data yet — we need at least 3 confirmed scans of a product in this region before a price shows. Every scan makes it smarter.'
+            : 'No price points in this date range — widen the range to see more.'}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <LineChart series={series} months={labels} />
+      <div className="trend-legend">
+        {series.map((s) => {
+          const vals = s.data.filter((v): v is number => v !== null)
+          const now = vals.length ? vals[vals.length - 1] : null
+          const delta = vals.length > 1 ? ((vals[vals.length - 1] - vals[0]) / vals[0]) * 100 : null
+          return (
+            <div className="legend-item" key={s.id}>
+              <span className="dot" style={{ background: s.color, opacity: s.stale ? 0.5 : 1 }} />
+              <div className="legend-meta">
+                <span className="legend-name">
+                  {s.product} · <strong>{s.merchant}</strong>
+                  {s.stale && (
+                    <span className="legend-stale" title={`No data for ${s.staleDays} days`}>
+                      <Clock size={11} /> stale · {s.staleDays}d
+                    </span>
+                  )}
+                </span>
+                <span className="legend-now">
+                  {now !== null ? `€${now.toFixed(2)}` : '—'}
+                  {delta !== null && (
+                    <span
+                      className="legend-delta"
+                      style={{ color: delta > 0 ? 'var(--danger)' : 'var(--success)' }}
+                    >
+                      {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
+// Aligns every served line onto a shared week axis (union of observed weeks, filtered
+// by the active preset) so the chart breaks on missing weeks instead of interpolating.
+function buildChart(
+  comparison: TrendComparison | null,
+  products: TrendProduct[],
+  preset: Preset,
+  from: string,
+  to: string,
+  rangeInvalid: boolean,
+): { series: ChartSeries[]; labels: string[] } {
+  if (!comparison || comparison.lines.length === 0) return { series: [], labels: [] }
+
+  const nameById = new Map(products.map((p) => [p.id, p.name]))
+  const weekSet = new Set<string>()
+  comparison.lines.forEach((l) => l.points.forEach((pt) => weekSet.add(pt.weekStart)))
+  const weeks = [...weekSet]
+    .sort()
+    .filter((w) => inRange(new Date(`${w}T00:00:00Z`), preset, from, to, rangeInvalid))
+
+  const labels = weeks.map((w) => {
+    const d = new Date(`${w}T00:00:00Z`)
+    return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
+  })
+
+  const series = comparison.lines.map((l, i) => {
+    const median = new Map(l.points.map((pt) => [pt.weekStart, pt.median]))
+    const discount = new Map(l.points.map((pt) => [pt.weekStart, pt.discountMedian]))
+    const product = nameById.get(l.productId) ?? l.productId
+    return {
+      id: `${l.productId}|${l.merchantId}`,
+      product,
+      merchant: l.merchantName,
+      name: `${product} · ${l.merchantName}`,
+      color: SERIES_COLORS[i % SERIES_COLORS.length],
+      data: weeks.map((w) => median.get(w) ?? null),
+      discounts: weeks.map((w) => discount.get(w) ?? null),
+      stale: l.stale,
+      staleDays: l.staleDays,
+    }
+  })
+
+  // A line with no points in the visible range adds only noise to the legend.
+  const visible = series.filter((s) => s.data.some((v) => v !== null) || s.discounts.some((v) => v !== null))
+  return { series: visible, labels }
+}
+
+function daysBack(n: number): Date {
+  return new Date(Date.now() - n * 86_400_000)
+}
+
+function inRange(d: Date, preset: Preset, from: string, to: string, rangeInvalid: boolean): boolean {
+  const today = new Date()
+  if (preset === '30d') return d >= daysBack(30)
+  if (preset === 'month')
+    return d.getUTCMonth() === today.getMonth() && d.getUTCFullYear() === today.getFullYear()
+  if (preset === 'custom' && !rangeInvalid && from && to)
+    return d >= new Date(from) && d <= new Date(to)
+  return d >= daysBack(90)
 }
