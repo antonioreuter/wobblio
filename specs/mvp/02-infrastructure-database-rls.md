@@ -122,7 +122,6 @@ migration_ledger    ()
 limits              (role_or_user_ref, quota_name, value)
 ai_spend_ledger     (tenant_id, date, model_role, input_tokens, output_tokens, est_cost)
 tenant_trust        (tenant_id, trust_score, recomputed_at)
-tenant_signature    (tenant_id, device_hash, ip_prefix_hash, first_seen_at)
 payment_transaction (id, user_id, stripe_event_id UNIQUE, type ENUM(...),
                      amount, currency, plan ENUM(MONTHLY,ANNUAL),
                      occurred_at, raw_payload_s3_key)

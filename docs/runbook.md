@@ -796,9 +796,9 @@ Migration files live in `Source/infra/src/migrations/` and are TypeScript files 
 
 `app_user`, `household`, `household_member`, `invoice`, `invoice_line`, `invoice_feedback`, `shopping_list`, `shopping_list_item`, `budget`, `bill_split`, `bill_split_line`, `quota_counter`, `ingestion_ledger`, `data_request`
 
-**Global tables (no RLS — 18 tables):**
+**Global tables (no RLS — 17 tables):**
 
-`merchant`, `merchant_branch`, `merchant_alias`, `product`, `product_category`, `product_concept`, `product_alias`, `price_observation` *(anonymized, no tenant ref)*, `fx_rate`, `ai_spend_ledger`, `tenant_trust`, `tenant_signature`, `payment_transaction` *(7-year retention)*, `system_counter`, `limits`, `kpi_daily`
+`merchant`, `merchant_branch`, `merchant_alias`, `product`, `product_category`, `product_concept`, `product_alias`, `price_observation` *(anonymized, no tenant ref)*, `fx_rate`, `ai_spend_ledger`, `tenant_trust`, `payment_transaction` *(7-year retention)*, `system_counter`, `limits`, `kpi_daily`
 
 ### 7.5 PostgreSQL Extensions
 

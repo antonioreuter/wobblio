@@ -52,7 +52,7 @@ SET LOCAL app.current_tenant_id = '<uuid>';
 
 Every API Lambda must set this **before** the first query in the transaction. The `ITenantContext` port owns this — handlers call it, adapters consume it. Direct `pg` calls from handlers are a review reject.
 
-Globally readable tables (no RLS): `merchant`, `merchant_branch`, `merchant_alias`, `product_category`, `product_concept`, `product`, `product_alias`, `price_observation`, `fx_rate`, `system_counter`, `migration_ledger`, `limits`, `ai_spend_ledger`, `tenant_trust`, `tenant_signature`, `payment_transaction`, `kpi_daily`. Treat these with care: writes to catalog tables go through the canonicalization/quarantine pipeline (§6.8), never raw inserts from a handler.
+Globally readable tables (no RLS): `merchant`, `merchant_branch`, `merchant_alias`, `product_category`, `product_concept`, `product`, `product_alias`, `price_observation`, `fx_rate`, `system_counter`, `migration_ledger`, `limits`, `ai_spend_ledger`, `tenant_trust`, `payment_transaction`, `kpi_daily`. Treat these with care: writes to catalog tables go through the canonicalization/quarantine pipeline (§6.8), never raw inserts from a handler.
 
 Migrations: use the `database-migrations` skill. Never edit a migration that has shipped — write a new one.
 
