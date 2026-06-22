@@ -80,11 +80,11 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
 
     const products = new ProductCatalogAdapter(pool);
     milkId = await products.createProvisionalProduct({
-      displayName: `Own Milk ${randomUUID().slice(0, 8)}`, categoryId: 'cat-dairy',
+      displayName: `Own Milk ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
       baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
     nicheId = await products.createProvisionalProduct({
-      displayName: `Own Niche ${randomUUID().slice(0, 8)}`, categoryId: 'cat-dairy',
+      displayName: `Own Niche ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
       baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
 

@@ -6,8 +6,6 @@ import { TenantContextAdapter } from '@infrastructure/adapters/identity/TenantCo
 import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
 import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceRepositoryAdapter';
 import { S3FileStorageAdapter } from '@infrastructure/adapters/ingestion/S3FileStorageAdapter';
-import { AiSpendLedgerAdapter } from '@infrastructure/adapters/ai/AiSpendLedgerAdapter';
-import { SsmSpendCapAdapter } from '@infrastructure/adapters/ai/SsmSpendCapAdapter';
 import { BedrockConverseAdapter } from '@infrastructure/adapters/ai/BedrockConverseAdapter';
 import { BedrockTitanEmbedderAdapter } from '@infrastructure/adapters/data-intelligence/BedrockTitanEmbedderAdapter';
 import { MerchantCatalogAdapter } from '@infrastructure/adapters/data-intelligence/MerchantCatalogAdapter';
@@ -15,7 +13,6 @@ import { ProductCatalogAdapter } from '@infrastructure/adapters/data-intelligenc
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
 import { ContributorContextRepositoryAdapter } from '@infrastructure/adapters/data-intelligence/ContributorContextRepositoryAdapter';
 import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligence/RegionReferenceAdapter';
-import { BedrockSpendGuardService } from '@core/services/ai/BedrockSpendGuardService';
 import { VisionParseService } from '@core/services/ingestion/VisionParseService';
 import { MerchantResolver } from '@core/services/data-intelligence/MerchantResolver';
 import { ProductNormalizer } from '@core/services/data-intelligence/ProductNormalizer';
@@ -59,7 +56,6 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   const embedderModelId = await resolveModelId(EMBEDDER_MODEL_PARAM);
   const converse = new BedrockConverseAdapter(REGION);
   const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
-  const capProvider = new SsmSpendCapAdapter(REGION);
 
   const batchItemFailures: { itemIdentifier: string }[] = [];
 
@@ -70,8 +66,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       const message = JSON.parse(record.body) as IngestionMessage;
       await client.query('BEGIN');
 
-      const spendGuard = new BedrockSpendGuardService(converse, new AiSpendLedgerAdapter(client), capProvider);
-      const visionParser = new VisionParseService(spendGuard, visionModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
+      const visionParser = new VisionParseService(converse, visionModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
       const merchantCatalog = new MerchantCatalogAdapter(client);
       const productCatalog = new ProductCatalogAdapter(client);
       const service = new IngestionService(
@@ -79,9 +74,9 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         new IngestionLedgerAdapter(client),
         new S3FileStorageAdapter(REGION, uploadsBucket),
         visionParser,
-        new MerchantResolver(merchantCatalog, spendGuard, auxiliaryModelId),
-        new ProductNormalizer(productCatalog, embedder, spendGuard, auxiliaryModelId),
-        new InvoiceClassifier(merchantCatalog, spendGuard, auxiliaryModelId),
+        new MerchantResolver(merchantCatalog, converse, auxiliaryModelId),
+        new ProductNormalizer(productCatalog, embedder, converse, auxiliaryModelId),
+        new InvoiceClassifier(merchantCatalog, converse, auxiliaryModelId),
         new TagGenerator(),
         new InvoiceRepositoryAdapter(client),
         new PriceObservationStoreAdapter(client),

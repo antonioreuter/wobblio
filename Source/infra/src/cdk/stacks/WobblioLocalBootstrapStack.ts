@@ -101,7 +101,6 @@ export class WobblioLocalBootstrapStack extends Stack {
     };
 
     const observabilityParams: Record<string, string> = {
-      '/wobblio/config/ai/daily_spend_cap': '0.10',
       '/wobblio/config/ops/email': 'antonioreuter@gmail.com',
     };
 

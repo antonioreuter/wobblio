@@ -1,16 +1,14 @@
 import type { Pool, PoolClient } from 'pg';
-import type { IMerchantCatalog, MerchantAliasMatch, WriteMerchantAliasInput } from '@core/ports/data-intelligence/IMerchantCatalog';
+import type { IMerchantCatalog, MerchantAliasMatch, MerchantBrandCandidate, WriteMerchantAliasInput } from '@core/ports/data-intelligence/IMerchantCatalog';
 
 interface AliasRow {
   merchant_id: string;
-  branch_id: string | null;
   brand_name: string;
   sim: string;
 }
 
 const toMatch = (row: AliasRow): MerchantAliasMatch => ({
   merchantId: row.merchant_id,
-  branchId: row.branch_id,
   brandName: row.brand_name,
   similarity: parseFloat(row.sim),
 });
@@ -21,7 +19,7 @@ export class MerchantCatalogAdapter implements IMerchantCatalog {
 
   async findExactAlias(normalized: string, countryCode: string): Promise<MerchantAliasMatch | null> {
     const result = await this.db.query<AliasRow>(
-      `SELECT a.merchant_id, a.branch_id, m.brand_name, '1'::text AS sim
+      `SELECT a.merchant_id, m.brand_name, '1'::text AS sim
        FROM merchant_alias a JOIN merchant m ON m.id = a.merchant_id
        WHERE a.alias_normalized = $1 AND a.country_code = $2
        LIMIT 1`,
@@ -32,7 +30,7 @@ export class MerchantCatalogAdapter implements IMerchantCatalog {
 
   async findFuzzyAliases(normalized: string, countryCode: string, limit: number): Promise<MerchantAliasMatch[]> {
     const result = await this.db.query<AliasRow>(
-      `SELECT a.merchant_id, a.branch_id, m.brand_name,
+      `SELECT a.merchant_id, m.brand_name,
               similarity(a.alias_normalized, $1)::text AS sim
        FROM merchant_alias a JOIN merchant m ON m.id = a.merchant_id
        WHERE a.country_code = $2 AND a.alias_normalized % $1
@@ -43,14 +41,38 @@ export class MerchantCatalogAdapter implements IMerchantCatalog {
     return result.rows.map(toMatch);
   }
 
+  // Brand-level word-similarity match: lets the LLM fallback see existing brands even when
+  // the alias search missed an over-captured receipt header (e.g.
+  // "ALBERT HEIJN XL EINDHOVEN WINKELCENTRUM WOENSEL"). word_similarity (<%) compares the
+  // short brand against the best extent of the long blob, so a brand contained in the header
+  // scores high — unlike symmetric similarity, whose denominator the extra tokens inflate.
+  async findBrandCandidates(normalized: string, countryCode: string, limit: number): Promise<MerchantBrandCandidate[]> {
+    const result = await this.db.query<{ id: string; brand_name: string }>(
+      `SELECT m.id, m.brand_name
+       FROM merchant m
+       WHERE m.country_code = $2 AND m.brand_name <% $1
+       ORDER BY word_similarity(m.brand_name, $1) DESC
+       LIMIT $3`,
+      [normalized, countryCode, limit],
+    );
+    return result.rows.map(row => ({ merchantId: row.id, brandName: row.brand_name }));
+  }
+
   async createProvisionalMerchant(brandName: string, countryCode: string, defaultCategoryId: string | null): Promise<string> {
-    const result = await this.db.query<{ id: string }>(
+    const inserted = await this.db.query<{ id: string }>(
       `INSERT INTO merchant (brand_name, country_code, default_category_id, created_via, status)
        VALUES ($1, $2, $3, 'AUTO', 'PROVISIONAL')
+       ON CONFLICT (brand_name, country_code) DO NOTHING
        RETURNING id`,
       [brandName, countryCode, defaultCategoryId],
     );
-    return result.rows[0].id;
+    if (inserted.rows[0]) return inserted.rows[0].id;
+
+    const existing = await this.db.query<{ id: string }>(
+      `SELECT id FROM merchant WHERE brand_name = $1 AND country_code = $2 LIMIT 1`,
+      [brandName, countryCode],
+    );
+    return existing.rows[0].id;
   }
 
   async writeAlias(input: WriteMerchantAliasInput): Promise<void> {

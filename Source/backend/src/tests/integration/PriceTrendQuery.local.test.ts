@@ -45,7 +45,7 @@ describe('PriceTrendQueryAdapter — §6.5.1 comparison over Postgres', () => {
     sparseMerchantId = await merchants.createProvisionalMerchant('Trend Sparse Shop', 'NL', 'cat-groceries');
     staleMerchantId = await merchants.createProvisionalMerchant('Trend Stale Shop', 'NL', 'cat-groceries');
     productId = await new ProductCatalogAdapter(pool).createProvisionalProduct({
-      displayName: `Trend Milk ${randomUUID().slice(0, 8)}`, categoryId: 'cat-dairy',
+      displayName: `Trend Milk ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
       baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
 

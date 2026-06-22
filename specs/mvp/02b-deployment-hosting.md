@@ -90,7 +90,7 @@ These two endpoints replace the deleted routes. Both must be wired into API Gate
 
 #### `GET /waitlist/status` (public, no auth)
 
-- Reads `system_counter WHERE name = 'waitlist_count'` via the DB port
+- Reads `system_counter WHERE name = 'free_user_count'` via the DB port (compared against `max_free_users_cap`)
 - Returns `{ waitlistActive: boolean }`
 - Response header: `Cache-Control: public, s-maxage=300, stale-while-revalidate=60`
 - No Cognito authorizer — this endpoint is called by unauthenticated landing page visitors

@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   EncryptionError,
-  AiSpendCapExceededError,
   BedrockCallError,
   UserNotFoundError,
   UserDeletedError,
@@ -22,17 +21,6 @@ describe('EncryptionError', () => {
     const cause = new Error('root');
     const err = new EncryptionError('wrapped', cause);
     expect(err.cause).toBe(cause);
-  });
-});
-
-describe('AiSpendCapExceededError', () => {
-  it('sets name, tenantId, currentSpend, cap, and message', () => {
-    const err = new AiSpendCapExceededError('t-1', 0.10, 0.10);
-    expect(err.name).toBe('AiSpendCapExceededError');
-    expect(err.tenantId).toBe('t-1');
-    expect(err.currentSpend).toBe(0.10);
-    expect(err.cap).toBe(0.10);
-    expect(err.message).toContain('t-1');
   });
 });
 

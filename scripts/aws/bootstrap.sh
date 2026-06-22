@@ -219,7 +219,6 @@ if [[ $SKIP_SSM -eq 0 ]]; then
   # ── Tags / AI ─────────────────────────────────────────────────────────────────
   set_ssm_param "/wobblio/config/tags/dedicated_call_enabled"  "${TAGS_DEDICATED_CALL_ENABLED}"
   set_ssm_param "/wobblio/config/tags/vocabulary"              "${TAGS_VOCABULARY}"
-  set_ssm_param "/wobblio/config/ai/daily_spend_cap"           "${AI_DAILY_SPEND_CAP}"
 
   # ── Operations ────────────────────────────────────────────────────────────────
   set_ssm_param "/wobblio/config/ops/email"      "${OPS_EMAIL}"

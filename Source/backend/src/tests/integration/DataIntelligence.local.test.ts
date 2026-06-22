@@ -42,12 +42,34 @@ describe('Data-intelligence adapters — Postgres', () => {
 
     it('creates a provisional merchant and writes back a retrievable alias', async () => {
       const catalog = new MerchantCatalogAdapter(pool);
-      const alias = `SHOP ${randomUUID().slice(0, 8)}`.toUpperCase();
-      const merchantId = await catalog.createProvisionalMerchant('Test Shop', 'NL', 'cat-hardware');
+      const suffix = randomUUID().slice(0, 8);
+      const alias = `SHOP ${suffix}`.toUpperCase();
+      // Unique brand per run: the (brand_name, country_code) uniqueness constraint makes a
+      // fixed name return a stale row on re-run instead of inserting the passed category.
+      const merchantId = await catalog.createProvisionalMerchant(`Test Shop ${suffix}`, 'NL', 'cat-hardware');
       await catalog.writeAlias({ merchantId, aliasRaw: alias, aliasNormalized: alias, countryCode: 'NL', source: 'AUTO_LLM' });
       const found = await catalog.findExactAlias(alias, 'NL');
       expect(found?.merchantId).toBe(merchantId);
       expect(await catalog.getDefaultCategory(merchantId)).toBe('cat-hardware');
+    });
+
+    it('surfaces the seeded brand as a candidate for an over-captured header', async () => {
+      const catalog = new MerchantCatalogAdapter(pool);
+      const blob = 'ALBERT HEIJN XL EINDHOVEN WINKELCENTRUM WOENSEL';
+      // The alias search misses the blob entirely; the brand candidate is the safety net.
+      expect(await catalog.findExactAlias(blob, 'NL')).toBeNull();
+      const candidates = await catalog.findBrandCandidates(blob, 'NL', 5);
+      expect(candidates.some(c => c.brandName === 'Albert Heijn')).toBe(true);
+    });
+
+    it('reuses the existing merchant instead of creating a brand-name duplicate', async () => {
+      const catalog = new MerchantCatalogAdapter(pool);
+      const brand = `Dedup Co ${randomUUID().slice(0, 8)}`;
+      const first = await catalog.createProvisionalMerchant(brand, 'NL', 'cat-hardware');
+      const second = await catalog.createProvisionalMerchant(brand, 'NL', 'cat-groceries');
+      expect(second).toBe(first);
+      const count = await pool.query('SELECT count(*)::int AS n FROM merchant WHERE brand_name = $1 AND country_code = $2', [brand, 'NL']);
+      expect(count.rows[0].n).toBe(1);
     });
   });
 
@@ -57,6 +79,7 @@ describe('Data-intelligence adapters — Postgres', () => {
       const embedding = uniqueEmbedding();
       const productId = await catalog.createProvisionalProduct({
         displayName: `Test Milk ${randomUUID().slice(0, 8)}`,
+        brand: null,
         categoryId: 'cat-dairy',
         baseUnit: 'L',
         packSizeBaseUnits: 1,
@@ -75,12 +98,30 @@ describe('Data-intelligence adapters — Postgres', () => {
 
     it('writes back a merchant-scoped alias and finds it exactly', async () => {
       const catalog = new ProductCatalogAdapter(pool);
-      const productId = await catalog.createProvisionalProduct({ displayName: 'Test Bread', categoryId: 'cat-bakery', baseUnit: 'PIECE', packSizeBaseUnits: null, embedding: uniqueEmbedding() });
+      const productId = await catalog.createProvisionalProduct({ displayName: 'Test Bread', brand: null, categoryId: 'cat-bakery', baseUnit: 'PIECE', packSizeBaseUnits: null, embedding: uniqueEmbedding() });
       const alias = `BREAD ${randomUUID().slice(0, 8)}`.toUpperCase();
       await catalog.writeAlias({ productId, aliasNormalized: alias, merchantId: null, source: 'AUTO_LLM' });
       const found = await catalog.findExactAlias(null, alias);
       expect(found?.productId).toBe(productId);
       expect(found?.baseUnit).toBe('PIECE');
+    });
+
+    it('persists brand and drops the dead concept / alias-counter columns', async () => {
+      const catalog = new ProductCatalogAdapter(pool);
+      const name = `Branded Item ${randomUUID().slice(0, 8)}`;
+      const productId = await catalog.createProvisionalProduct({ displayName: name, brand: 'Lucovitaal', categoryId: 'cat-vitamins', baseUnit: 'PIECE', packSizeBaseUnits: null, embedding: uniqueEmbedding() });
+      await catalog.writeAlias({ productId, aliasNormalized: name.toUpperCase(), merchantId: null, source: 'AUTO_LLM' });
+
+      const stored = await pool.query('SELECT brand FROM product WHERE id = $1', [productId]);
+      expect(stored.rows[0].brand).toBe('Lucovitaal');
+
+      const dropped = await pool.query<{ table_name: string; column_name: string }>(
+        `SELECT table_name, column_name FROM information_schema.columns
+         WHERE (table_name = 'product' AND column_name = 'concept_id')
+            OR (table_name = 'product_alias' AND column_name IN ('match_count', 'last_seen_at'))`,
+      );
+      expect(dropped.rowCount).toBe(0);
+      expect(await pool.query("SELECT to_regclass('public.product_concept') AS t").then(r => r.rows[0].t)).toBeNull();
     });
   });
 

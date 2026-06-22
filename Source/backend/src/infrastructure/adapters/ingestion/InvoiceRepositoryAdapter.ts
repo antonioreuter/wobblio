@@ -145,14 +145,14 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
   async persistParsed(input: PersistParsedInvoice): Promise<void> {
     await this.client.query(
       `UPDATE invoice
-         SET merchant_id = $2, merchant_provisional = $3, branch_id = $4,
-             transaction_date = $5, currency = $6, total = $7, category_id = $8,
-             search_tags = $9, status = $10, location_country_code = $11,
-             location_region_code = $12, location_status = $13, location_source = $14,
-             price_emission_blocked = $15, search_city = $16
+         SET merchant_id = $2, merchant_provisional = $3,
+             transaction_date = $4, currency = $5, total = $6, category_id = $7,
+             search_tags = $8, status = $9, location_country_code = $10,
+             location_region_code = $11, location_status = $12, location_source = $13,
+             price_emission_blocked = $14, search_city = $15
        WHERE id = $1`,
       [
-        input.invoiceId, input.merchantId, input.merchantProvisional, input.branchId,
+        input.invoiceId, input.merchantId, input.merchantProvisional,
         input.transactionDate, input.currency, input.total, input.categoryId,
         input.searchTags, input.status, input.location.countryCode,
         input.location.regionCode, input.location.status, input.location.source,

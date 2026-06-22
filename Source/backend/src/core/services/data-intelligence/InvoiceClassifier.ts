@@ -1,7 +1,6 @@
 import type { IInvoiceClassifier, ClassificationInput } from '../../ports/data-intelligence/IInvoiceClassifier';
 import type { IMerchantCatalog } from '../../ports/data-intelligence/IMerchantCatalog';
-import type { BedrockConverseRequest, BedrockMessage } from '../../ports/ai/IBedrockConverse';
-import type { BedrockSpendGuardService } from '../ai/BedrockSpendGuardService';
+import type { BedrockConverseRequest, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
 import { voteCategory, type CategoryVoteLine } from '../../domain/classification';
 import { CATEGORY_TAXONOMY, DINING_OUT_CATEGORY_ID, macroCategoryId } from '../../domain/categoryTaxonomy';
 import { callJsonWithRetry } from '../../domain/llmJson';
@@ -15,11 +14,11 @@ const RESTAURANT_BILL_HINT = 'RESTAURANT_BILL';
 export class InvoiceClassifier implements IInvoiceClassifier {
   constructor(
     private readonly catalog: IMerchantCatalog,
-    private readonly spendGuard: BedrockSpendGuardService,
+    private readonly converse: IBedrockConverse,
     private readonly modelId: string,
   ) {}
 
-  async classify(tenantId: string, input: ClassificationInput): Promise<string | null> {
+  async classify(input: ClassificationInput): Promise<string | null> {
     if (input.documentKindHint === RESTAURANT_BILL_HINT) return DINING_OUT_CATEGORY_ID;
 
     // A clear majority macro (>50% spend) is decisive on its own.
@@ -31,12 +30,12 @@ export class InvoiceClassifier implements IInvoiceClassifier {
     const prior = input.merchantId ? await this.catalog.getDefaultCategory(input.merchantId) : null;
     if (prior && (vote.categoryId === null || vote.categoryId === prior)) return prior;
 
-    return this.tiebreak(tenantId, input);
+    return this.tiebreak(input);
   }
 
-  private async tiebreak(tenantId: string, input: ClassificationInput): Promise<string> {
+  private async tiebreak(input: ClassificationInput): Promise<string> {
     const result = await callJsonWithRetry({
-      call: request => this.spendGuard.callWithSpendGuard(tenantId, request),
+      call: request => this.converse.converse(request),
       buildRequest: messages => this.buildRequest(messages),
       messages: [{ role: 'user', content: buildTiebreakMessage(input) }],
       validate: parseClassificationTiebreakJson,

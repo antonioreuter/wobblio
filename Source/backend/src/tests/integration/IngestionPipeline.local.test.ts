@@ -110,7 +110,7 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
         imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
       });
       await repo.persistParsed({
-        invoiceId, merchantId: null, merchantProvisional: false, branchId: null,
+        invoiceId, merchantId: null, merchantProvisional: false,
         transactionDate: '2026-06-10',
         currency: 'EUR', total: 4.0, categoryId: null, searchTags: ['weekly-groceries'],
         status: 'PARSED', priceEmissionBlocked: false,
@@ -140,7 +140,7 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
         imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
       });
       await repo.persistParsed({
-        invoiceId, merchantId: null, merchantProvisional: false, branchId: null,
+        invoiceId, merchantId: null, merchantProvisional: false,
         transactionDate: '2026-06-10',
         currency: 'EUR', total: 5.0, categoryId: null, searchTags: ['weekly-groceries'],
         status: 'PARSED', priceEmissionBlocked: false,

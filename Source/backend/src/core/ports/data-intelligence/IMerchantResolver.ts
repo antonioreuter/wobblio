@@ -1,6 +1,5 @@
 export interface MerchantResolution {
   merchantId: string | null;
-  branchId: string | null;
   brandName: string | null; // resolved brand, for merchant-scoped tagging
   provisional: boolean; // true when a PROVISIONAL merchant was auto-created
   confidence: number; // 0..1
@@ -8,5 +7,5 @@ export interface MerchantResolution {
 
 // §6.2 merchant canonicalization (alias → fuzzy → LLM fallback → provisional).
 export interface IMerchantResolver {
-  resolve(tenantId: string, merchantRaw: string, countryCode: string): Promise<MerchantResolution>;
+  resolve(merchantRaw: string, countryCode: string): Promise<MerchantResolution>;
 }

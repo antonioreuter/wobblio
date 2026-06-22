@@ -3,7 +3,7 @@ import type { MockedObject } from 'vitest';
 import { ProductNormalizer } from '@core/services/data-intelligence/ProductNormalizer';
 import type { IProductCatalog, ProductMatch } from '@core/ports/data-intelligence/IProductCatalog';
 import type { IBedrockEmbedder } from '@core/ports/data-intelligence/IBedrockEmbedder';
-import type { BedrockSpendGuardService } from '@core/services/ai/BedrockSpendGuardService';
+import type { IBedrockConverse } from '@core/ports/ai/IBedrockConverse';
 import type { ParsedLine } from '@core/domain/ingestion';
 
 const converseResult = (content: string) => ({ content, inputTokens: 1, outputTokens: 1, modelId: 'm', durationMs: 1 });
@@ -34,7 +34,7 @@ const line = (rawText: string, quantity = 1, lineTotal = 2): ParsedLine => ({ ra
 describe('ProductNormalizer', () => {
   let catalog: MockedObject<IProductCatalog>;
   let embedder: MockedObject<IBedrockEmbedder>;
-  let callWithSpendGuard: ReturnType<typeof vi.fn>;
+  let converse: ReturnType<typeof vi.fn>;
   let sut: ProductNormalizer;
 
   beforeEach(() => {
@@ -45,27 +45,26 @@ describe('ProductNormalizer', () => {
       writeAlias: vi.fn(),
     };
     embedder = { embed: vi.fn().mockResolvedValue([0.1, 0.2]) };
-    callWithSpendGuard = vi.fn();
-    const spendGuard = { callWithSpendGuard } as unknown as BedrockSpendGuardService;
-    sut = new ProductNormalizer(catalog, embedder, spendGuard, 'model');
+    converse = vi.fn();
+    sut = new ProductNormalizer(catalog, embedder, { converse } as unknown as IBedrockConverse, 'model');
   });
 
   it('uses an exact alias hit without any LLM or embedding call', async () => {
     catalog.findExactAlias.mockResolvedValue(productMatch({ productId: 'p1', similarity: 1 }));
 
-    const result = await sut.normalize('t1', 'm1', [line('MELK', 1, 2)]);
+    const result = await sut.normalize('m1', [line('MELK', 1, 2)]);
 
     expect(result.lines[0]).toMatchObject({ productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1, normalizedUnitPrice: 2, productProvisional: false });
     expect(result.suggestedTags).toEqual([]);
-    expect(callWithSpendGuard).not.toHaveBeenCalled();
+    expect(converse).not.toHaveBeenCalled();
     expect(embedder.embed).not.toHaveBeenCalled();
   });
 
   it('accepts a high-confidence embedding match and writes an alias', async () => {
-    callWithSpendGuard.mockResolvedValue(expansion([item()], ['groceries']));
+    converse.mockResolvedValue(expansion([item()], ['groceries']));
     catalog.searchByEmbedding.mockResolvedValue([productMatch({ productId: 'p2', similarity: 0.95 })]);
 
-    const result = await sut.normalize('t1', 'm1', [line('Milk')]);
+    const result = await sut.normalize('m1', [line('Milk')]);
 
     expect(result.lines[0]).toMatchObject({ productId: 'p2', productProvisional: false, lowConfidence: false });
     expect(result.suggestedTags).toEqual(['groceries']);
@@ -73,38 +72,39 @@ describe('ProductNormalizer', () => {
   });
 
   it('flags the low-confidence band (0.85–0.92)', async () => {
-    callWithSpendGuard.mockResolvedValue(expansion([item()]));
+    converse.mockResolvedValue(expansion([item()]));
     catalog.searchByEmbedding.mockResolvedValue([productMatch({ similarity: 0.88 })]);
 
-    const result = await sut.normalize('t1', 'm1', [line('Milk')]);
+    const result = await sut.normalize('m1', [line('Milk')]);
 
     expect(result.lines[0].lowConfidence).toBe(true);
     expect(result.lines[0].productProvisional).toBe(false);
   });
 
-  it('creates a provisional product when there is no embedding match', async () => {
-    callWithSpendGuard.mockResolvedValue(expansion([item()]));
+  it('creates a provisional product, threading the clean brand + display_name', async () => {
+    // The LLM returns a promo-free identity; the normalizer persists brand alongside it.
+    converse.mockResolvedValue(expansion([item({ display_name: 'Lucovitaal', brand: 'Lucovitaal', category_id: 'cat-vitamins', base_unit: 'PIECE' })]));
     catalog.searchByEmbedding.mockResolvedValue([]);
 
-    const result = await sut.normalize('t1', 'm1', [line('Mystery item')]);
+    const result = await sut.normalize('m1', [line('Discount 1+1 Lucovitaal')]);
 
     expect(result.lines[0]).toMatchObject({ productId: 'p-new', productProvisional: true, lowConfidence: false });
-    expect(catalog.createProvisionalProduct).toHaveBeenCalled();
+    expect(catalog.createProvisionalProduct).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'Lucovitaal', brand: 'Lucovitaal' }));
   });
 
   it('creates a provisional product when the best match is below the floor', async () => {
-    callWithSpendGuard.mockResolvedValue(expansion([item()]));
+    converse.mockResolvedValue(expansion([item()]));
     catalog.searchByEmbedding.mockResolvedValue([productMatch({ similarity: 0.5 })]);
 
-    const result = await sut.normalize('t1', 'm1', [line('Mystery item')]);
+    const result = await sut.normalize('m1', [line('Mystery item')]);
 
     expect(result.lines[0].productProvisional).toBe(true);
   });
 
   it('treats deposit/fee lines as non-products with no embedding', async () => {
-    callWithSpendGuard.mockResolvedValue(expansion([item({ display_name: 'Statiegeld', category_id: 'cat-other', is_deposit_or_fee: true })]));
+    converse.mockResolvedValue(expansion([item({ display_name: 'Statiegeld', category_id: 'cat-other', is_deposit_or_fee: true })]));
 
-    const result = await sut.normalize('t1', 'm1', [line('Statiegeld', 1, 0.25)]);
+    const result = await sut.normalize('m1', [line('Statiegeld', 1, 0.25)]);
 
     expect(result.lines[0]).toMatchObject({ productId: null, isDepositOrFee: true, baseUnit: null, packQuantity: null, normalizedUnitPrice: null });
     expect(embedder.embed).not.toHaveBeenCalled();
@@ -114,21 +114,21 @@ describe('ProductNormalizer', () => {
     catalog.findExactAlias.mockImplementation(async (_m, normalized) =>
       normalized === 'MELK' ? productMatch({ productId: 'p-exact', similarity: 1 }) : null,
     );
-    callWithSpendGuard.mockResolvedValue(expansion([item({ display_name: 'Bread', category_id: 'cat-bakery', base_unit: 'PIECE' })]));
+    converse.mockResolvedValue(expansion([item({ display_name: 'Bread', category_id: 'cat-bakery', base_unit: 'PIECE' })]));
     catalog.searchByEmbedding.mockResolvedValue([productMatch({ productId: 'p-bread', categoryId: 'cat-bakery', baseUnit: 'PIECE', similarity: 0.93 })]);
 
-    const result = await sut.normalize('t1', 'm1', [line('MELK'), line('Brood')]);
+    const result = await sut.normalize('m1', [line('MELK'), line('Brood')]);
 
     expect(result.lines[0].productId).toBe('p-exact');
     expect(result.lines[1].productId).toBe('p-bread');
-    expect(callWithSpendGuard).toHaveBeenCalledTimes(1);
+    expect(converse).toHaveBeenCalledTimes(1);
   });
 
   it('prefers the printed unit size over the LLM/catalog pack size', async () => {
-    callWithSpendGuard.mockResolvedValue(expansion([item({ pack_size_base_units: 1 })])); // LLM says 1 L
+    converse.mockResolvedValue(expansion([item({ pack_size_base_units: 1 })])); // LLM says 1 L
     const withSize: ParsedLine = { rawText: 'Melk 500ML', quantity: 1, lineTotal: 2, unitSizeRaw: '500ML' };
 
-    const result = await sut.normalize('t1', 'm1', [withSize]);
+    const result = await sut.normalize('m1', [withSize]);
 
     // 500ML parses to 0.5 L → normalized unit price 2 / 1 / 0.5 = 4 (not 2 from the LLM's 1 L).
     expect(result.lines[0].packQuantity).toBe(0.5);
@@ -136,10 +136,10 @@ describe('ProductNormalizer', () => {
   });
 
   it('ignores a printed size whose unit conflicts with the canonical base unit', async () => {
-    callWithSpendGuard.mockResolvedValue(expansion([item({ base_unit: 'L', pack_size_base_units: 1 })]));
+    converse.mockResolvedValue(expansion([item({ base_unit: 'L', pack_size_base_units: 1 })]));
     const mismatched: ParsedLine = { rawText: 'X', quantity: 1, lineTotal: 2, unitSizeRaw: '3ST' }; // PIECE, not L
 
-    const result = await sut.normalize('t1', 'm1', [mismatched]);
+    const result = await sut.normalize('m1', [mismatched]);
 
     expect(result.lines[0].packQuantity).toBe(1); // falls back to the LLM/catalog pack size
   });

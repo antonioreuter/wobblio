@@ -14,6 +14,7 @@ export interface ProductMatch {
 
 export interface CreateProvisionalProductInput {
   displayName: string;
+  brand: string | null;
   categoryId: string;
   baseUnit: BaseUnit;
   packSizeBaseUnits: number | null;

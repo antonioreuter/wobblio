@@ -46,7 +46,7 @@ Cognito-based authentication with Google and Meta (Facebook) social login federa
 6. CTA → Stripe Checkout → `checkout.session.completed` webhook → flip to `PREMIUM`, clear `STATUS_WAITLIST`, unlock account (same transaction)
 7. Admin raises cap → release job promotes waitlisted accounts FIFO, SES notification per release
 
-**Atomic counter:** use a single `system_counter` row for free-user count — never a `COUNT(*)` scan. `UPDATE system_counter SET value = value + 1 WHERE name = 'free_users' RETURNING value` inside a transaction with `SERIALIZABLE` isolation (or advisory lock) to prevent race conditions.
+**Atomic counter:** use a single `system_counter` row for free-user count — never a `COUNT(*)` scan. `UPDATE system_counter SET value = value + 1 WHERE name = 'free_user_count' RETURNING value` inside a transaction with `SERIALIZABLE` isolation (or advisory lock) to prevent race conditions.
 
 ## JWT Flow
 

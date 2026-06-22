@@ -56,14 +56,13 @@ export class IngestionService {
 
     const bytes = await this.fileStorage.getObjectBytes(message.s3Key);
     const receipt = await this.visionParser.parse(
-      message.tenantId,
       { format: 'jpeg', bytes },
       { countryCode: context.countryCode, processedDate },
     );
 
-    const merchant = await this.merchantResolver.resolve(message.tenantId, receipt.merchantRaw, LAUNCH_COUNTRY);
-    const { lines: normalized, suggestedTags } = await this.productNormalizer.normalize(message.tenantId, merchant.merchantId, receipt.lines);
-    const categoryId = await this.classifier.classify(message.tenantId, {
+    const merchant = await this.merchantResolver.resolve(receipt.merchantRaw, LAUNCH_COUNTRY);
+    const { lines: normalized, suggestedTags } = await this.productNormalizer.normalize(merchant.merchantId, receipt.lines);
+    const categoryId = await this.classifier.classify({
       merchantId: merchant.merchantId,
       documentKindHint: receipt.documentKindHint,
       lines: receipt.lines,
@@ -110,7 +109,6 @@ export class IngestionService {
       invoiceId: message.invoiceId,
       merchantId: merchant.merchantId,
       merchantProvisional: merchant.provisional,
-      branchId: merchant.branchId,
       transactionDate: receipt.transactionDate,
       currency: receipt.currency,
       total: receipt.total,

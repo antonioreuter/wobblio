@@ -105,7 +105,7 @@ describe('IngestionService', () => {
     ledger.claim.mockResolvedValue(true);
     storage.getObjectBytes.mockResolvedValue(new Uint8Array([1]));
     visionParser.parse.mockResolvedValue(receipt(parseConfidence));
-    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', branchId: 'b1', brandName: 'Albert Heijn', provisional: false, confidence: 0.9 });
+    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'Albert Heijn', provisional: false, confidence: 0.9 });
     productNormalizer.normalize.mockResolvedValue({ lines: [normalizedLine(lowConfidence), normalizedLine()], suggestedTags: [] });
     classifier.classify.mockResolvedValue('groceries');
     tagGenerator.generate.mockResolvedValue(['weekly-groceries']);
@@ -237,7 +237,7 @@ describe('IngestionService', () => {
 
   it('flags NEEDS_REVIEW when the merchant was resolved provisionally', async () => {
     arrangeHappyPath();
-    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm-prov', branchId: null, brandName: 'Unknown Shop', provisional: true, confidence: 0.5 });
+    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm-prov', brandName: 'Unknown Shop', provisional: true, confidence: 0.5 });
 
     const outcome = await sut.process(MESSAGE);
 
@@ -312,7 +312,7 @@ describe('IngestionService', () => {
 
   it('persists the merchant + product provisional flags for faithful re-emission', async () => {
     arrangeHappyPath();
-    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', branchId: 'b1', brandName: 'Albert Heijn', provisional: true, confidence: 0.9 });
+    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'Albert Heijn', provisional: true, confidence: 0.9 });
     const provisionalLine: NormalizedLine = {
       productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
       normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: true,

@@ -20,5 +20,5 @@ export interface NormalizationResult {
 
 // §6.3 product normalization + categorization.
 export interface IProductNormalizer {
-  normalize(tenantId: string, merchantId: string | null, lines: ParsedLine[]): Promise<NormalizationResult>;
+  normalize(merchantId: string | null, lines: ParsedLine[]): Promise<NormalizationResult>;
 }

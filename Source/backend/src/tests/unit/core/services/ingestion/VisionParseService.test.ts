@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VisionParseService } from '@core/services/ingestion/VisionParseService';
-import type { BedrockSpendGuardService } from '@core/services/ai/BedrockSpendGuardService';
-import type { BedrockImage } from '@core/ports/ai/IBedrockConverse';
+import type { BedrockImage, IBedrockConverse } from '@core/ports/ai/IBedrockConverse';
 import { SchemaValidationError } from '@core/domain/errors';
 
 const VALID_JSON = JSON.stringify({
@@ -25,24 +24,22 @@ const image: BedrockImage = { format: 'jpeg', bytes: new Uint8Array([1, 2, 3]) }
 const ctx = { countryCode: 'NL', processedDate: '2026-06-18' };
 
 describe('VisionParseService', () => {
-  let callWithSpendGuard: ReturnType<typeof vi.fn>;
-  let spendGuard: BedrockSpendGuardService;
+  let converse: ReturnType<typeof vi.fn>;
   let sut: VisionParseService;
 
   beforeEach(() => {
-    callWithSpendGuard = vi.fn();
-    spendGuard = { callWithSpendGuard } as unknown as BedrockSpendGuardService;
-    sut = new VisionParseService(spendGuard, 'mock-model', 'PROMPT', 'vision-parse/v1');
+    converse = vi.fn();
+    sut = new VisionParseService({ converse } as unknown as IBedrockConverse, 'mock-model', 'PROMPT', 'vision-parse/v1');
   });
 
   it('returns the parsed receipt on a valid first response', async () => {
-    callWithSpendGuard.mockResolvedValue(converseResult(VALID_JSON));
+    converse.mockResolvedValue(converseResult(VALID_JSON));
 
-    const receipt = await sut.parse('tenant-1', image, ctx);
+    const receipt = await sut.parse(image, ctx);
 
     expect(receipt.merchantRaw).toBe('Albert Heijn');
-    expect(callWithSpendGuard).toHaveBeenCalledTimes(1);
-    const sent = callWithSpendGuard.mock.calls[0][1].messages as Array<{ content: string }>;
+    expect(converse).toHaveBeenCalledTimes(1);
+    const sent = converse.mock.calls[0][0].messages as Array<{ content: string }>;
     expect(sent[0].content).toContain('<user_country>NL</user_country>');
     expect(sent[0].content).toContain('<processed_date>2026-06-18</processed_date>');
   });
@@ -60,30 +57,30 @@ describe('VisionParseService', () => {
         { raw_text: 'TOTAAL', quantity: 1, line_total: 9.39 },
       ],
     });
-    callWithSpendGuard.mockResolvedValue(converseResult(withPhantoms));
+    converse.mockResolvedValue(converseResult(withPhantoms));
 
-    const receipt = await sut.parse('tenant-1', image, ctx);
+    const receipt = await sut.parse(image, ctx);
 
     expect(receipt.lines.map(l => l.rawText)).toEqual(['COCA-COLA']);
   });
 
   it('retries once with validation errors appended, then succeeds', async () => {
-    callWithSpendGuard
+    converse
       .mockResolvedValueOnce(converseResult('not json'))
       .mockResolvedValueOnce(converseResult(VALID_JSON));
 
-    const receipt = await sut.parse('tenant-1', image, ctx);
+    const receipt = await sut.parse(image, ctx);
 
     expect(receipt.total).toBe(1.29);
-    expect(callWithSpendGuard).toHaveBeenCalledTimes(2);
-    const retryMessages = callWithSpendGuard.mock.calls[1][1].messages as Array<{ content: string }>;
+    expect(converse).toHaveBeenCalledTimes(2);
+    const retryMessages = converse.mock.calls[1][0].messages as Array<{ content: string }>;
     expect(retryMessages.some(m => m.content.includes('validation_errors'))).toBe(true);
   });
 
   it('throws SchemaValidationError when both attempts fail validation', async () => {
-    callWithSpendGuard.mockResolvedValue(converseResult('still not json'));
+    converse.mockResolvedValue(converseResult('still not json'));
 
-    await expect(sut.parse('tenant-1', image, ctx)).rejects.toBeInstanceOf(SchemaValidationError);
-    expect(callWithSpendGuard).toHaveBeenCalledTimes(2);
+    await expect(sut.parse(image, ctx)).rejects.toBeInstanceOf(SchemaValidationError);
+    expect(converse).toHaveBeenCalledTimes(2);
   });
 });

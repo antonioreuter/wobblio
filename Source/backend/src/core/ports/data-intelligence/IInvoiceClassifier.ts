@@ -10,5 +10,5 @@ export interface ClassificationInput {
 
 // §6.4 invoice classification → one macro category_id.
 export interface IInvoiceClassifier {
-  classify(tenantId: string, input: ClassificationInput): Promise<string | null>;
+  classify(input: ClassificationInput): Promise<string | null>;
 }

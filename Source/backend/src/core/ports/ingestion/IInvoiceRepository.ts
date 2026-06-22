@@ -56,7 +56,6 @@ export interface PersistParsedInvoice {
   invoiceId: string;
   merchantId: string | null;
   merchantProvisional: boolean;
-  branchId: string | null;
   transactionDate: string;
   currency: string;
   total: number;

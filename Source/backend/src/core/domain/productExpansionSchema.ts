@@ -8,6 +8,7 @@ import type { BaseUnit } from './unitSize';
 
 export interface ExpandedItem {
   displayName: string;
+  brand: string | null;
   categoryId: string;
   baseUnit: BaseUnit;
   packSizeBaseUnits: number | null;
@@ -36,13 +37,16 @@ function validateItem(item: unknown, index: number, issues: string[]): ExpandedI
   }
   const i = item as Record<string, unknown>;
   if (typeof i.display_name !== 'string' || i.display_name.trim().length === 0) issues.push(`items[${index}].display_name must be a non-empty string`);
+  if (i.brand !== null && i.brand !== undefined && typeof i.brand !== 'string') issues.push(`items[${index}].brand must be a string or null`);
   if (typeof i.category_id !== 'string' || !isValidCategoryId(i.category_id)) issues.push(`items[${index}].category_id must be a known category`);
   if (typeof i.base_unit !== 'string' || !BASE_UNITS.has(i.base_unit as BaseUnit)) issues.push(`items[${index}].base_unit must be one of KG, L, PIECE`);
   if (i.pack_size_base_units !== null && i.pack_size_base_units !== undefined && !isNum(i.pack_size_base_units)) issues.push(`items[${index}].pack_size_base_units must be a number or null`);
   if (typeof i.is_deposit_or_fee !== 'boolean') issues.push(`items[${index}].is_deposit_or_fee must be a boolean`);
   if (issues.length > 0) return null;
+  const brand = typeof i.brand === 'string' ? i.brand.trim() : '';
   return {
     displayName: (i.display_name as string).trim(),
+    brand: brand.length > 0 ? brand : null,
     categoryId: i.category_id as string,
     baseUnit: i.base_unit as BaseUnit,
     packSizeBaseUnits: (i.pack_size_base_units as number | null | undefined) ?? null,

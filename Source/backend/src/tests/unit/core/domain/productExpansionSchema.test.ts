@@ -18,14 +18,27 @@ const oneItem = (overrides: Record<string, unknown> = {}) =>
 
 describe('parseProductExpansionJson', () => {
   it('parses a valid item with suggested tags', () => {
-    const result = parseProductExpansionJson(oneItem(), 1);
+    const result = parseProductExpansionJson(oneItem({ brand: 'Albert Heijn' }), 1);
     expect(result).toEqual({
       ok: true,
       value: {
-        items: [{ displayName: 'AH Halfvolle Melk 1L', categoryId: 'cat-dairy', baseUnit: 'L', packSizeBaseUnits: 1, isDepositOrFee: false }],
+        items: [{ displayName: 'AH Halfvolle Melk 1L', brand: 'Albert Heijn', categoryId: 'cat-dairy', baseUnit: 'L', packSizeBaseUnits: 1, isDepositOrFee: false }],
         suggestedTags: ['groceries'],
       },
     });
+  });
+
+  it('defaults a missing or empty brand to null', () => {
+    const absent = parseProductExpansionJson(oneItem(), 1);
+    const empty = parseProductExpansionJson(oneItem({ brand: '  ' }), 1);
+    if (absent.ok) expect(absent.value.items[0].brand).toBeNull();
+    if (empty.ok) expect(empty.value.items[0].brand).toBeNull();
+  });
+
+  it('rejects a non-string brand', () => {
+    const result = parseProductExpansionJson(oneItem({ brand: 5 }), 1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.issues).toContain('brand');
   });
 
   it('defaults missing suggested_tags to an empty array and null pack size', () => {

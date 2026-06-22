@@ -4,7 +4,7 @@ import { InvoiceClassifier } from '@core/services/data-intelligence/InvoiceClass
 import type { IMerchantCatalog } from '@core/ports/data-intelligence/IMerchantCatalog';
 import type { ClassificationInput } from '@core/ports/data-intelligence/IInvoiceClassifier';
 import type { NormalizedLine } from '@core/ports/data-intelligence/IProductNormalizer';
-import type { BedrockSpendGuardService } from '@core/services/ai/BedrockSpendGuardService';
+import type { IBedrockConverse } from '@core/ports/ai/IBedrockConverse';
 
 const converseResult = (content: string) => ({ content, inputTokens: 1, outputTokens: 1, modelId: 'm', durationMs: 1 });
 
@@ -29,7 +29,7 @@ const input = (overrides: Partial<ClassificationInput> = {}): ClassificationInpu
 
 describe('InvoiceClassifier', () => {
   let catalog: MockedObject<IMerchantCatalog>;
-  let callWithSpendGuard: ReturnType<typeof vi.fn>;
+  let converse: ReturnType<typeof vi.fn>;
   let sut: InvoiceClassifier;
 
   beforeEach(() => {
@@ -40,56 +40,55 @@ describe('InvoiceClassifier', () => {
       writeAlias: vi.fn(),
       getDefaultCategory: vi.fn(),
     };
-    callWithSpendGuard = vi.fn();
-    const spendGuard = { callWithSpendGuard } as unknown as BedrockSpendGuardService;
-    sut = new InvoiceClassifier(catalog, spendGuard, 'model');
+    converse = vi.fn();
+    sut = new InvoiceClassifier(catalog, { converse } as unknown as IBedrockConverse, 'model');
   });
 
   it('forces Dining Out for a restaurant bill', async () => {
-    const result = await sut.classify('t1', input({ documentKindHint: 'RESTAURANT_BILL' }));
+    const result = await sut.classify(input({ documentKindHint: 'RESTAURANT_BILL' }));
     expect(result).toBe('cat-dining-out');
-    expect(callWithSpendGuard).not.toHaveBeenCalled();
+    expect(converse).not.toHaveBeenCalled();
   });
 
   it('returns the clear line-item majority without a prior or LLM', async () => {
-    const result = await sut.classify('t1', input()); // 8 vs 2 => groceries > 50%
+    const result = await sut.classify(input()); // 8 vs 2 => groceries > 50%
     expect(result).toBe('cat-groceries');
     expect(catalog.getDefaultCategory).not.toHaveBeenCalled();
-    expect(callWithSpendGuard).not.toHaveBeenCalled();
+    expect(converse).not.toHaveBeenCalled();
   });
 
   it('uses the merchant prior when it agrees with the inconclusive vote', async () => {
     catalog.getDefaultCategory.mockResolvedValue('cat-groceries');
     // 5 vs 5: no macro clears 50%, so the vote is inconclusive; the prior agrees with it.
-    const result = await sut.classify('t1', input({
+    const result = await sut.classify(input({
       lines: [{ rawText: 'a', quantity: 1, lineTotal: 5 }, { rawText: 'b', quantity: 1, lineTotal: 5 }],
     }));
     expect(result).toBe('cat-groceries');
-    expect(callWithSpendGuard).not.toHaveBeenCalled();
+    expect(converse).not.toHaveBeenCalled();
   });
 
   it('runs the LLM tiebreak when the prior disagrees with the vote', async () => {
     catalog.getDefaultCategory.mockResolvedValue('cat-personal-care');
-    callWithSpendGuard.mockResolvedValue(converseResult('{"category_id":"cat-household"}'));
-    const result = await sut.classify('t1', input({
+    converse.mockResolvedValue(converseResult('{"category_id":"cat-household"}'));
+    const result = await sut.classify(input({
       lines: [{ rawText: 'a', quantity: 1, lineTotal: 5 }, { rawText: 'b', quantity: 1, lineTotal: 5 }],
     }));
     expect(result).toBe('cat-household'); // vote (cat-groceries) ≠ prior → LLM arbitrates
-    expect(callWithSpendGuard).toHaveBeenCalledTimes(1);
+    expect(converse).toHaveBeenCalledTimes(1);
   });
 
   it('runs the LLM tiebreak with no prior and maps the result to its macro', async () => {
     catalog.getDefaultCategory.mockResolvedValue(null);
-    callWithSpendGuard.mockResolvedValue(converseResult('{"category_id":"cat-snacks"}'));
-    const result = await sut.classify('t1', input({
+    converse.mockResolvedValue(converseResult('{"category_id":"cat-snacks"}'));
+    const result = await sut.classify(input({
       lines: [{ rawText: 'a', quantity: 1, lineTotal: 5 }, { rawText: 'b', quantity: 1, lineTotal: 5 }],
     }));
     expect(result).toBe('cat-groceries'); // cat-snacks rolls up to its macro
   });
 
   it('runs the LLM tiebreak when there is no merchant and lines are uncategorized', async () => {
-    callWithSpendGuard.mockResolvedValue(converseResult('{"category_id":"cat-other"}'));
-    const result = await sut.classify('t1', input({
+    converse.mockResolvedValue(converseResult('{"category_id":"cat-other"}'));
+    const result = await sut.classify(input({
       merchantId: null,
       lines: [{ rawText: 'a', quantity: 1, lineTotal: 5 }, { rawText: 'b', quantity: 1, lineTotal: 5 }],
       normalized: [norm(null), norm(null)],

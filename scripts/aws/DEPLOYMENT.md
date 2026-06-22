@@ -426,7 +426,6 @@ All SSM parameters are seeded by `scripts/aws/bootstrap.sh` from `config/${STAGE
 |---|---|---|---|
 | `/wobblio/config/models/vision_parser` | `MODEL_VISION_PARSER` | `amazon.nova-lite-v1:0` | `amazon.nova-lite-v1:0` |
 | `/wobblio/config/quotas/max_free_waitlist_cap` | `QUOTA_MAX_FREE_WAITLIST_CAP` | `100` | `5000` |
-| `/wobblio/config/ai/daily_spend_cap` | `AI_DAILY_SPEND_CAP` | `0.05` | `0.10` |
 | `/wobblio/config/ops/email` | `OPS_EMAIL` | `antonioreuter@gmail.com` | `antonioreuter@gmail.com` |
 
 To change a value permanently, edit `config/${STAGE}.env` and re-run:

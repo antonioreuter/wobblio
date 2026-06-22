@@ -10,7 +10,7 @@
 // correction, self-reconciliation, two worked examples) which lifted extraction
 // quality from ~0.69 to ~0.96 on the NL sample set, while keeping the raw-only schema.
 
-export const VISION_PARSE_PROMPT_VERSION = 'vision-parse/v6';
+export const VISION_PARSE_PROMPT_VERSION = 'vision-parse/v7';
 
 export const VISION_PARSE_PROMPT = `You are a receipt OCR extraction engine. You receive a single receipt photo and return structured JSON faithful to what is printed.
 
@@ -26,9 +26,10 @@ export const VISION_PARSE_PROMPT = `You are a receipt OCR extraction engine. You
 </document_check>
 
 <merchant>
-- merchant_raw is the store/brand name, normally printed in the header block at the very top of the receipt (logo line, store name, sometimes a store number).
-- Use the consumer-facing brand exactly as printed (e.g. "Albert Heijn", "JUMBO"). Do NOT use a legal suffix line (B.V., GmbH), a website, an address line, or the cashier/branch line as the merchant name.
-- If a store number is printed next to the brand (e.g. "Albert Heijn 1179"), keep the brand and you may keep the number; never invent one.
+- merchant_raw is the BRAND ONLY, normally printed in the header block at the very top of the receipt (logo line, store name).
+- Use the consumer-facing brand exactly as printed (e.g. "Albert Heijn", "JUMBO"). Output the shortest string that identifies the brand and nothing else.
+- Do NOT append, and strip if present: store-format/sub-brand suffixes (e.g. "XL", "To Go", "Express", "Compact", "City", "Hypermarkt"), the branch or location name, the city, any address line, the cashier/branch line, a website, or a legal suffix (B.V., GmbH). Example: a header reading "Albert Heijn XL Eindhoven Winkelcentrum Woensel" => merchant_raw is "Albert Heijn".
+- A store number printed next to the brand (e.g. "Albert Heijn 1179") may be kept; never invent one. Capture address/city only in their dedicated address fields, never in merchant_raw.
 </merchant>
 
 <extraction>

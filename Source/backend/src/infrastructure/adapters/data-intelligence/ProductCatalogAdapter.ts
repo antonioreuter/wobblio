@@ -52,18 +52,18 @@ export class ProductCatalogAdapter implements IProductCatalog {
 
   async createProvisionalProduct(input: CreateProvisionalProductInput): Promise<string> {
     const result = await this.db.query<{ id: string }>(
-      `INSERT INTO product (category_id, display_name, base_unit, pack_size_base_units, embedding, created_via, status)
-       VALUES ($1, $2, $3, $4, $5::vector, 'AUTO', 'PROVISIONAL')
+      `INSERT INTO product (category_id, display_name, brand, base_unit, pack_size_base_units, embedding, created_via, status)
+       VALUES ($1, $2, $3, $4, $5, $6::vector, 'AUTO', 'PROVISIONAL')
        RETURNING id`,
-      [input.categoryId, input.displayName, input.baseUnit, input.packSizeBaseUnits, toVectorLiteral(input.embedding)],
+      [input.categoryId, input.displayName, input.brand, input.baseUnit, input.packSizeBaseUnits, toVectorLiteral(input.embedding)],
     );
     return result.rows[0].id;
   }
 
   async writeAlias(input: WriteProductAliasInput): Promise<void> {
     await this.db.query(
-      `INSERT INTO product_alias (product_id, alias_normalized, merchant_id, match_count, source, last_seen_at)
-       SELECT $1, $2, $3, 1, $4, now()
+      `INSERT INTO product_alias (product_id, alias_normalized, merchant_id, source)
+       SELECT $1, $2, $3, $4
        WHERE NOT EXISTS (
          SELECT 1 FROM product_alias
          WHERE product_id = $1 AND alias_normalized = $2 AND merchant_id IS NOT DISTINCT FROM $3

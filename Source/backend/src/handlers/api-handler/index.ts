@@ -482,6 +482,9 @@ async function handlePresign(
   } catch (err) {
     if (err instanceof DuplicateInvoiceError) return json(409, { message: 'Receipt already scanned' });
     if (err instanceof QuotaExceededError) {
+      // Quota is the sole AI-cost/abuse control; surface blocks so repeat offenders are
+      // visible in CloudWatch (no per-tenant cap to tune — see 2026-06-22 amendment).
+      log.warn('quota block', { event: 'quota_block', tenantId: user.id, quotaType: err.counter, used: err.used, cap: err.cap });
       return json(429, { message: 'Upload quota exceeded', used: err.used, cap: err.cap });
     }
     throw err;

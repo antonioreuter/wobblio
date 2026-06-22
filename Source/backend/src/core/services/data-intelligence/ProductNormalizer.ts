@@ -1,8 +1,7 @@
 import type { IProductNormalizer, NormalizationResult, NormalizedLine } from '../../ports/data-intelligence/IProductNormalizer';
 import type { IProductCatalog, ProductMatch } from '../../ports/data-intelligence/IProductCatalog';
 import type { IBedrockEmbedder } from '../../ports/data-intelligence/IBedrockEmbedder';
-import type { BedrockConverseRequest, BedrockMessage } from '../../ports/ai/IBedrockConverse';
-import type { BedrockSpendGuardService } from '../ai/BedrockSpendGuardService';
+import type { BedrockConverseRequest, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
 import type { ParsedLine } from '../../domain/ingestion';
 import { ConfidenceThresholds } from '../../domain/ingestion';
 import { computeNormalizedUnitPrice, parseUnitSize, type BaseUnit } from '../../domain/unitSize';
@@ -32,11 +31,11 @@ export class ProductNormalizer implements IProductNormalizer {
   constructor(
     private readonly catalog: IProductCatalog,
     private readonly embedder: IBedrockEmbedder,
-    private readonly spendGuard: BedrockSpendGuardService,
+    private readonly converse: IBedrockConverse,
     private readonly modelId: string,
   ) {}
 
-  async normalize(tenantId: string, merchantId: string | null, lines: ParsedLine[]): Promise<NormalizationResult> {
+  async normalize(merchantId: string | null, lines: ParsedLine[]): Promise<NormalizationResult> {
     const normalizedTexts = lines.map(line => normalizeProductText(line.rawText));
     // Sequential, not Promise.all: every stage shares one pg connection, which
     // cannot run queries concurrently.
@@ -47,7 +46,7 @@ export class ProductNormalizer implements IProductNormalizer {
 
     const unmatched = exact.flatMap((match, index) => (match ? [] : [index]));
     const expansion = unmatched.length > 0
-      ? await this.expand(tenantId, unmatched.map(index => lines[index].rawText))
+      ? await this.expand(unmatched.map(index => lines[index].rawText))
       : { items: [], suggestedTags: [] };
 
     const resolved = new Array<ResolvedProduct>(lines.length);
@@ -90,6 +89,7 @@ export class ProductNormalizer implements IProductNormalizer {
   private async createProvisional(merchantId: string | null, normalizedText: string, item: ExpandedItem, embedding: number[]): Promise<ResolvedProduct> {
     const productId = await this.catalog.createProvisionalProduct({
       displayName: item.displayName,
+      brand: item.brand,
       categoryId: item.categoryId,
       baseUnit: item.baseUnit,
       packSizeBaseUnits: item.packSizeBaseUnits,
@@ -99,9 +99,9 @@ export class ProductNormalizer implements IProductNormalizer {
     return { productId, categoryId: item.categoryId, baseUnit: item.baseUnit, packSizeBaseUnits: item.packSizeBaseUnits, isDepositOrFee: false, provisional: true, confidence: PROVISIONAL_CONFIDENCE, lowConfidence: false };
   }
 
-  private async expand(tenantId: string, rawTexts: string[]): Promise<ProductExpansion> {
+  private async expand(rawTexts: string[]): Promise<ProductExpansion> {
     return callJsonWithRetry({
-      call: request => this.spendGuard.callWithSpendGuard(tenantId, request),
+      call: request => this.converse.converse(request),
       buildRequest: messages => this.buildRequest(messages),
       messages: [{ role: 'user', content: buildExpansionMessage(rawTexts) }],
       validate: content => parseProductExpansionJson(content, rawTexts.length),

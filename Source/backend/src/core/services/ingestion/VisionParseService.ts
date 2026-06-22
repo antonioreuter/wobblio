@@ -1,5 +1,4 @@
-import type { BedrockConverseRequest, BedrockImage, BedrockMessage } from '../../ports/ai/IBedrockConverse';
-import type { BedrockSpendGuardService } from '../ai/BedrockSpendGuardService';
+import type { BedrockConverseRequest, BedrockImage, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
 import { parseReceiptJson } from '../../domain/receiptSchema';
 import { callJsonWithRetry } from '../../domain/llmJson';
 import { dropNonItemLines } from '../../domain/receiptPostProcess';
@@ -20,15 +19,15 @@ function buildUserInstruction(ctx: ReceiptContext): string {
 
 export class VisionParseService {
   constructor(
-    private readonly spendGuard: BedrockSpendGuardService,
+    private readonly converse: IBedrockConverse,
     private readonly modelId: string,
     private readonly promptTemplate: string,
     private readonly promptVersion: string,
   ) {}
 
-  async parse(tenantId: string, image: BedrockImage, ctx: ReceiptContext): Promise<ParsedReceipt> {
+  async parse(image: BedrockImage, ctx: ReceiptContext): Promise<ParsedReceipt> {
     const receipt = await callJsonWithRetry({
-      call: request => this.spendGuard.callWithSpendGuard(tenantId, request),
+      call: request => this.converse.converse(request),
       buildRequest: messages => this.buildRequest(messages),
       messages: [{ role: 'user', content: buildUserInstruction(ctx), image }],
       validate: parseReceiptJson,
