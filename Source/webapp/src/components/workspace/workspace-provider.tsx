@@ -89,7 +89,8 @@ export function useWorkspace(): WorkspaceContextValue {
 }
 
 const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp'
-const PDF_ACCEPT = `${IMAGE_ACCEPT},application/pdf`
+// Some OS/browser file dialogs match by extension rather than MIME, so list both.
+const PDF_ACCEPT = `${IMAGE_ACCEPT},application/pdf,.pdf`
 
 export function WorkspaceProvider({
   children,
