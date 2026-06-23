@@ -1,9 +1,23 @@
 import type { IKpiDailyReader, KpiPoint } from '@core/ports/observability/IKpiDailyReader';
 import { resolveRange } from '@core/domain/kpiRange';
-import { BUSINESS_METRICS, NEW_MERCHANTS_METRIC, INVOICES_BY_REGION_METRIC } from '@core/domain/businessKpis';
+import {
+  BUSINESS_METRICS,
+  NEW_MERCHANTS_METRIC,
+  INVOICES_BY_REGION_METRIC,
+  OPERATIONAL_EFFICIENCY_METRIC,
+  INGESTION_PROCESSING_METRIC,
+  INGESTION_COUNT_METRIC,
+} from '@core/domain/businessKpis';
 
 const DEFAULT_RANGE_DAYS = 90;
-const DEFAULT_METRICS = [...Object.values(BUSINESS_METRICS), NEW_MERCHANTS_METRIC, INVOICES_BY_REGION_METRIC];
+const DEFAULT_METRICS = [
+  ...Object.values(BUSINESS_METRICS),
+  NEW_MERCHANTS_METRIC,
+  INVOICES_BY_REGION_METRIC,
+  OPERATIONAL_EFFICIENCY_METRIC,
+  INGESTION_PROCESSING_METRIC,
+  INGESTION_COUNT_METRIC,
+];
 
 export interface KpiQueryResult {
   from: string;

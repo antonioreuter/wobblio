@@ -6,10 +6,18 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
+interface ModelOption {
+  id: string
+  label: string
+}
+
 interface ModelEntry {
   role: string
   modelId: string | null
+  options: ModelOption[]
 }
+
+const CUSTOM = '__custom__'
 
 interface AuditRow {
   id: string
@@ -27,6 +35,7 @@ export default function ModelsPage() {
   const [models, setModels] = useState<ModelEntry[]>([])
   const [history, setHistory] = useState<AuditRow[]>([])
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [custom, setCustom] = useState<Set<string>>(new Set())
   const [pending, setPending] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -62,6 +71,11 @@ export default function ModelsPage() {
     }
     setNotice(`Swapped ${role}.`)
     setDrafts((d) => ({ ...d, [role]: '' }))
+    setCustom((s) => {
+      const next = new Set(s)
+      next.delete(role)
+      return next
+    })
     await load()
   }
 
@@ -88,13 +102,38 @@ export default function ModelsPage() {
                 <td className="p-3 font-medium text-fg">{m.role}</td>
                 <td className="p-3 font-mono text-xs text-muted">{m.modelId ?? '— unset —'}</td>
                 <td className="p-3">
-                  <Input
-                    aria-label={`New ${m.role} id`}
-                    placeholder="new model id"
-                    value={drafts[m.role] ?? ''}
-                    onChange={(e) => setDrafts((d) => ({ ...d, [m.role]: e.target.value }))}
-                    data-testid={`models-input-${m.role}`}
-                  />
+                  <div className="flex flex-col gap-2">
+                    <select
+                      aria-label={`New ${m.role} model`}
+                      className="w-full rounded-[8px] border border-line bg-card px-2 py-2 text-sm text-fg"
+                      value={custom.has(m.role) ? CUSTOM : drafts[m.role] ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setCustom((s) => {
+                          const next = new Set(s)
+                          v === CUSTOM ? next.add(m.role) : next.delete(m.role)
+                          return next
+                        })
+                        setDrafts((d) => ({ ...d, [m.role]: v === CUSTOM ? '' : v }))
+                      }}
+                      data-testid={`models-select-${m.role}`}
+                    >
+                      <option value="">Choose a model…</option>
+                      {m.options.map((o) => (
+                        <option key={o.id} value={o.id}>{o.label}</option>
+                      ))}
+                      <option value={CUSTOM}>Custom…</option>
+                    </select>
+                    {custom.has(m.role) && (
+                      <Input
+                        aria-label={`Custom ${m.role} id`}
+                        placeholder="enter Bedrock model id"
+                        value={drafts[m.role] ?? ''}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [m.role]: e.target.value }))}
+                        data-testid={`models-input-${m.role}`}
+                      />
+                    )}
+                  </div>
                 </td>
                 <td className="p-3 text-right">
                   <Button

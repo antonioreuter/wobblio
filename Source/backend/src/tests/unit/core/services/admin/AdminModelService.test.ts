@@ -27,7 +27,12 @@ describe('AdminModelService', () => {
     });
     const list = await sut.list();
     expect(list).toHaveLength(4);
-    expect(list).toContainEqual({ role: 'insight', modelId: null });
+    const insight = list.find((e) => e.role === 'insight');
+    expect(insight?.modelId).toBeNull();
+    // each role carries curated options for the dropdown
+    expect(list.every((e) => e.options.length > 0)).toBe(true);
+    const vision = list.find((e) => e.role === 'vision_parser');
+    expect(vision?.options.some((o) => o.id.startsWith('qwen'))).toBe(true);
   });
 
   it('swaps a valid role, writing SSM and auditing old → new', async () => {

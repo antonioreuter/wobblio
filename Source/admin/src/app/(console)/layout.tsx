@@ -11,7 +11,6 @@ import {
   Inbox,
   GitMerge,
   Coins,
-  LineChart,
   Menu,
   X,
   type LucideIcon,
@@ -27,14 +26,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: '/', label: 'Hub', icon: LayoutDashboard },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/config', label: 'SSM Config', icon: SlidersHorizontal },
   { href: '/models', label: 'Model Matrix', icon: Cpu },
   { href: '/waitlist', label: 'Waitlist', icon: Users },
   { href: '/dlq', label: 'DLQ', icon: Inbox },
   { href: '/curation', label: 'Alias Curation', icon: GitMerge },
   { href: '/ai-spend', label: 'AI Spend', icon: Coins },
-  { href: '/kpis', label: 'KPIs', icon: LineChart },
 ]
 
 const isActive = (pathname: string, href: string): boolean =>

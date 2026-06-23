@@ -25,9 +25,14 @@ describe('BusinessKpiRollupService', () => {
         standardUsers: 48,
         invoicesPending: 3,
         usersLowScore: 1,
+        invoicesFeedbackPositive: 2,
+        invoicesFeedbackNegative: 0,
+        invoicesFeedbackNone: 6,
       }),
       getNewMerchantsByCountry: vi.fn().mockResolvedValue([{ country: 'NL', count: 2 }]),
       getInvoicesByRegion: vi.fn().mockResolvedValue([{ country: 'NL', region: 'NL-NB', count: 4 }]),
+      getUserKpisByCountry: vi.fn().mockResolvedValue([]),
+      getInvoiceKpisByCountry: vi.fn().mockResolvedValue([]),
     };
     const writer: MockedObject<IKpiDailyWriter> = { upsert: vi.fn() };
 

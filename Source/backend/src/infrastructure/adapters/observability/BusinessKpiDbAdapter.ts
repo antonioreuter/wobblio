@@ -4,6 +4,8 @@ import type {
   BusinessKpiSnapshot,
   MerchantCountryCount,
   InvoiceRegionCount,
+  UserKpiByCountry,
+  InvoiceKpiByCountry,
 } from '@core/ports/observability/IBusinessKpiSource';
 
 interface KpiDbRow {
@@ -24,6 +26,9 @@ interface KpiDbRow {
   standard_users: string;
   invoices_pending: string;
   users_low_score: string;
+  invoices_feedback_positive: string;
+  invoices_feedback_negative: string;
+  invoices_feedback_none: string;
 }
 
 interface MerchantCountryRow {
@@ -64,6 +69,9 @@ export class BusinessKpiDbAdapter implements IBusinessKpiSource {
       standardUsers: num(r?.standard_users),
       invoicesPending: num(r?.invoices_pending),
       usersLowScore: num(r?.users_low_score),
+      invoicesFeedbackPositive: num(r?.invoices_feedback_positive),
+      invoicesFeedbackNegative: num(r?.invoices_feedback_negative),
+      invoicesFeedbackNone: num(r?.invoices_feedback_none),
     };
   }
 
@@ -84,6 +92,40 @@ export class BusinessKpiDbAdapter implements IBusinessKpiSource {
       country: row.country_code,
       region: row.region_code,
       count: num(row.cnt),
+    }));
+  }
+
+  async getUserKpisByCountry(metricDate: string): Promise<UserKpiByCountry[]> {
+    const result = await this.pool.query<Record<string, string>>(
+      'SELECT * FROM admin_user_kpis_by_country($1)',
+      [metricDate],
+    );
+    return result.rows.map((r) => ({
+      country: r.country,
+      registrations: num(r.registrations),
+      totalUsers: num(r.total_users),
+      premiumCount: num(r.premium_count),
+      standardUsers: num(r.standard_users),
+      waitlistUsers: num(r.waitlist_users),
+      deletedUsers: num(r.deleted_users),
+      activeUsers: num(r.active_users),
+      usersLowScore: num(r.users_low_score),
+    }));
+  }
+
+  async getInvoiceKpisByCountry(metricDate: string): Promise<InvoiceKpiByCountry[]> {
+    const result = await this.pool.query<Record<string, string>>(
+      'SELECT * FROM admin_invoice_kpis_by_country($1)',
+      [metricDate],
+    );
+    return result.rows.map((r) => ({
+      country: r.country,
+      invoicesProcessed: num(r.invoices_processed),
+      invoicesFailed: num(r.invoices_failed),
+      invoicesPending: num(r.invoices_pending),
+      feedbackPositive: num(r.feedback_positive),
+      feedbackNegative: num(r.feedback_negative),
+      feedbackNone: num(r.feedback_none),
     }));
   }
 }

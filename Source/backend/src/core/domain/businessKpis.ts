@@ -2,6 +2,8 @@ import type {
   BusinessKpiSnapshot,
   MerchantCountryCount,
   InvoiceRegionCount,
+  UserKpiByCountry,
+  InvoiceKpiByCountry,
 } from '@core/ports/observability/IBusinessKpiSource';
 import type { KpiDailyRow } from '@core/ports/observability/IKpiDailyWriter';
 
@@ -31,11 +33,42 @@ export const BUSINESS_METRICS = {
   standardUsers: 'standard_users',
   invoicesPending: 'invoices_pending',
   usersLowScore: 'users_low_score',
+  invoicesFeedbackPositive: 'invoices_feedback_positive',
+  invoicesFeedbackNegative: 'invoices_feedback_negative',
+  invoicesFeedbackNone: 'invoices_feedback_none',
 } as const;
 
 // Dimensioned metrics.
 export const NEW_MERCHANTS_METRIC = 'new_merchants'; // dimensions { country }
 export const INVOICES_BY_REGION_METRIC = 'invoices_by_region'; // dimensions { country, region }
+
+// Composite operational-efficiency score (0–100): pipeline success rate (processed ÷
+// processed+failed) weighted 0.6 + OCR quality rate (positive ÷ positive+negative
+// feedback) weighted 0.4. Null when there is no activity to score.
+export const OPERATIONAL_EFFICIENCY_METRIC = 'operational_efficiency';
+
+// Ingestion-timing metrics produced by the timing rollup (dimensioned by status).
+export const INGESTION_PROCESSING_METRIC = 'ingestion_processing_ms_avg';
+export const INGESTION_COUNT_METRIC = 'ingestion_count';
+
+interface EfficiencyInput {
+  invoicesProcessed: number;
+  invoicesFailed: number;
+  invoicesFeedbackPositive: number;
+  invoicesFeedbackNegative: number;
+}
+
+export function operationalEfficiency(s: EfficiencyInput): number | null {
+  const processedTotal = s.invoicesProcessed + s.invoicesFailed;
+  const feedbackTotal = s.invoicesFeedbackPositive + s.invoicesFeedbackNegative;
+  const parts: { weight: number; value: number }[] = [];
+  if (processedTotal > 0) parts.push({ weight: 0.6, value: s.invoicesProcessed / processedTotal });
+  if (feedbackTotal > 0) parts.push({ weight: 0.4, value: s.invoicesFeedbackPositive / feedbackTotal });
+  if (parts.length === 0) return null;
+  const weightSum = parts.reduce((acc, p) => acc + p.weight, 0);
+  const score = parts.reduce((acc, p) => acc + p.weight * p.value, 0) / weightSum;
+  return Math.round(score * 100);
+}
 
 // Maps a day's raw counts into kpi_daily rows. Ratios are emitted only when their
 // denominator is non-zero (no row rather than a misleading 0/0).
@@ -58,6 +91,9 @@ export function toBusinessKpiRows(metricDate: string, s: BusinessKpiSnapshot): K
     row(metricDate, BUSINESS_METRICS.standardUsers, s.standardUsers),
     row(metricDate, BUSINESS_METRICS.invoicesPending, s.invoicesPending),
     row(metricDate, BUSINESS_METRICS.usersLowScore, s.usersLowScore),
+    row(metricDate, BUSINESS_METRICS.invoicesFeedbackPositive, s.invoicesFeedbackPositive),
+    row(metricDate, BUSINESS_METRICS.invoicesFeedbackNegative, s.invoicesFeedbackNegative),
+    row(metricDate, BUSINESS_METRICS.invoicesFeedbackNone, s.invoicesFeedbackNone),
   ];
   if (s.activeUsers > 0) {
     rows.push(row(metricDate, BUSINESS_METRICS.conversion, round(s.premiumCount / s.activeUsers)));
@@ -65,6 +101,8 @@ export function toBusinessKpiRows(metricDate: string, s: BusinessKpiSnapshot): K
   if (s.feedbackTotal > 0) {
     rows.push(row(metricDate, BUSINESS_METRICS.feedback, round(s.feedbackUp / s.feedbackTotal)));
   }
+  const efficiency = operationalEfficiency(s);
+  if (efficiency !== null) rows.push(row(metricDate, OPERATIONAL_EFFICIENCY_METRIC, efficiency));
   return rows;
 }
 
@@ -86,6 +124,56 @@ export function toInvoicesByRegionRows(metricDate: string, counts: InvoiceRegion
     value: c.count,
     dimensions: { country: c.country, region: c.region ?? '' },
   }));
+}
+
+// {country}-dimensioned user-metric rows (same metric names as the national totals;
+// the dashboard country filter selects national vs per-country by the dimension).
+export function toUserCountryRows(metricDate: string, byCountry: UserKpiByCountry[]): KpiDailyRow[] {
+  return byCountry.flatMap((c) => {
+    const dim = { country: c.country };
+    const out: KpiDailyRow[] = [
+      cRow(metricDate, BUSINESS_METRICS.registrations, c.registrations, dim),
+      cRow(metricDate, BUSINESS_METRICS.totalUsers, c.totalUsers, dim),
+      cRow(metricDate, BUSINESS_METRICS.premium, c.premiumCount, dim),
+      cRow(metricDate, BUSINESS_METRICS.standardUsers, c.standardUsers, dim),
+      cRow(metricDate, BUSINESS_METRICS.waitlistUsers, c.waitlistUsers, dim),
+      cRow(metricDate, BUSINESS_METRICS.deletedUsers, c.deletedUsers, dim),
+      cRow(metricDate, BUSINESS_METRICS.activeUsers, c.activeUsers, dim),
+      cRow(metricDate, BUSINESS_METRICS.usersLowScore, c.usersLowScore, dim),
+      cRow(metricDate, BUSINESS_METRICS.mrr, round(c.premiumCount * MONTHLY_PRICE_EUR), dim),
+    ];
+    if (c.activeUsers > 0) {
+      out.push(cRow(metricDate, BUSINESS_METRICS.conversion, round(c.premiumCount / c.activeUsers), dim));
+    }
+    return out;
+  });
+}
+
+// {country}-dimensioned invoice-metric rows + per-country operational efficiency.
+export function toInvoiceCountryRows(metricDate: string, byCountry: InvoiceKpiByCountry[]): KpiDailyRow[] {
+  return byCountry.flatMap((c) => {
+    const dim = { country: c.country };
+    const out: KpiDailyRow[] = [
+      cRow(metricDate, BUSINESS_METRICS.invoicesProcessed, c.invoicesProcessed, dim),
+      cRow(metricDate, BUSINESS_METRICS.invoicesFailed, c.invoicesFailed, dim),
+      cRow(metricDate, BUSINESS_METRICS.invoicesPending, c.invoicesPending, dim),
+      cRow(metricDate, BUSINESS_METRICS.invoicesFeedbackPositive, c.feedbackPositive, dim),
+      cRow(metricDate, BUSINESS_METRICS.invoicesFeedbackNegative, c.feedbackNegative, dim),
+      cRow(metricDate, BUSINESS_METRICS.invoicesFeedbackNone, c.feedbackNone, dim),
+    ];
+    const efficiency = operationalEfficiency({
+      invoicesProcessed: c.invoicesProcessed,
+      invoicesFailed: c.invoicesFailed,
+      invoicesFeedbackPositive: c.feedbackPositive,
+      invoicesFeedbackNegative: c.feedbackNegative,
+    });
+    if (efficiency !== null) out.push(cRow(metricDate, OPERATIONAL_EFFICIENCY_METRIC, efficiency, dim));
+    return out;
+  });
+}
+
+function cRow(metricDate: string, metricName: string, value: number, dimensions: Record<string, string>): KpiDailyRow {
+  return { metricDate, metricName, value, dimensions };
 }
 
 function row(metricDate: string, metricName: string, value: number): KpiDailyRow {

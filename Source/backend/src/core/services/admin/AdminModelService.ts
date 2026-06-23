@@ -6,10 +6,12 @@ import {
 } from '@core/ports/ai/IModelRegistry';
 import type { IAdminAuditLog, AdminActor, AdminAuditRow } from '@core/ports/admin/IAdminAuditLog';
 import { InvalidAdminInputError, UnknownAdminTargetError } from '@core/domain/errors';
+import { MODEL_OPTIONS, type ModelOption } from '@core/domain/modelCatalog';
 
 export interface ModelEntry {
   role: ModelRole;
   modelId: string | null;
+  options: ModelOption[];
 }
 
 const SWAP_HISTORY_LIMIT = 50;
@@ -22,7 +24,7 @@ export class AdminModelService {
 
   async list(): Promise<ModelEntry[]> {
     const all = await this.registry.getAll();
-    return MODEL_ROLES.map((role) => ({ role, modelId: all[role] }));
+    return MODEL_ROLES.map((role) => ({ role, modelId: all[role], options: MODEL_OPTIONS[role] }));
   }
 
   // Swaps one role's model ID. Validates the role against the 4-role allowlist and
