@@ -44,6 +44,9 @@ export class WobblioAdminStack extends Stack {
     const ssrEnvironment: Record<string, string> = {
       API_BASE_URL: `https://${config.apiDomain}`,
       APP_ORIGIN: `https://${config.adminDomain}`,
+      // Pin the public URL so NextAuth builds the OAuth redirect_uri from the admin
+      // domain (not the CloudFront/Lambda host) when running behind CloudFront.
+      AUTH_URL: `https://${config.adminDomain}/api/auth`,
       COGNITO_REGION: this.region,
       COGNITO_USER_POOL_ID: authStack.userPool.userPoolId,
       COGNITO_CLIENT_ID: authStack.userPoolClientWeb.userPoolClientId,

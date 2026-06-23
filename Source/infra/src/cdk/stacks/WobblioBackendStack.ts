@@ -230,6 +230,32 @@ export class WobblioBackendStack extends Stack {
     apiHandlerFn.addEnvironment('INGEST_DLQ_URL', ingestionDlq.queueUrl);
     apiHandlerFn.addEnvironment('INGESTION_WORKER_LOG_GROUP', ingestionLogGroupName);
 
+    // Admin Troubleshooting page: the api-handler reads worker logs (Logs Insights),
+    // flips its log level live (Lambda env update — read-merge-write), snapshots
+    // queue depth, and reads its error-rate metrics. Resource-scoped where the action
+    // allows; '*' only for actions that do not support resource-level IAM.
+    apiHandlerFn.addEnvironment('INGESTION_WORKER_FUNCTION_NAME', ingestionWorkerFn.functionName);
+    ingestionQueue.grant(apiHandlerFn, 'sqs:GetQueueAttributes');
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['logs:StartQuery'],
+      resources: [`arn:aws:logs:${this.region}:${this.account}:log-group:${ingestionLogGroupName}:*`],
+    }));
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['logs:GetQueryResults', 'logs:StopQuery', 'cloudwatch:GetMetricData'],
+      resources: ['*'],
+    }));
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['lambda:GetFunctionConfiguration', 'lambda:UpdateFunctionConfiguration'],
+      resources: [ingestionWorkerFn.functionArn],
+    }));
+    NagSuppressions.addResourceSuppressions(apiHandlerFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'logs:GetQueryResults/StopQuery act on an ephemeral queryId and cloudwatch:GetMetricData has no resource-level form',
+        appliesTo: ['Resource::*'],
+      },
+    ], true);
+
     dbStack.kmsKey.grantEncryptDecrypt(apiHandlerFn);
     dbStack.kmsKey.grantEncryptDecrypt(ingestionWorkerFn);
     dbStack.kmsKey.grantEncryptDecrypt(waitlistStatusFn);

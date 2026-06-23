@@ -1,4 +1,4 @@
-import type { BedrockConverseRequest, BedrockImage, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
+import type { BedrockConverseRequest, BedrockDocument, BedrockImage, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
 import { parseReceiptJson } from '../../domain/receiptSchema';
 import { callJsonWithRetry } from '../../domain/llmJson';
 import { dropNonItemLines } from '../../domain/receiptPostProcess';
@@ -25,11 +25,17 @@ export class VisionParseService {
     private readonly promptVersion: string,
   ) {}
 
-  async parse(image: BedrockImage, ctx: ReceiptContext): Promise<ParsedReceipt> {
+  // The receipt arrives as an image (JPEG/PNG → image block) or a PDF (→ native
+  // document block); the adapter picks the Converse content shape from which field is set.
+  async parse(attachment: BedrockImage | BedrockDocument, ctx: ReceiptContext): Promise<ParsedReceipt> {
+    const message: BedrockMessage =
+      attachment.format === 'pdf'
+        ? { role: 'user', content: buildUserInstruction(ctx), document: attachment }
+        : { role: 'user', content: buildUserInstruction(ctx), image: attachment };
     const receipt = await callJsonWithRetry({
       call: request => this.converse.converse(request),
       buildRequest: messages => this.buildRequest(messages),
-      messages: [{ role: 'user', content: buildUserInstruction(ctx), image }],
+      messages: [message],
       validate: parseReceiptJson,
     });
     // Deterministic safety net: strip summary/loyalty/metadata rows the model may have

@@ -63,7 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <LeftNav userRole={userRole} />
             <LeftNavDrawer userRole={userRole} />
             <div className="app-body">
-              <WorkspaceProvider>
+              <WorkspaceProvider pdfUploadEnabled={userRole !== 'STANDARD'}>
                 <TopBar userInitials={userInitials} userRole={userRole} />
                 {SANDBOX_ENABLED && <RlsWarningBanner />}
                 <div className="app-canvas">{children}</div>

@@ -9,7 +9,12 @@ import { checkAdminRole } from '@/lib/check-admin-role'
 // defence-in-depth; every /admin/* backend endpoint re-checks the role server-side.
 export default auth((req) => {
   const session = verifySessionJwt(req.auth as Parameters<typeof verifySessionJwt>[0])
-  if (!session || !checkAdminRole(session.role)) {
+  // No (valid) session → send the operator to sign in, not the dead-end /403.
+  if (!session) {
+    return NextResponse.redirect(new URL('/login', req.url))
+  }
+  // Authenticated but not an ADMIN → access denied.
+  if (!checkAdminRole(session.role)) {
     return NextResponse.redirect(new URL('/403', req.url))
   }
   return NextResponse.next()

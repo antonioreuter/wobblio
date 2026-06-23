@@ -9,7 +9,8 @@ export type AdminAuditAction =
   | 'curation.approve'
   | 'curation.merge'
   | 'curation.reject'
-  | 'waitlist.release';
+  | 'waitlist.release'
+  | 'loglevel.change';
 
 export interface AdminAuditEntry {
   actorUserId: string;

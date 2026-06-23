@@ -40,12 +40,12 @@ export class S3FileStorageAdapter implements IS3FileStorage {
     return getSignedUrl(this.client, command, { expiresIn: Math.min(ttlSeconds, MAX_TTL_SECONDS) });
   }
 
-  async headExists(key: string): Promise<boolean> {
+  async headObject(key: string): Promise<{ exists: boolean; size: number }> {
     try {
-      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
-      return true;
+      const head = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
+      return { exists: true, size: head.ContentLength ?? 0 };
     } catch (err) {
-      if (isNotFound(err)) return false;
+      if (isNotFound(err)) return { exists: false, size: 0 };
       throw err;
     }
   }

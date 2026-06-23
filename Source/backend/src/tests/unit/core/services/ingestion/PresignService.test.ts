@@ -8,7 +8,7 @@ import type { IUploadQuotaProvider } from '@core/ports/quota/IUploadQuotaProvide
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
 import type { IReverseGeocoder } from '@core/ports/data-intelligence/IReverseGeocoder';
 import type { IRegionReference } from '@core/ports/data-intelligence/IRegionReference';
-import { DuplicateInvoiceError, QuotaExceededError } from '@core/domain/errors';
+import { DuplicateInvoiceError, PremiumRequiredError, QuotaExceededError, UnsupportedUploadTypeError } from '@core/domain/errors';
 
 const SHA = 'a'.repeat(64);
 
@@ -44,7 +44,7 @@ describe('PresignService', () => {
     };
     quotaRepo = { getUsed: vi.fn(), increment: vi.fn() };
     quotaProvider = { getPersonalUploadsCap: vi.fn(), getHouseholdUploadsCap: vi.fn() };
-    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
+    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     reverseGeocoder = { reverseGeocode: vi.fn() };
     regionReference = {
       listCountries: vi.fn(), listSubdivisions: vi.fn(), isValidRegion: vi.fn(),
@@ -74,6 +74,31 @@ describe('PresignService', () => {
     expect(quotaProvider.getPersonalUploadsCap).toHaveBeenCalledWith('STANDARD');
     expect(quotaRepo.increment).toHaveBeenCalledWith('tenant-1', 'UPLOADS', expect.any(String));
     expect(storage.presignPut).toHaveBeenCalledWith(`receipts/tenant-1/${SHA}.jpg`, 'image/jpeg', 300);
+  });
+
+  it('rejects an unsupported content type before any quota or invoice work', async () => {
+    await expect(sut.presign({ ...baseInput, contentType: 'image/gif' })).rejects.toBeInstanceOf(UnsupportedUploadTypeError);
+    expect(invoiceRepo.findSameTenantByHash).not.toHaveBeenCalled();
+    expect(invoiceRepo.createPending).not.toHaveBeenCalled();
+  });
+
+  it('rejects a PDF upload for a STANDARD user', async () => {
+    await expect(sut.presign({ ...baseInput, contentType: 'application/pdf' })).rejects.toBeInstanceOf(PremiumRequiredError);
+    expect(invoiceRepo.findSameTenantByHash).not.toHaveBeenCalled();
+    expect(invoiceRepo.createPending).not.toHaveBeenCalled();
+  });
+
+  it('issues a .pdf key for a premium PDF upload', async () => {
+    invoiceRepo.findSameTenantByHash.mockResolvedValue(null);
+    quotaProvider.getPersonalUploadsCap.mockResolvedValue(50);
+    quotaRepo.getUsed.mockResolvedValue(0);
+    invoiceRepo.createPending.mockResolvedValue('inv-pdf');
+    storage.presignPut.mockResolvedValue('https://s3/put');
+
+    const result = await sut.presign({ ...baseInput, role: 'PREMIUM', contentType: 'application/pdf' });
+
+    expect(result.s3Key).toBe(`receipts/tenant-1/${SHA}.pdf`);
+    expect(storage.presignPut).toHaveBeenCalledWith(`receipts/tenant-1/${SHA}.pdf`, 'application/pdf', 300);
   });
 
   it('reserves the household pool when a householdId is provided', async () => {

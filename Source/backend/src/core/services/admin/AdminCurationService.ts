@@ -1,9 +1,30 @@
-import type { ICatalogCurationRepository } from '@core/ports/data-intelligence/ICatalogCurationRepository';
+import type {
+  ICatalogCurationRepository,
+  QueueFilters,
+  CurationSort,
+  CategoryCount,
+  CountryCount,
+  RegionCount,
+} from '@core/ports/data-intelligence/ICatalogCurationRepository';
 import type { IAdminAuditLog, AdminActor } from '@core/ports/admin/IAdminAuditLog';
 import { toCurationItem, type CurationItem } from '@core/domain/catalogCuration';
 import { InvalidAdminInputError, UnknownAdminTargetError } from '@core/domain/errors';
 
 export type CatalogKind = 'merchant' | 'product';
+
+// Raw query params from the route, pre-validation.
+export interface RawQueueQuery {
+  country?: string;
+  region?: string;
+  category?: string;
+  sort?: string;
+  limit?: number;
+  offset?: number;
+}
+
+const SORTS: readonly CurationSort[] = ['waiting', 'name', 'date'];
+const DEFAULT_LIMIT = 25;
+const MAX_LIMIT = 50;
 
 export class AdminCurationService {
   constructor(
@@ -11,12 +32,47 @@ export class AdminCurationService {
     private readonly audit: IAdminAuditLog,
   ) {}
 
-  async list(kind: CatalogKind): Promise<CurationItem[]> {
+  async list(kind: CatalogKind, raw: RawQueueQuery): Promise<CurationItem[]> {
+    const filters = this.buildFilters(kind, raw);
     const entities =
       kind === 'merchant'
-        ? await this.repo.listProvisionalMerchants()
-        : await this.repo.listProvisionalProducts();
+        ? await this.repo.listProvisionalMerchants(filters)
+        : await this.repo.listProvisionalProducts(filters);
     return entities.map(toCurationItem);
+  }
+
+  // The mandatory country selector — only countries that have provisional items.
+  countries(kind: CatalogKind): Promise<CountryCount[]> {
+    return kind === 'merchant' ? this.repo.merchantCountries() : this.repo.productCountries();
+  }
+
+  // Per-category counts for the pie (and category picker), scoped to a country [+region].
+  async categories(kind: CatalogKind, country: string, region: string | null): Promise<CategoryCount[]> {
+    requireCountry(country);
+    return kind === 'merchant'
+      ? this.repo.merchantCategories(country, region)
+      : this.repo.productCategories(country, region);
+  }
+
+  async regions(kind: CatalogKind, country: string): Promise<RegionCount[]> {
+    requireCountry(country);
+    return kind === 'merchant' ? this.repo.merchantRegions(country) : this.repo.productRegions(country);
+  }
+
+  // Country is always required. Category is an optional filter (null = all
+  // categories) for both kinds.
+  private buildFilters(_kind: CatalogKind, raw: RawQueueQuery): QueueFilters {
+    const country = (raw.country ?? '').trim();
+    requireCountry(country);
+    const category = raw.category?.trim() || null;
+    return {
+      country,
+      region: raw.region?.trim() || null,
+      category,
+      sort: SORTS.includes(raw.sort as CurationSort) ? (raw.sort as CurationSort) : 'waiting',
+      limit: clamp(raw.limit ?? DEFAULT_LIMIT, 1, MAX_LIMIT),
+      offset: Math.max(0, Math.trunc(raw.offset ?? 0)),
+    };
   }
 
   approve(actor: AdminActor, kind: CatalogKind, id: string): Promise<void> {
@@ -79,4 +135,13 @@ export class AdminCurationService {
       after,
     });
   }
+}
+
+function requireCountry(country: string): void {
+  if (!country || !country.trim()) throw new InvalidAdminInputError('country is required');
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
 }

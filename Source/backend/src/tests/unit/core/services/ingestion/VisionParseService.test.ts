@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { VisionParseService } from '@core/services/ingestion/VisionParseService';
-import type { BedrockImage, IBedrockConverse } from '@core/ports/ai/IBedrockConverse';
+import type { BedrockDocument, BedrockImage, IBedrockConverse } from '@core/ports/ai/IBedrockConverse';
 import { SchemaValidationError } from '@core/domain/errors';
 
 const VALID_JSON = JSON.stringify({
@@ -39,9 +39,21 @@ describe('VisionParseService', () => {
 
     expect(receipt.merchantRaw).toBe('Albert Heijn');
     expect(converse).toHaveBeenCalledTimes(1);
-    const sent = converse.mock.calls[0][0].messages as Array<{ content: string }>;
+    const sent = converse.mock.calls[0][0].messages as Array<{ content: string; image?: unknown }>;
     expect(sent[0].content).toContain('<user_country>NL</user_country>');
     expect(sent[0].content).toContain('<processed_date>2026-06-18</processed_date>');
+    expect(sent[0].image).toEqual(image);
+  });
+
+  it('forwards a PDF as a document attachment', async () => {
+    converse.mockResolvedValue(converseResult(VALID_JSON));
+    const document: BedrockDocument = { format: 'pdf', bytes: new Uint8Array([4, 5, 6]), name: 'receipt' };
+
+    await sut.parse(document, ctx);
+
+    const sent = converse.mock.calls[0][0].messages as Array<{ document?: unknown; image?: unknown }>;
+    expect(sent[0].document).toEqual(document);
+    expect(sent[0].image).toBeUndefined();
   });
 
   it('strips summary/loyalty rows the model emitted despite the prompt', async () => {

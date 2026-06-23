@@ -6,10 +6,9 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   SlidersHorizontal,
-  Cpu,
-  Users,
-  Inbox,
-  GitMerge,
+  Stethoscope,
+  Package,
+  Store,
   Coins,
   Menu,
   X,
@@ -27,11 +26,10 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/config', label: 'SSM Config', icon: SlidersHorizontal },
-  { href: '/models', label: 'Model Matrix', icon: Cpu },
-  { href: '/waitlist', label: 'Waitlist', icon: Users },
-  { href: '/dlq', label: 'DLQ', icon: Inbox },
-  { href: '/curation', label: 'Alias Curation', icon: GitMerge },
+  { href: '/platform', label: 'Platform', icon: SlidersHorizontal },
+  { href: '/troubleshooting', label: 'Troubleshooting', icon: Stethoscope },
+  { href: '/curation/products', label: 'Product Curation', icon: Package },
+  { href: '/curation/merchants', label: 'Merchant Curation', icon: Store },
   { href: '/ai-spend', label: 'AI Spend', icon: Coins },
 ]
 
@@ -136,7 +134,9 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
           <SignOutButton />
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[1440px] p-4 md:p-6">{children}</div>
+        </main>
       </div>
     </div>
   )

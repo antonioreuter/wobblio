@@ -138,6 +138,20 @@ export class StaleUploadError extends Error {
   }
 }
 
+export class UnsupportedUploadTypeError extends Error {
+  constructor(readonly contentType: string) {
+    super(`Unsupported upload type: ${contentType}`);
+    this.name = 'UnsupportedUploadTypeError';
+  }
+}
+
+export class OversizeUploadError extends Error {
+  constructor(readonly invoiceId: string, readonly size: number, readonly limit: number) {
+    super(`Upload for invoice ${invoiceId} is ${size} bytes, over the ${limit}-byte limit`);
+    this.name = 'OversizeUploadError';
+  }
+}
+
 export class PremiumRequiredError extends Error {
   constructor(readonly feature: string) {
     super(`Premium subscription required for ${feature}`);

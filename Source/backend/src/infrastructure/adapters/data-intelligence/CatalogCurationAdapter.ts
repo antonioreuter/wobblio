@@ -3,15 +3,21 @@ import type {
   ICatalogCurationRepository,
   ProvisionalEntity,
   CatalogStatus,
+  QueueFilters,
+  CategoryCount,
+  CountryCount,
+  RegionCount,
 } from '@core/ports/data-intelligence/ICatalogCurationRepository';
 
 interface QueueRow {
   id: string;
   name: string;
   subtitle: string | null;
+  category: string | null;
   aliases: string[];
   tenant_count: string;
   observation_count: string;
+  last_seen_on: string | null;
 }
 
 // Global merchant/product catalog (no RLS). Provisional queues come from the
@@ -19,20 +25,66 @@ interface QueueRow {
 export class CatalogCurationAdapter implements ICatalogCurationRepository {
   constructor(private readonly db: PoolClient) {}
 
-  async listProvisionalMerchants(): Promise<ProvisionalEntity[]> {
+  async listProvisionalMerchants(filters: QueueFilters): Promise<ProvisionalEntity[]> {
+    return this.listProvisional('admin_provisional_merchants', filters);
+  }
+
+  async listProvisionalProducts(filters: QueueFilters): Promise<ProvisionalEntity[]> {
+    return this.listProvisional('admin_provisional_products', filters);
+  }
+
+  private async listProvisional(fn: string, f: QueueFilters): Promise<ProvisionalEntity[]> {
     const result = await this.db.query<QueueRow>(
-      `SELECT id, name, country_code AS subtitle, aliases, tenant_count, observation_count
-       FROM admin_provisional_merchants()`,
+      `SELECT id, name, subtitle, category, aliases, tenant_count, observation_count, last_seen_on
+       FROM ${fn}($1, $2, $3, $4, $5, $6)`,
+      [f.country, f.region, f.category, f.sort, f.limit, f.offset],
     );
     return result.rows.map(toEntity);
   }
 
-  async listProvisionalProducts(): Promise<ProvisionalEntity[]> {
-    const result = await this.db.query<QueueRow>(
-      `SELECT id, name, brand AS subtitle, aliases, tenant_count, observation_count
-       FROM admin_provisional_products()`,
+  merchantCountries(): Promise<CountryCount[]> {
+    return this.countries('admin_provisional_merchant_countries');
+  }
+
+  productCountries(): Promise<CountryCount[]> {
+    return this.countries('admin_provisional_product_countries');
+  }
+
+  private async countries(fn: string): Promise<CountryCount[]> {
+    const result = await this.db.query<{ country_code: string; cnt: string }>(`SELECT country_code, cnt FROM ${fn}()`);
+    return result.rows.map((r) => ({ countryCode: r.country_code, count: Number(r.cnt) }));
+  }
+
+  merchantCategories(country: string, region: string | null): Promise<CategoryCount[]> {
+    return this.categories('admin_provisional_merchant_categories', country, region);
+  }
+
+  productCategories(country: string, region: string | null): Promise<CategoryCount[]> {
+    return this.categories('admin_provisional_product_categories', country, region);
+  }
+
+  private async categories(fn: string, country: string, region: string | null): Promise<CategoryCount[]> {
+    const result = await this.db.query<{ category_id: string; category_name: string; cnt: string }>(
+      `SELECT category_id, category_name, cnt FROM ${fn}($1, $2)`,
+      [country, region],
     );
-    return result.rows.map(toEntity);
+    return result.rows.map((r) => ({ categoryId: r.category_id, categoryName: r.category_name, count: Number(r.cnt) }));
+  }
+
+  merchantRegions(country: string): Promise<RegionCount[]> {
+    return this.regions('admin_provisional_merchant_regions', country);
+  }
+
+  productRegions(country: string): Promise<RegionCount[]> {
+    return this.regions('admin_provisional_product_regions', country);
+  }
+
+  private async regions(fn: string, country: string): Promise<RegionCount[]> {
+    const result = await this.db.query<{ region_code: string; cnt: string }>(
+      `SELECT region_code, cnt FROM ${fn}($1)`,
+      [country],
+    );
+    return result.rows.map((r) => ({ regionCode: r.region_code, count: Number(r.cnt) }));
   }
 
   setMerchantStatus(id: string, status: CatalogStatus): Promise<boolean> {
@@ -89,8 +141,10 @@ function toEntity(row: QueueRow): ProvisionalEntity {
     id: row.id,
     name: row.name,
     subtitle: row.subtitle,
+    category: row.category,
     aliases: row.aliases ?? [],
     tenantCount: Number(row.tenant_count),
     observationCount: Number(row.observation_count),
+    lastSeenOn: row.last_seen_on,
   };
 }

@@ -11,11 +11,20 @@ export interface BedrockImage {
   bytes: Uint8Array;
 }
 
+export interface BedrockDocument {
+  format: 'pdf';
+  bytes: Uint8Array;
+  // Converse requires a document name (alphanumeric/space/hyphen).
+  name: string;
+}
+
 export interface BedrockMessage {
   role: 'user' | 'assistant';
   content: string;
-  // Optional image attachment for vision-capable stages (e.g. VISION_PARSE).
+  // Optional attachment for vision-capable stages (e.g. VISION_PARSE). An image is
+  // sent as a Converse image block; a PDF as a native document block. Mutually exclusive.
   image?: BedrockImage;
+  document?: BedrockDocument;
 }
 
 export interface BedrockConverseRequest {

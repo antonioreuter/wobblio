@@ -24,38 +24,40 @@ const toVectorLiteral = (embedding: number[]): string => `[${embedding.join(',')
 export class ProductCatalogAdapter implements IProductCatalog {
   constructor(private readonly db: Pool | PoolClient) {}
 
-  async findExactAlias(merchantId: string | null, normalized: string): Promise<ProductMatch | null> {
+  async findExactAlias(merchantId: string | null, normalized: string, countryCode: string): Promise<ProductMatch | null> {
     const result = await this.db.query<ProductRow>(
       `SELECT p.id, p.category_id, p.base_unit, p.pack_size_base_units::text AS pack_size_base_units, '1'::text AS sim
        FROM product_alias a JOIN product p ON p.id = a.product_id
        WHERE a.alias_normalized = $1 AND (a.merchant_id = $2 OR a.merchant_id IS NULL)
+         AND p.country_code = $3
        ORDER BY a.merchant_id NULLS LAST
        LIMIT 1`,
-      [normalized, merchantId],
+      [normalized, merchantId, countryCode],
     );
     return result.rows[0] ? toMatch(result.rows[0]) : null;
   }
 
-  async searchByEmbedding(embedding: number[], categoryId: string | null, limit: number): Promise<ProductMatch[]> {
+  async searchByEmbedding(embedding: number[], categoryId: string | null, countryCode: string, limit: number): Promise<ProductMatch[]> {
     const result = await this.db.query<ProductRow>(
       `SELECT p.id, p.category_id, p.base_unit, p.pack_size_base_units::text AS pack_size_base_units,
               (1 - (p.embedding <=> $1::vector))::text AS sim
        FROM product p
        WHERE p.status <> 'INACTIVE' AND p.embedding IS NOT NULL
+         AND p.country_code = $4
          AND ($2::text IS NULL OR p.category_id = $2)
        ORDER BY p.embedding <=> $1::vector
        LIMIT $3`,
-      [toVectorLiteral(embedding), categoryId, limit],
+      [toVectorLiteral(embedding), categoryId, limit, countryCode],
     );
     return result.rows.map(toMatch);
   }
 
   async createProvisionalProduct(input: CreateProvisionalProductInput): Promise<string> {
     const result = await this.db.query<{ id: string }>(
-      `INSERT INTO product (category_id, display_name, brand, base_unit, pack_size_base_units, embedding, created_via, status)
-       VALUES ($1, $2, $3, $4, $5, $6::vector, 'AUTO', 'PROVISIONAL')
+      `INSERT INTO product (category_id, country_code, display_name, brand, base_unit, pack_size_base_units, embedding, created_via, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::vector, 'AUTO', 'PROVISIONAL')
        RETURNING id`,
-      [input.categoryId, input.displayName, input.brand, input.baseUnit, input.packSizeBaseUnits, toVectorLiteral(input.embedding)],
+      [input.categoryId, input.countryCode, input.displayName, input.brand, input.baseUnit, input.packSizeBaseUnits, toVectorLiteral(input.embedding)],
     );
     return result.rows[0].id;
   }

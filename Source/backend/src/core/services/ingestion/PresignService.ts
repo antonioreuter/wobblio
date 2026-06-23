@@ -6,7 +6,9 @@ import type { UserRole } from '../../ports/identity/IAppUserRepository';
 import type { IReverseGeocoder } from '../../ports/data-intelligence/IReverseGeocoder';
 import type { IRegionReference } from '../../ports/data-intelligence/IRegionReference';
 import type { QuotaService } from '../quota/QuotaService';
-import { DuplicateInvoiceError } from '../../domain/errors';
+import { DuplicateInvoiceError, PremiumRequiredError, UnsupportedUploadTypeError } from '../../domain/errors';
+import { extensionFor, isAllowedUploadType, isPdf } from '../../domain/uploadFormat';
+import { hasPremiumAccess } from '../../domain/access';
 
 const PRESIGN_TTL_SECONDS = 300; // hard invariant #10
 
@@ -49,6 +51,12 @@ export class PresignService {
   ) {}
 
   async presign(input: PresignInput): Promise<PresignResult> {
+    if (!isAllowedUploadType(input.contentType)) throw new UnsupportedUploadTypeError(input.contentType);
+    // PDF invoices are a paid-tier feature (premium + the elevated operator roles).
+    if (isPdf(input.contentType) && !hasPremiumAccess(input.role)) {
+      throw new PremiumRequiredError('PDF invoice uploads');
+    }
+
     const existing = await this.invoiceRepo.findSameTenantByHash(input.imageSha256);
     if (existing) throw new DuplicateInvoiceError(input.imageSha256);
 
@@ -65,7 +73,7 @@ export class PresignService {
 
     const uploadGeo = await this.resolveUploadGeo(input.coordinates);
 
-    const s3Key = `receipts/${input.tenantId}/${input.imageSha256}.jpg`;
+    const s3Key = `receipts/${input.tenantId}/${input.imageSha256}.${extensionFor(input.contentType)}`;
     const invoiceId = await this.invoiceRepo.createPending({
       tenantId: input.tenantId,
       uploadedByUserId: input.uploadedByUserId,

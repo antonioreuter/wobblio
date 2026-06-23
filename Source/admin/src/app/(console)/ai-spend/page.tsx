@@ -27,6 +27,9 @@ const ROLE_COLOR: Record<string, string> = {
   embedder: '#a3e635',
 }
 
+// Actual (billed) view groups by raw Bedrock model id, not role — cycle a palette.
+const ACTUAL_PALETTE = ['#10b981', '#38bdf8', '#f59e0b', '#a3e635', '#f472b6', '#94a3b8']
+
 export default function AiSpendPage() {
   const [source, setSource] = useState<Source>('estimated')
   const [granularity, setGranularity] = useState<Granularity>('DAILY')
@@ -113,11 +116,25 @@ function EstimatedView({ points }: { points: KpiPoint[] }) {
   const totalCost = costs.reduce((acc, p) => acc + p.value, 0)
   const totalTokens = tokens.reduce((acc, p) => acc + p.value, 0)
 
+  const costByModel = roles
+    .map((r) => ({
+      label: r,
+      value: costs.filter((p) => p.dimensions?.model_role === r).reduce((acc, p) => acc + p.value, 0),
+      color: ROLE_COLOR[r] ?? '#94a3b8',
+    }))
+    .filter((x) => x.value > 0)
+    .sort((a, b) => b.value - a.value)
+
   return (
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Stat label="Total tokens (range)" value={totalTokens.toLocaleString()} />
         <Stat label="Estimated cost (range)" value={`$${totalCost.toFixed(2)}`} />
+      </div>
+
+      <div className="rounded-[12px] border border-line bg-card p-4">
+        <p className="mb-3 text-sm font-medium text-fg">Spend per model (range)</p>
+        <SpendBars rows={costByModel} decimals={2} testid="ai-spend-by-model" />
       </div>
 
       <div className="flex flex-wrap gap-3 text-xs">
@@ -162,11 +179,24 @@ function ActualView({ points }: { points: ModelCostPoint[] }) {
     (a, b) => a.periodStart.localeCompare(b.periodStart) || b.cost - a.cost,
   )
 
+  const byModel = points.reduce<Record<string, number>>((acc, p) => {
+    acc[p.model] = (acc[p.model] ?? 0) + p.cost
+    return acc
+  }, {})
+  const costByModel = Object.entries(byModel)
+    .map(([label, value], i) => ({ label, value, color: ACTUAL_PALETTE[i % ACTUAL_PALETTE.length] }))
+    .sort((a, b) => b.value - a.value)
+
   return (
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Stat label="Total billed cost (range)" value={`$${totalCost.toFixed(4)}`} />
         <Stat label="Total tokens (range)" value={totalTokens.toLocaleString()} />
+      </div>
+
+      <div className="rounded-[12px] border border-line bg-card p-4">
+        <p className="mb-3 text-sm font-medium text-fg">Billed spend per model (range)</p>
+        <SpendBars rows={costByModel} decimals={4} testid="ai-spend-actual-by-model" />
       </div>
 
       <div className="overflow-x-auto rounded-[12px] border border-line bg-card" data-testid="ai-spend-actual">
@@ -230,6 +260,44 @@ function Segmented({
         >
           {o.label}
         </button>
+      ))}
+    </div>
+  )
+}
+
+// Horizontal spend-per-model bars: $-formatted value + share-of-total, coloured per
+// model so they line up with the rest of the page's role legend.
+function SpendBars({
+  rows,
+  decimals,
+  testid,
+}: {
+  rows: { label: string; value: number; color: string }[]
+  decimals: number
+  testid?: string
+}) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-muted">No cost in this range.</p>
+  }
+  const max = Math.max(...rows.map((r) => r.value))
+  const total = rows.reduce((acc, r) => acc + r.value, 0)
+  return (
+    <div className="flex flex-col gap-2" data-testid={testid}>
+      {rows.map((r) => (
+        <div key={r.label} className="flex items-center gap-3">
+          <span className="w-36 shrink-0 truncate font-mono text-xs text-fg" title={r.label}>
+            {r.label}
+          </span>
+          <div className="h-5 flex-1 overflow-hidden rounded bg-elevated">
+            <div className="h-full rounded" style={{ width: `${(r.value / max) * 100}%`, background: r.color }} />
+          </div>
+          <span className="w-20 shrink-0 text-right text-xs font-semibold tabular-nums text-fg">
+            ${r.value.toFixed(decimals)}
+          </span>
+          <span className="w-9 shrink-0 text-right text-xs tabular-nums text-faint">
+            {total > 0 ? Math.round((r.value / total) * 100) : 0}%
+          </span>
+        </div>
       ))}
     </div>
   )
