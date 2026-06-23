@@ -1,5 +1,6 @@
 import type { Context } from 'aws-lambda';
-import { createLambdaLogger } from '@infrastructure/logging/logger';
+import type { Pool } from 'pg';
+import { createLambdaLogger, type LambdaLogger } from '@infrastructure/logging/logger';
 import { buildPool } from '@infrastructure/config/db';
 import { CloudWatchLogsTimingSourceAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsTimingSourceAdapter';
 import { CloudWatchLogsAiUsageAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsAiUsageAdapter';
@@ -10,26 +11,41 @@ import { BusinessKpiRollupService } from '@core/services/observability/BusinessK
 import { AiSpendRollupService } from '@core/services/observability/AiSpendRollupService';
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// Daily EventBridge cron: roll the prior day into kpi_daily — ingestion timing (per
-// status), business KPIs (registrations/DAU/MAU/premium/conversion/MRR/feedback), and
-// AI spend (tokens + estimated cost per model role). The dashboards (admin-console
-// 07/08) read straight from kpi_daily. Each roll-up is independent; one failing does
-// not block the others.
-export const handler = async (_event: unknown, context: Context): Promise<void> => {
+// Daily EventBridge cron: roll days into kpi_daily — ingestion timing (per status),
+// business KPIs (registrations/DAU/MAU/premium/users/invoices/feedback/products), and
+// AI spend (tokens + estimated cost). The dashboards (admin-console 07/08) read straight
+// from kpi_daily. Each roll-up is independent; one failing does not block the others.
+//
+// By default it rolls BOTH yesterday (now finalized) AND today (in-progress) so the
+// dashboard reflects same-day uploads; kpi_daily upserts, so the next run overwrites
+// today's partial counts with the complete figure. An event { metricDate } overrides
+// to a single explicit date (manual backfill).
+export const handler = async (event: unknown, context: Context): Promise<void> => {
   const log = createLambdaLogger('cron-ingestion-metrics-rollup', context.awsRequestId);
   const pool = await buildPool(process.env.DB_SECRET_ARN!, process.env.DB_HOST!, process.env.DB_PORT!, 30000);
+
+  for (const metricDate of datesToRoll(event)) {
+    await runForDate(pool, metricDate, log);
+  }
+};
+
+function datesToRoll(event: unknown): string[] {
+  const override = (event as { metricDate?: unknown } | null)?.metricDate;
+  if (typeof override === 'string' && ISO_DATE.test(override)) return [override];
+  return [daysAgoUtc(1), daysAgoUtc(0)];
+}
+
+async function runForDate(pool: Pool, metricDate: string, log: LambdaLogger): Promise<void> {
   const kpiWriter = new KpiDailyRepositoryAdapter(pool);
   const ingestionLogGroup = process.env.INGESTION_LOG_GROUP!;
-  const metricDate = yesterdayUtc();
 
   const rollups: Array<[string, Promise<{ rowsWritten: number }>]> = [
     ['timing', new IngestionMetricsRollupService(
       new CloudWatchLogsTimingSourceAdapter(REGION, ingestionLogGroup), kpiWriter,
     ).run(metricDate)],
     ['business', new BusinessKpiRollupService(new BusinessKpiDbAdapter(pool), kpiWriter).run(metricDate)],
-    // bedrock_usage from the ingestion worker (the dominant AI cost). Advisor-stage
-    // spend lives in its own log group — a known minor omission.
     ['ai_spend', new AiSpendRollupService(
       new CloudWatchLogsAiUsageAdapter(REGION, ingestionLogGroup), kpiWriter,
     ).run(metricDate)],
@@ -47,9 +63,8 @@ export const handler = async (_event: unknown, context: Context): Promise<void> 
       });
     }
   }
-};
+}
 
-function yesterdayUtc(): string {
-  const date = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  return date.toISOString().slice(0, 10);
+function daysAgoUtc(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }

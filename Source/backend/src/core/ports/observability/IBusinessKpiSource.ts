@@ -9,8 +9,33 @@ export interface BusinessKpiSnapshot {
   activeUsers: number;
   feedbackUp: number;
   feedbackTotal: number;
+  feedbackDown: number;
+  invoicesProcessed: number;
+  invoicesFailed: number;
+  newProducts: number;
+  waitlistUsers: number;
+  deletedUsers: number;
+  totalUsers: number;
+  standardUsers: number;
+  invoicesPending: number;
+  usersLowScore: number;
+}
+
+export interface MerchantCountryCount {
+  country: string;
+  count: number;
+}
+
+export interface InvoiceRegionCount {
+  country: string;
+  region: string | null;
+  count: number;
 }
 
 export interface IBusinessKpiSource {
   getSnapshot(metricDate: string): Promise<BusinessKpiSnapshot>;
+  // New merchants created on the day, grouped by country.
+  getNewMerchantsByCountry(metricDate: string): Promise<MerchantCountryCount[]>;
+  // Invoices uploaded that day, grouped by confirmed country/region.
+  getInvoicesByRegion(metricDate: string): Promise<InvoiceRegionCount[]>;
 }

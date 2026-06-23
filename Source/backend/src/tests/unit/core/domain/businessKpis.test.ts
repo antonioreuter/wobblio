@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { toBusinessKpiRows, MONTHLY_PRICE_EUR } from '@core/domain/businessKpis';
+import {
+  toBusinessKpiRows,
+  toNewMerchantRows,
+  toInvoicesByRegionRows,
+  MONTHLY_PRICE_EUR,
+  NEW_MERCHANTS_METRIC,
+  INVOICES_BY_REGION_METRIC,
+} from '@core/domain/businessKpis';
 
 const base = {
   registrations: 10,
@@ -9,15 +16,36 @@ const base = {
   activeUsers: 100,
   feedbackUp: 9,
   feedbackTotal: 12,
+  feedbackDown: 3,
+  invoicesProcessed: 25,
+  invoicesFailed: 2,
+  newProducts: 4,
+  waitlistUsers: 15,
+  deletedUsers: 1,
+  totalUsers: 130,
+  standardUsers: 110,
+  invoicesPending: 7,
+  usersLowScore: 2,
 };
 
 describe('toBusinessKpiRows', () => {
-  it('emits the headline metrics with the MRR proxy', () => {
+  it('emits the headline + operational metrics with the MRR proxy', () => {
     const rows = toBusinessKpiRows('2026-06-22', base);
     const byName = Object.fromEntries(rows.map((r) => [r.metricName, r.value]));
     expect(byName.registrations).toBe(10);
     expect(byName.premium_count).toBe(8);
     expect(byName.mrr_eur).toBeCloseTo(8 * MONTHLY_PRICE_EUR, 5);
+    expect(byName.invoices_processed).toBe(25);
+    expect(byName.invoices_failed).toBe(2);
+    expect(byName.feedback_up).toBe(9);
+    expect(byName.feedback_down).toBe(3);
+    expect(byName.new_products).toBe(4);
+    expect(byName.waitlist_users).toBe(15);
+    expect(byName.deleted_users).toBe(1);
+    expect(byName.total_users).toBe(130);
+    expect(byName.standard_users).toBe(110);
+    expect(byName.invoices_pending).toBe(7);
+    expect(byName.users_low_score).toBe(2);
   });
 
   it('computes conversion + feedback ratios when denominators are non-zero', () => {
@@ -36,5 +64,27 @@ describe('toBusinessKpiRows', () => {
     const names = rows.map((r) => r.metricName);
     expect(names).not.toContain('conversion_rate');
     expect(names).not.toContain('feedback_score');
+  });
+
+  it('maps new merchants to one dimensioned row per country', () => {
+    const rows = toNewMerchantRows('2026-06-22', [
+      { country: 'NL', count: 3 },
+      { country: 'PT', count: 1 },
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ metricName: NEW_MERCHANTS_METRIC, value: 3, dimensions: { country: 'NL' } });
+  });
+
+  it('maps invoices by region to country/region-dimensioned rows (null region -> empty)', () => {
+    const rows = toInvoicesByRegionRows('2026-06-22', [
+      { country: 'NL', region: 'NL-NB', count: 5 },
+      { country: 'PT', region: null, count: 2 },
+    ]);
+    expect(rows[0]).toMatchObject({
+      metricName: INVOICES_BY_REGION_METRIC,
+      value: 5,
+      dimensions: { country: 'NL', region: 'NL-NB' },
+    });
+    expect(rows[1].dimensions).toEqual({ country: 'PT', region: '' });
   });
 });
