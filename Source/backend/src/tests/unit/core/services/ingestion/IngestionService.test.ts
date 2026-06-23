@@ -48,6 +48,7 @@ describe('IngestionService', () => {
   let ledger: MockedObject<IIngestionLedger>;
   let storage: MockedObject<IS3FileStorage>;
   let visionParser: { parse: ReturnType<typeof vi.fn> };
+  let documentParser: { parse: ReturnType<typeof vi.fn> };
   let merchantResolver: MockedObject<IMerchantResolver>;
   let productNormalizer: MockedObject<IProductNormalizer>;
   let classifier: MockedObject<IInvoiceClassifier>;
@@ -63,6 +64,7 @@ describe('IngestionService', () => {
     ledger = { claim: vi.fn(), setStatus: vi.fn(), release: vi.fn() };
     storage = { presignPut: vi.fn(), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     visionParser = { parse: vi.fn() };
+    documentParser = { parse: vi.fn() };
     merchantResolver = { resolve: vi.fn() };
     productNormalizer = { normalize: vi.fn() };
     classifier = { classify: vi.fn() };
@@ -96,6 +98,7 @@ describe('IngestionService', () => {
     sut = new IngestionService(
       tenantContext, ledger, storage,
       visionParser as unknown as VisionParseService,
+      documentParser as unknown as VisionParseService,
       merchantResolver, productNormalizer, classifier, tagGenerator, invoiceRepo,
       priceObservationStore, contributorContext, regionReference,
     );
@@ -105,6 +108,7 @@ describe('IngestionService', () => {
     ledger.claim.mockResolvedValue(true);
     storage.getObjectBytes.mockResolvedValue(new Uint8Array([1]));
     visionParser.parse.mockResolvedValue(receipt(parseConfidence));
+    documentParser.parse.mockResolvedValue(receipt(parseConfidence));
     merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'Albert Heijn', provisional: false, confidence: 0.9 });
     productNormalizer.normalize.mockResolvedValue({ lines: [normalizedLine(lowConfidence), normalizedLine()], suggestedTags: [] });
     classifier.classify.mockResolvedValue('groceries');
@@ -145,18 +149,19 @@ describe('IngestionService', () => {
     expect(ledger.setStatus).toHaveBeenCalledWith(MESSAGE.s3Key, 'DONE');
   });
 
-  it('sends a PDF upload to the parser as a document attachment', async () => {
+  it('sends a PDF to the document parser as a document attachment', async () => {
     arrangeHappyPath();
 
     await sut.process({ ...MESSAGE, s3Key: 'receipts/tenant-1/abc.pdf' });
 
-    expect(visionParser.parse).toHaveBeenCalledWith(
+    expect(documentParser.parse).toHaveBeenCalledWith(
       { format: 'pdf', bytes: expect.any(Uint8Array), name: 'receipt' },
       expect.objectContaining({ countryCode: 'NL' }),
     );
+    expect(visionParser.parse).not.toHaveBeenCalled();
   });
 
-  it('sends an image upload to the parser as an image attachment', async () => {
+  it('sends an image to the vision parser as an image attachment', async () => {
     arrangeHappyPath();
 
     await sut.process(MESSAGE);
@@ -165,6 +170,7 @@ describe('IngestionService', () => {
       { format: 'jpeg', bytes: expect.any(Uint8Array) },
       expect.objectContaining({ countryCode: 'NL' }),
     );
+    expect(documentParser.parse).not.toHaveBeenCalled();
   });
 
   it('forces a deposit line to the per-macro deposit category, keeping the macro', async () => {

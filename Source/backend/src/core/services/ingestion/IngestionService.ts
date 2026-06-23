@@ -32,6 +32,9 @@ export class IngestionService {
     private readonly ledger: IIngestionLedger,
     private readonly fileStorage: IS3FileStorage,
     private readonly visionParser: VisionParseService,
+    // PDFs go to a document-capable model (the vision model rejects document blocks);
+    // both run the same receipt prompt + schema, differing only in the model ID.
+    private readonly documentParser: VisionParseService,
     private readonly merchantResolver: IMerchantResolver,
     private readonly productNormalizer: IProductNormalizer,
     private readonly classifier: IInvoiceClassifier,
@@ -57,7 +60,8 @@ export class IngestionService {
     const format = attachmentFormatFromKey(message.s3Key);
     const attachment =
       format === 'pdf' ? { format, bytes, name: 'receipt' } : { format, bytes };
-    const receipt = await this.visionParser.parse(attachment, {
+    const parser = format === 'pdf' ? this.documentParser : this.visionParser;
+    const receipt = await parser.parse(attachment, {
       countryCode: context.countryCode,
       processedDate,
     });
