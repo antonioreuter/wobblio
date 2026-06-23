@@ -590,10 +590,11 @@ export class WobblioBackendStack extends Stack {
       cronWeeklyAdvisorFn,
     );
 
-    // Daily 01:30 UTC: roll the prior day's ingestion-timing logs into kpi_daily.
+    // Hourly (at :30): roll yesterday + today into kpi_daily so the admin dashboard
+    // stays near-current (the handler upserts, so each run finalizes the figures).
     makeCron(
       'IngestionMetricsRollupCron',
-      events.Schedule.cron({ minute: '30', hour: '1' }),
+      events.Schedule.cron({ minute: '30' }),
       cronIngestionMetricsRollupFn,
     );
 
