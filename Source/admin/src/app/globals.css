@@ -1,29 +1,208 @@
 @import 'tailwindcss';
 
+/* ==========================================================================
+   Wobblio Admin — themed tokens. Dark is the default; light is opt-in via
+   data-theme="light" (mirrors the webapp design system). Brand is GREEN here,
+   not the webapp's electric-indigo. Utilities (bg-card, text-fg, bg-brand …)
+   resolve to these vars, so every surface themes automatically — no dark:
+   variants needed.
+   ========================================================================== */
+:root,
+[data-theme='dark'] {
+  --bg: #0b0f19;
+  --card: #111827;
+  --elevated: #1e293b;
+  --line: #334155;
+  --fg: #f1f5f9;
+  --muted: #94a3b8;
+  --faint: #64748b;
+
+  --brand: #10b981;
+  --brand-hover: #059669;
+  --brand-fg: #04130d;
+  --brand-soft: rgba(16, 185, 129, 0.16);
+
+  --success: #22c55e;
+  --success-soft: rgba(34, 197, 94, 0.16);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.16);
+  --danger: #f43f5e;
+  --danger-soft: rgba(244, 63, 94, 0.16);
+}
+
+[data-theme='light'] {
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --elevated: #f1f5f9;
+  --line: #e2e8f0;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --faint: #94a3b8;
+
+  --brand: #059669;
+  --brand-hover: #047857;
+  --brand-fg: #ffffff;
+  --brand-soft: #d1fae5;
+
+  --success: #16a34a;
+  --success-soft: #dcfce7;
+  --warning: #d97706;
+  --warning-soft: #fef3c7;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+}
+
 @theme {
-  --color-brand: #0d9488;
-  --color-brand-hover: #0f766e;
-  --color-background: #ffffff;
-  --color-surface: #f8fafc;
-  --color-text: #0f172a;
-  --color-muted: #64748b;
-  --color-background-dark: #0b0f19;
-  --color-surface-dark: #111827;
-  --color-text-dark: #f1f5f9;
-  --color-muted-dark: #94a3b8;
-  --color-success: #16a34a;
-  --color-warning: #d97706;
-  --color-error: #dc2626;
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-elevated: var(--elevated);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand-soft: var(--brand-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
   --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
   --radius-card: 12px;
   --radius-btn: 8px;
 }
 
-@variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
-
 *, *::before, *::after { box-sizing: border-box; }
 
 html { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
-body { background-color: var(--color-background); color: var(--color-text); }
+body { background-color: var(--bg); color: var(--fg); }
 
 .tabular { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+
+/* ── App shell — icon rail + tooltips + mobile drawer (mirrors the webapp) ── */
+:root {
+  --rail-width: 76px;
+  --z-header: 100;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --brand-glow: rgba(16, 185, 129, 0.3);
+}
+
+@layer components {
+.app-topbar {
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  backdrop-filter: blur(8px);
+  border-color: var(--line);
+}
+
+.app-rail {
+  height: 100vh;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  border-right: 1px solid var(--line);
+  padding: 22px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.rail-logo { margin-bottom: 12px; display: flex; }
+.rail-menu { display: flex; flex-direction: column; gap: 8px; }
+.rail-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.12s var(--ease-out);
+}
+.rail-btn:hover { background: var(--elevated); color: var(--fg); border-color: var(--line); }
+.rail-btn:active { transform: scale(0.92); }
+.rail-btn[data-active='true'] {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-hover) 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px var(--brand-glow);
+}
+
+/* hover tooltip to the right of an icon button */
+.has-tip { position: relative; }
+.has-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) scale(0.96);
+  background: var(--elevated);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 300;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.has-tip:hover::after { opacity: 1; transform: translateY(-50%) scale(1); }
+
+/* mobile drawer */
+.topbar-hamburger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--muted);
+}
+.topbar-hamburger:hover { background: var(--elevated); color: var(--fg); }
+.app-rail-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease;
+  z-index: 200;
+}
+.app-rail-backdrop.open { opacity: 1; visibility: visible; }
+.app-rail-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 260px;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+  padding: 14px;
+  transform: translateX(-100%);
+  transition: transform 0.22s var(--ease-out);
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.app-rail-drawer.open { transform: none; }
+.drawer-menu { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+.drawer-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.drawer-nav-btn:hover { background: var(--elevated); color: var(--fg); }
+.drawer-nav-btn[data-active='true'] { background: var(--brand-soft); color: var(--brand); }
+}

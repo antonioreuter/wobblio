@@ -61,7 +61,7 @@ export function LoginForm() {
         data-testid="login-password"
       />
       {error && (
-        <p className="flex items-center gap-1.5 text-xs text-[#dc2626]" role="alert">
+        <p className="flex items-center gap-1.5 text-xs text-danger" role="alert">
           <AlertCircle size={14} strokeWidth={1.5} />
           {error}
         </p>

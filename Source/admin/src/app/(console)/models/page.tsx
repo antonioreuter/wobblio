@@ -67,15 +67,15 @@ export default function ModelsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold text-[#0f172a]">Model-Swap Matrix</h1>
+      <h1 className="text-2xl font-bold text-fg">Model-Swap Matrix</h1>
 
-      {notice && <p className="text-xs text-[#16a34a]" data-testid="models-notice">{notice}</p>}
-      {error && <p className="text-xs text-[#dc2626]" role="alert">{error}</p>}
+      {notice && <p className="text-xs text-success" data-testid="models-notice">{notice}</p>}
+      {error && <p className="text-xs text-danger" role="alert">{error}</p>}
 
-      <div className="overflow-x-auto rounded-[12px] border border-[#e2e8f0] bg-white">
+      <div className="overflow-x-auto rounded-[12px] border border-line bg-card">
         <table className="w-full min-w-[640px] text-sm" data-testid="models-table">
           <thead>
-            <tr className="border-b border-[#e2e8f0] text-left text-xs text-[#64748b]">
+            <tr className="border-b border-line text-left text-xs text-muted">
               <th className="p-3 font-medium">Role</th>
               <th className="p-3 font-medium">Current ID</th>
               <th className="p-3 font-medium">New ID</th>
@@ -84,9 +84,9 @@ export default function ModelsPage() {
           </thead>
           <tbody>
             {models.map((m) => (
-              <tr key={m.role} className="border-b border-[#f1f5f9]" data-testid="models-row">
-                <td className="p-3 font-medium text-[#0f172a]">{m.role}</td>
-                <td className="p-3 font-mono text-xs text-[#64748b]">{m.modelId ?? '— unset —'}</td>
+              <tr key={m.role} className="border-b border-line" data-testid="models-row">
+                <td className="p-3 font-medium text-fg">{m.role}</td>
+                <td className="p-3 font-mono text-xs text-muted">{m.modelId ?? '— unset —'}</td>
                 <td className="p-3">
                   <Input
                     aria-label={`New ${m.role} id`}
@@ -113,18 +113,18 @@ export default function ModelsPage() {
       </div>
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-[#0f172a]">Swap history</h2>
+        <h2 className="text-sm font-semibold text-fg">Swap history</h2>
         {history.length === 0 ? (
-          <p className="text-xs text-[#64748b]">No swaps recorded.</p>
+          <p className="text-xs text-muted">No swaps recorded.</p>
         ) : (
           <ul className="flex flex-col gap-1" data-testid="models-history">
             {history.map((h) => (
-              <li key={h.id} className="rounded-[8px] border border-[#e2e8f0] bg-white p-2 text-xs">
-                <span className="font-medium text-[#0f172a]">{h.target}</span>{' '}
-                <span className="font-mono text-[#64748b]">
+              <li key={h.id} className="rounded-[8px] border border-line bg-card p-2 text-xs">
+                <span className="font-medium text-fg">{h.target}</span>{' '}
+                <span className="font-mono text-muted">
                   {String(h.before ?? '∅')} → {String(h.after ?? '∅')}
                 </span>{' '}
-                <span className="text-[#94a3b8]">
+                <span className="text-faint">
                   · {h.actorEmail} · {new Date(h.createdAt).toLocaleString()}
                 </span>
               </li>

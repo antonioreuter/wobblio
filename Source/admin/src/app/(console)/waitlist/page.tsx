@@ -56,7 +56,7 @@ export default function WaitlistPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold text-[#0f172a]">Waitlist</h1>
+      <h1 className="text-2xl font-bold text-fg">Waitlist</h1>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3" data-testid="waitlist-overview">
         <Stat label="Free users" value={overview?.freeUsers} />
@@ -64,8 +64,8 @@ export default function WaitlistPage() {
         <Stat label="Queue size" value={overview?.queueSize} icon={<Users size={16} strokeWidth={1.5} />} />
       </div>
 
-      <div className="flex flex-col gap-3 rounded-[12px] border border-[#e2e8f0] bg-white p-4">
-        <p className="text-sm font-semibold text-[#0f172a]">Release users (FIFO)</p>
+      <div className="flex flex-col gap-3 rounded-[12px] border border-line bg-card p-4">
+        <p className="text-sm font-semibold text-fg">Release users (FIFO)</p>
         <div className="flex items-end gap-3">
           <div className="w-32">
             <Input
@@ -85,11 +85,11 @@ export default function WaitlistPage() {
             Release
           </Button>
         </div>
-        <a href="/config" className="inline-flex items-center gap-1 text-xs text-[#0d9488] hover:underline">
+        <a href="/config" className="inline-flex items-center gap-1 text-xs text-brand hover:underline">
           Raise the cap in SSM config <ArrowUpRight size={12} strokeWidth={1.5} />
         </a>
-        {message && <p className="text-xs text-[#16a34a]" data-testid="waitlist-message">{message}</p>}
-        {error && <p className="text-xs text-[#dc2626]" role="alert">{error}</p>}
+        {message && <p className="text-xs text-success" data-testid="waitlist-message">{message}</p>}
+        {error && <p className="text-xs text-danger" role="alert">{error}</p>}
       </div>
 
       <ConfirmDialog
@@ -106,12 +106,12 @@ export default function WaitlistPage() {
 
 function Stat({ label, value, icon }: { label: string; value?: number; icon?: React.ReactNode }) {
   return (
-    <div className="rounded-[12px] border border-[#e2e8f0] bg-white p-4">
-      <div className="flex items-center gap-1.5 text-xs text-[#64748b]">
+    <div className="rounded-[12px] border border-line bg-card p-4">
+      <div className="flex items-center gap-1.5 text-xs text-muted">
         {icon}
         {label}
       </div>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-[#0f172a]">{value ?? '—'}</p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-fg">{value ?? '—'}</p>
     </div>
   )
 }

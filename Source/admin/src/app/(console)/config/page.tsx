@@ -64,18 +64,18 @@ export default function ConfigPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold text-[#0f172a]">SSM Config</h1>
-      <p className="text-sm text-[#64748b]">
+      <h1 className="text-2xl font-bold text-fg">SSM Config</h1>
+      <p className="text-sm text-muted">
         Changes take effect on the next Lambda warm start or SSM cache expiry.
       </p>
 
-      {notice && <p className="text-xs text-[#16a34a]" data-testid="config-notice">{notice}</p>}
-      {error && <p className="text-xs text-[#dc2626]" role="alert">{error}</p>}
+      {notice && <p className="text-xs text-success" data-testid="config-notice">{notice}</p>}
+      {error && <p className="text-xs text-danger" role="alert">{error}</p>}
 
-      <div className="overflow-x-auto rounded-[12px] border border-[#e2e8f0] bg-white">
+      <div className="overflow-x-auto rounded-[12px] border border-line bg-card">
         <table className="w-full min-w-[640px] text-sm" data-testid="config-table">
           <thead>
-            <tr className="border-b border-[#e2e8f0] text-left text-xs text-[#64748b]">
+            <tr className="border-b border-line text-left text-xs text-muted">
               <th className="p-3 font-medium">Parameter</th>
               <th className="p-3 font-medium">Value</th>
               <th className="p-3" />
@@ -83,12 +83,12 @@ export default function ConfigPage() {
           </thead>
           <tbody>
             {params.map((p) => (
-              <tr key={p.key} className="border-b border-[#f1f5f9]" data-testid="config-row">
+              <tr key={p.key} className="border-b border-line" data-testid="config-row">
                 <td className="p-3">
-                  <p className="font-medium text-[#0f172a]">{p.label}</p>
-                  <p className="font-mono text-xs text-[#64748b]">
+                  <p className="font-medium text-fg">{p.label}</p>
+                  <p className="font-mono text-xs text-muted">
                     {p.key} · {p.type}
-                    {p.sensitive && <span className="ml-1 text-[#d97706]">· sensitive</span>}
+                    {p.sensitive && <span className="ml-1 text-warning">· sensitive</span>}
                   </p>
                 </td>
                 <td className="p-3">

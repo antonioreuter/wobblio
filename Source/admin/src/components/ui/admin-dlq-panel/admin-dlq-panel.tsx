@@ -42,25 +42,25 @@ export function AdminDlqPanel({
   return (
     <div className={cn('flex flex-col gap-3', className)} data-testid="admin-dlq-panel">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-[#0f172a] dark:text-[#f1f5f9]">
+        <p className="text-sm font-semibold text-fg ">
           Dead Letter Queue ({messages.length})
         </p>
       </div>
 
       {messages.length === 0 ? (
-        <p className="text-sm text-[#64748b] dark:text-[#94a3b8]">No messages in DLQ.</p>
+        <p className="text-sm text-muted ">No messages in DLQ.</p>
       ) : (
         <ul className="flex flex-col gap-2" role="list">
           {messages.map((msg) => (
             <li
               key={msg.id}
-              className="rounded-[12px] border border-[#e2e8f0] bg-white p-3 dark:border-[#334155] dark:bg-[#111827]"
+              className="rounded-[12px] border border-line bg-card p-3  "
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-col gap-1">
-                  <p className="font-mono text-xs text-[#64748b] dark:text-[#94a3b8]">{msg.id}</p>
-                  <p className="text-sm text-[#dc2626]">{msg.error}</p>
-                  <p className="text-xs text-[#64748b] dark:text-[#94a3b8]">
+                  <p className="font-mono text-xs text-muted ">{msg.id}</p>
+                  <p className="text-sm text-danger">{msg.error}</p>
+                  <p className="text-xs text-muted ">
                     {msg.timestamp} · {msg.retryCount} retries
                   </p>
                 </div>
@@ -68,7 +68,7 @@ export function AdminDlqPanel({
               </div>
 
               {inspecting === msg.id && (
-                <pre className="mt-2 overflow-x-auto rounded bg-[#f8fafc] p-2 font-mono text-xs text-[#0f172a] dark:bg-[#0b0f19] dark:text-[#f1f5f9]">
+                <pre className="mt-2 overflow-x-auto rounded bg-bg p-2 font-mono text-xs text-fg  ">
                   {JSON.stringify(msg.payload, null, 2)}
                 </pre>
               )}

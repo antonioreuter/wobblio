@@ -74,7 +74,7 @@ export default function DlqPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[#0f172a]">Dead Letter Queue</h1>
+        <h1 className="text-2xl font-bold text-fg">Dead Letter Queue</h1>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={load} data-testid="dlq-refresh">
             <RefreshCw size={14} strokeWidth={1.5} /> Refresh
@@ -100,10 +100,10 @@ export default function DlqPage() {
         </div>
       </div>
 
-      {error && <p className="text-xs text-[#dc2626]" role="alert">{error}</p>}
+      {error && <p className="text-xs text-danger" role="alert">{error}</p>}
 
       {messages.length === 0 ? (
-        <div className="rounded-[12px] border border-dashed border-[#e2e8f0] bg-white p-16 text-center text-sm text-[#64748b]">
+        <div className="rounded-[12px] border border-dashed border-line bg-card p-16 text-center text-sm text-muted">
           No messages in the DLQ.
         </div>
       ) : (
@@ -111,14 +111,14 @@ export default function DlqPage() {
           {messages.map((m) => (
             <li
               key={m.messageId}
-              className="rounded-[12px] border border-[#e2e8f0] bg-white p-3"
+              className="rounded-[12px] border border-line bg-card p-3"
               data-testid="dlq-row"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-col gap-1">
-                  <p className="font-mono text-xs text-[#64748b]">{m.messageId}</p>
-                  <p className="font-mono text-xs text-[#0f172a]">{m.preview}</p>
-                  <p className="text-xs text-[#64748b]">
+                  <p className="font-mono text-xs text-muted">{m.messageId}</p>
+                  <p className="font-mono text-xs text-fg">{m.preview}</p>
+                  <p className="text-xs text-muted">
                     tenant {m.tenantId ?? '—'} · {m.approximateReceiveCount} attempts ·{' '}
                     {m.firstFailedAt ? new Date(m.firstFailedAt).toLocaleString() : 'unknown time'}
                   </p>
@@ -128,7 +128,7 @@ export default function DlqPage() {
                     href={m.logsUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-[#0d9488] hover:underline"
+                    className="inline-flex items-center gap-1 text-xs text-brand hover:underline"
                   >
                     Logs <ExternalLink size={12} strokeWidth={1.5} />
                   </a>
@@ -136,7 +136,7 @@ export default function DlqPage() {
               </div>
 
               {inspecting === m.messageId && (
-                <pre className="mt-2 overflow-x-auto rounded bg-[#f8fafc] p-2 font-mono text-xs text-[#0f172a]">
+                <pre className="mt-2 overflow-x-auto rounded bg-bg p-2 font-mono text-xs text-fg">
                   {m.body}
                 </pre>
               )}

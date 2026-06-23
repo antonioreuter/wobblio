@@ -75,7 +75,7 @@ export default function CurationPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold text-[#0f172a]">Alias Curation</h1>
+      <h1 className="text-2xl font-bold text-fg">Alias Curation</h1>
 
       <div className="flex flex-wrap items-center gap-2" role="tablist">
         {(['merchants', 'products'] as Kind[]).map((k) => (
@@ -85,7 +85,7 @@ export default function CurationPage() {
             aria-selected={kind === k}
             onClick={() => setKind(k)}
             className={`rounded-[8px] px-3 py-1.5 text-sm font-medium ${
-              kind === k ? 'bg-[#0d9488] text-white' : 'bg-white text-[#64748b] border border-[#e2e8f0]'
+              kind === k ? 'bg-brand text-white' : 'bg-card text-muted border border-line'
             }`}
             data-testid={`curation-tab-${k}`}
           >
@@ -104,16 +104,16 @@ export default function CurationPage() {
         )}
       </div>
 
-      {error && <p className="text-xs text-[#dc2626]" role="alert">{error}</p>}
+      {error && <p className="text-xs text-danger" role="alert">{error}</p>}
 
       {items.length === 0 ? (
-        <div className="rounded-[12px] border border-dashed border-[#e2e8f0] bg-white p-16 text-center text-sm text-[#64748b]">
+        <div className="rounded-[12px] border border-dashed border-line bg-card p-16 text-center text-sm text-muted">
           No provisional {kind} awaiting review.
         </div>
       ) : (
         <ul className="flex flex-col gap-2" data-testid="curation-list">
           {items.map((it) => (
-            <li key={it.id} className="rounded-[12px] border border-[#e2e8f0] bg-white p-3" data-testid="curation-row">
+            <li key={it.id} className="rounded-[12px] border border-line bg-card p-3" data-testid="curation-row">
               <div className="flex flex-wrap items-start gap-3">
                 <input
                   type="checkbox"
@@ -124,13 +124,13 @@ export default function CurationPage() {
                   data-testid={`curation-select-${it.id}`}
                 />
                 <div className="flex flex-col gap-1">
-                  <p className="font-medium text-[#0f172a]">
-                    {it.name} {it.subtitle && <span className="text-xs text-[#64748b]">· {it.subtitle}</span>}
+                  <p className="font-medium text-fg">
+                    {it.name} {it.subtitle && <span className="text-xs text-muted">· {it.subtitle}</span>}
                   </p>
-                  <p className="text-xs text-[#64748b]">aliases: {it.aliases.join(', ') || '—'}</p>
-                  <p className="text-xs text-[#64748b]">
+                  <p className="text-xs text-muted">aliases: {it.aliases.join(', ') || '—'}</p>
+                  <p className="text-xs text-muted">
                     <span className="tabular-nums">{it.tenantCount}</span> tenants ·{' '}
-                    <span className={it.corroborationMet ? 'text-[#16a34a]' : 'text-[#d97706]'}>
+                    <span className={it.corroborationMet ? 'text-success' : 'text-warning'}>
                       {it.observationCount}/{it.quorum} corroboration
                     </span>
                   </p>
@@ -151,7 +151,7 @@ export default function CurationPage() {
               {pending?.id === it.id && pending.action === 'merge' && (
                 <div className="mt-3 flex items-end gap-2">
                   <input
-                    className="h-9 flex-1 rounded-[8px] border border-[#e2e8f0] px-3 text-sm"
+                    className="h-9 flex-1 rounded-[8px] border border-line px-3 text-sm"
                     placeholder="Target entity id to merge into"
                     value={mergeTarget}
                     onChange={(e) => setMergeTarget(e.target.value)}

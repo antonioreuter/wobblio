@@ -104,6 +104,52 @@ async function fetchProfile(idToken: string | undefined): Promise<SessionProfile
   }
 }
 
+// Renew the Cognito access/ID token via the Hosted-UI token endpoint using the
+// stored refresh token. Edge-safe (fetch only). On failure, flag the token so the
+// session carries an error. Local (cognito-local) has no token endpoint — just
+// extend the window. Mirrors the webapp's refresh.
+async function refreshCognitoTokens(token: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (process.env.COGNITO_ENDPOINT) {
+    return { ...token, accessTokenExpires: Date.now() + 3600 * 1000, error: undefined }
+  }
+  const domain = process.env.COGNITO_DOMAIN
+  const refreshToken = token.refreshToken as string | undefined
+  if (!domain || !refreshToken) return { ...token, error: 'RefreshAccessTokenError' }
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: process.env.COGNITO_CLIENT_ID!,
+      refresh_token: refreshToken,
+    })
+    if (process.env.COGNITO_CLIENT_SECRET) body.set('client_secret', process.env.COGNITO_CLIENT_SECRET)
+
+    const res = await fetch(`https://${domain}/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    })
+    if (!res.ok) throw new Error(`token endpoint ${res.status}`)
+
+    const refreshed = (await res.json()) as {
+      access_token: string
+      id_token?: string
+      expires_in: number
+      refresh_token?: string
+    }
+    return {
+      ...token,
+      accessToken: refreshed.access_token,
+      idToken: refreshed.id_token ?? token.idToken,
+      accessTokenExpires: Date.now() + refreshed.expires_in * 1000,
+      refreshToken: refreshed.refresh_token ?? refreshToken,
+      error: undefined,
+    }
+  } catch {
+    return { ...token, error: 'RefreshAccessTokenError' }
+  }
+}
+
 const nextAuth = NextAuth({
   trustHost: true,
   session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
@@ -127,7 +173,7 @@ const nextAuth = NextAuth({
   ],
   pages: { signIn: '/login' },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger }) {
       const isSignIn = Boolean(account && user)
       if (account && user) {
         token.sub = user.id ?? token.sub
@@ -146,6 +192,14 @@ const nextAuth = NextAuth({
         token.role = p.role
         token.status = p.status
       }
+
+      // Cognito access/ID tokens expire in ~1h. Without renewal, every /admin/*
+      // call 401s at the API Gateway authorizer once the idToken goes stale. Renew
+      // via the stored refresh token before expiry (or when the client extends the
+      // session), mirroring the webapp.
+      const expires = token.accessTokenExpires as number | undefined
+      if (expires && Date.now() < expires && trigger !== 'update') return token
+      if (token.refreshToken) return refreshCognitoTokens(token as Record<string, unknown>)
       return token
     },
     session({ session, token }) {

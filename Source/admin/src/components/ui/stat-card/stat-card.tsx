@@ -23,7 +23,7 @@ export function StatCard({
 }: StatCardProps) {
   return (
     <Card className={cn('min-w-[160px] flex-1', className)}>
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-[#64748b] dark:text-[#94a3b8]">
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted ">
         {label}
       </p>
       {amount !== undefined ? (
@@ -31,11 +31,11 @@ export function StatCard({
           amount={amount}
           currency={currency}
           size="display"
-          className="block text-[#0f172a] dark:text-[#f1f5f9]"
+          className="block text-fg "
         />
       ) : (
         <p
-          className="text-[30px] font-bold leading-[36px] text-[#0f172a] dark:text-[#f1f5f9]"
+          className="text-[30px] font-bold leading-[36px] text-fg "
           style={{ fontVariantNumeric: 'tabular-nums' }}
         >
           {value}
@@ -45,7 +45,7 @@ export function StatCard({
         <div className="mt-2 flex items-center gap-1.5">
           <DeltaChip value={delta} />
           {deltaLabel && (
-            <span className="text-xs text-[#64748b] dark:text-[#94a3b8]">{deltaLabel}</span>
+            <span className="text-xs text-muted ">{deltaLabel}</span>
           )}
         </div>
       )}

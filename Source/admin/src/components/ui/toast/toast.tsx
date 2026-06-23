@@ -20,27 +20,27 @@ const variantConfig: Record<
 > = {
   success: {
     icon: <CheckCircle2 size={16} strokeWidth={1.5} />,
-    bg: 'bg-[#dcfce7]',
-    text: 'text-[#16a34a]',
-    border: 'border-[#16a34a]/20',
+    bg: 'bg-success-soft',
+    text: 'text-success',
+    border: 'border-success/20',
   },
   error: {
     icon: <XCircle size={16} strokeWidth={1.5} />,
-    bg: 'bg-[#fee2e2]',
-    text: 'text-[#dc2626]',
-    border: 'border-[#dc2626]/20',
+    bg: 'bg-danger-soft',
+    text: 'text-danger',
+    border: 'border-danger/20',
   },
   warning: {
     icon: <AlertTriangle size={16} strokeWidth={1.5} />,
-    bg: 'bg-[#fef3c7]',
-    text: 'text-[#d97706]',
-    border: 'border-[#d97706]/20',
+    bg: 'bg-warning-soft',
+    text: 'text-warning',
+    border: 'border-warning/20',
   },
   info: {
     icon: <Info size={16} strokeWidth={1.5} />,
-    bg: 'bg-[#ccfbf1]',
-    text: 'text-[#0d9488]',
-    border: 'border-[#0d9488]/20',
+    bg: 'bg-brand-soft',
+    text: 'text-brand',
+    border: 'border-brand/20',
   },
 }
 

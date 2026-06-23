@@ -3,6 +3,7 @@ import type { MockedObject } from 'vitest';
 import { AdminKpiService } from '@core/services/admin/AdminKpiService';
 import { AdminAiSpendService } from '@core/services/admin/AdminAiSpendService';
 import type { IKpiDailyReader } from '@core/ports/observability/IKpiDailyReader';
+import type { IBedrockCostSource } from '@core/ports/observability/IBedrockCostSource';
 import { InvalidAdminInputError } from '@core/domain/errors';
 
 describe('AdminKpiService', () => {
@@ -53,5 +54,39 @@ describe('AdminAiSpendService', () => {
     expect(metrics).toEqual(['ai_tokens', 'ai_cost']);
     expect(from).toBe('2026-06-01'); // 30 days inclusive
     expect(to).toBe('2026-06-30');
+  });
+
+  describe('actual (Cost Explorer)', () => {
+    let reader: MockedObject<IKpiDailyReader>;
+    let cost: MockedObject<IBedrockCostSource>;
+
+    beforeEach(() => {
+      reader = { query: vi.fn().mockResolvedValue([]) };
+      cost = { getByModel: vi.fn().mockResolvedValue([]) };
+    });
+
+    it('defaults to DAILY and calls CE with an exclusive end (to + 1 day)', async () => {
+      const res = await new AdminAiSpendService(reader, cost).actual(undefined, '2026-06-01', '2026-06-30');
+      expect(cost.getByModel).toHaveBeenCalledWith('DAILY', '2026-06-01', '2026-07-01');
+      expect(res.granularity).toBe('DAILY');
+      expect(res.to).toBe('2026-06-30');
+    });
+
+    it('honours MONTHLY granularity', async () => {
+      await new AdminAiSpendService(reader, cost).actual('MONTHLY', '2026-06-01', '2026-06-30');
+      expect(cost.getByModel).toHaveBeenCalledWith('MONTHLY', '2026-06-01', '2026-07-01');
+    });
+
+    it('rejects an invalid granularity', async () => {
+      await expect(
+        new AdminAiSpendService(reader, cost).actual('HOURLY', undefined, undefined),
+      ).rejects.toBeInstanceOf(InvalidAdminInputError);
+    });
+
+    it('throws when no cost source is configured', async () => {
+      await expect(new AdminAiSpendService(reader).actual('DAILY', undefined, undefined)).rejects.toBeInstanceOf(
+        InvalidAdminInputError,
+      );
+    });
   });
 });

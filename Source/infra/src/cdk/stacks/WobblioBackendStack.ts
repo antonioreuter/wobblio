@@ -352,6 +352,21 @@ export class WobblioBackendStack extends Stack {
       ),
     }));
 
+    // Cost Explorer: admin AI-spend "actual" view (admin-console 07) reads billed
+    // Bedrock cost per model. ce:GetCostAndUsage has no resource-level permissions —
+    // it only supports a "*" resource — so a matching IAM5 suppression is required.
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ce:GetCostAndUsage'],
+      resources: ['*'],
+    }));
+    NagSuppressions.addResourceSuppressions(apiHandlerFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'ce:GetCostAndUsage does not support resource-level permissions; "*" is the only valid resource',
+        appliesTo: ['Resource::*'],
+      },
+    ], true);
+
     // Bedrock InvokeModel via cross-region inference profiles needs the profile ARN AND
     // the underlying foundation models in every member region; model IDs are runtime SSM
     // values. None can be enumerated at synth time, so both are wildcards with a matching

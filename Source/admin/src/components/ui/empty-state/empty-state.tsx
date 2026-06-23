@@ -21,10 +21,10 @@ export function EmptyState({ icon, heading, body, ctaLabel, onCta, className }: 
       )}
       data-testid="empty-state"
     >
-      <Icon icon={icon} size={32} className="text-[#64748b] dark:text-[#94a3b8]" />
+      <Icon icon={icon} size={32} className="text-muted " />
       <div className="flex flex-col gap-1">
-        <p className="text-base font-semibold text-[#0f172a] dark:text-[#f1f5f9]">{heading}</p>
-        <p className="max-w-xs text-sm text-[#64748b] dark:text-[#94a3b8]">{body}</p>
+        <p className="text-base font-semibold text-fg ">{heading}</p>
+        <p className="max-w-xs text-sm text-muted ">{body}</p>
       </div>
       {ctaLabel && onCta && (
         <Button variant="primary" size="md" onClick={onCta}>

@@ -32,7 +32,7 @@ export async function handleAdminRoute(
   if (path.startsWith('/admin/config')) return handleAdminConfigRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/models')) return handleAdminModelRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/curation')) return handleAdminCurationRoute(db, user, path, method, event, log);
-  if (path === '/admin/kpis' || path === '/admin/ai-spend') return handleAdminAnalyticsRoute(db, path, method, event);
+  if (path === '/admin/kpis' || path.startsWith('/admin/ai-spend')) return handleAdminAnalyticsRoute(db, path, method, event);
 
   return json(404, { message: 'Not Found' });
 }

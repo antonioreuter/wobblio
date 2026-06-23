@@ -62,13 +62,13 @@ export function DataTable<T extends { id: string }>({
     >
       {/* Desktop table */}
       <table className="hidden w-full border-collapse text-sm md:table">
-        <thead className="sticky top-0 z-10 bg-[#f8fafc] dark:bg-[#111827]">
+        <thead className="sticky top-0 z-10 bg-bg ">
           <tr>
             {columns.map((col) => (
               <th
                 key={String(col.key)}
                 className={cn(
-                  'border-b border-[#e2e8f0] px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-[#64748b] dark:border-[#334155] dark:text-[#94a3b8]',
+                  'border-b border-line px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted  ',
                   col.numeric && 'text-right',
                   col.className
                 )}
@@ -76,7 +76,7 @@ export function DataTable<T extends { id: string }>({
                 {col.header}
               </th>
             ))}
-            {onRowClick && <th className="w-8 border-b border-[#e2e8f0] dark:border-[#334155]" />}
+            {onRowClick && <th className="w-8 border-b border-line " />}
           </tr>
         </thead>
         <tbody ref={tbodyRef}>
@@ -91,9 +91,9 @@ export function DataTable<T extends { id: string }>({
               <tr
                 key={row.id}
                 className={cn(
-                  'border-b border-[#e2e8f0] dark:border-[#334155]',
+                  'border-b border-line ',
                   onRowClick &&
-                    'cursor-pointer hover:bg-[#f0fdfc] focus:bg-[#f0fdfc] focus:outline-none dark:hover:bg-[#0d9488]/10 dark:focus:bg-[#0d9488]/10'
+                    'cursor-pointer hover:bg-brand-soft focus:bg-brand-soft focus:outline-none  '
                 )}
                 onClick={() => onRowClick?.(row)}
                 onKeyDown={(e) => handleKeyDown(e, row)}
@@ -105,7 +105,7 @@ export function DataTable<T extends { id: string }>({
                   <td
                     key={String(col.key)}
                     className={cn(
-                      'px-3 py-3 text-[#0f172a] dark:text-[#f1f5f9]',
+                      'px-3 py-3 text-fg ',
                       col.numeric && 'numeric-cell tabular',
                       col.className
                     )}
@@ -114,7 +114,7 @@ export function DataTable<T extends { id: string }>({
                   </td>
                 ))}
                 {onRowClick && (
-                  <td className="px-2 py-3 text-right text-[#64748b] dark:text-[#94a3b8]">
+                  <td className="px-2 py-3 text-right text-muted ">
                     <ChevronRight size={14} strokeWidth={1.5} aria-hidden />
                   </td>
                 )}
@@ -132,7 +132,7 @@ export function DataTable<T extends { id: string }>({
           rows.map((row) => (
             <li key={row.id}>
               <button
-                className="w-full rounded-[12px] border border-[#e2e8f0] bg-white p-3 text-left hover:border-[#0d9488] dark:border-[#334155] dark:bg-[#111827]"
+                className="w-full rounded-[12px] border border-line bg-card p-3 text-left hover:border-brand  "
                 onClick={() => onRowClick?.(row)}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -140,7 +140,7 @@ export function DataTable<T extends { id: string }>({
                     <span
                       key={String(col.key)}
                       className={cn(
-                        'text-sm text-[#0f172a] dark:text-[#f1f5f9]',
+                        'text-sm text-fg ',
                         col.numeric && 'tabular font-medium'
                       )}
                     >
@@ -151,7 +151,7 @@ export function DataTable<T extends { id: string }>({
                 {columns.slice(2).map((col) => (
                   <span
                     key={String(col.key)}
-                    className="mt-1 block text-xs text-[#64748b] dark:text-[#94a3b8]"
+                    className="mt-1 block text-xs text-muted "
                   >
                     {col.render ? col.render(row) : getCellValue(row, col.key)}
                   </span>

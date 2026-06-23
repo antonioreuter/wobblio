@@ -52,28 +52,28 @@ export default function KpisPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[#0f172a]">KPI Dashboard</h1>
+        <h1 className="text-2xl font-bold text-fg">KPI Dashboard</h1>
         <div className="flex items-end gap-2" data-testid="kpi-range">
-          <label className="text-xs text-[#64748b]">
+          <label className="text-xs text-muted">
             From
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="ml-1 rounded border border-[#e2e8f0] px-2 py-1" data-testid="kpi-from" />
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="ml-1 rounded border border-line px-2 py-1" data-testid="kpi-from" />
           </label>
-          <label className="text-xs text-[#64748b]">
+          <label className="text-xs text-muted">
             To
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="ml-1 rounded border border-[#e2e8f0] px-2 py-1" data-testid="kpi-to" />
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="ml-1 rounded border border-line px-2 py-1" data-testid="kpi-to" />
           </label>
         </div>
       </div>
 
-      {error && <p className="text-xs text-[#dc2626]" role="alert">{error}</p>}
+      {error && <p className="text-xs text-danger" role="alert">{error}</p>}
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5" data-testid="kpi-cards">
         {CARDS.map((c) => {
           const v = latest(c.metric)
           return (
-            <div key={c.metric} className="rounded-[12px] border border-[#e2e8f0] bg-white p-4">
-              <p className="text-xs text-[#64748b]">{c.label}</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-[#0f172a]">
+            <div key={c.metric} className="rounded-[12px] border border-line bg-card p-4">
+              <p className="text-xs text-muted">{c.label}</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-fg">
                 {v === undefined ? '—' : c.format(v)}
               </p>
             </div>
@@ -81,7 +81,7 @@ export default function KpisPage() {
         })}
       </div>
 
-      <div className="rounded-[12px] border border-amber-200 bg-amber-50 p-3 text-xs text-[#92400e]">
+      <div className="rounded-[12px] border border-warning/40 bg-warning-soft p-3 text-xs text-warning">
         Churn rate is not yet rolled up — no subscription-cancellation signal exists in the schema (Epic 15 gap).
       </div>
 
@@ -89,8 +89,8 @@ export default function KpisPage() {
         {SPARKS.map((metric) => {
           const s = series(metric)
           return (
-            <div key={metric} className="rounded-[12px] border border-[#e2e8f0] bg-white p-4">
-              <p className="mb-2 text-sm font-medium text-[#0f172a]">
+            <div key={metric} className="rounded-[12px] border border-line bg-card p-4">
+              <p className="mb-2 text-sm font-medium text-fg">
                 {metric === 'feedback_score' ? 'Feedback score (UP ratio)' : metric}
               </p>
               <Sparkline values={s.map((p) => p.value)} height={48} className="w-full" />

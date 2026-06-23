@@ -1,6 +1,7 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import type { PoolClient } from 'pg';
 import { KpiDailyReaderAdapter } from '@infrastructure/adapters/observability/KpiDailyReaderAdapter';
+import { CostExplorerBedrockAdapter } from '@infrastructure/adapters/observability/CostExplorerBedrockAdapter';
 import { AdminKpiService } from '@core/services/admin/AdminKpiService';
 import { AdminAiSpendService } from '@core/services/admin/AdminAiSpendService';
 import { InvalidAdminInputError } from '@core/domain/errors';
@@ -24,6 +25,10 @@ export async function handleAdminAnalyticsRoute(
     }
     if (path === '/admin/ai-spend') {
       return json(200, await new AdminAiSpendService(reader).query(q.from, q.to));
+    }
+    if (path === '/admin/ai-spend/actual') {
+      const service = new AdminAiSpendService(reader, new CostExplorerBedrockAdapter());
+      return json(200, await service.actual(q.granularity, q.from, q.to));
     }
   } catch (err) {
     if (err instanceof InvalidAdminInputError) return json(400, { message: err.message });
