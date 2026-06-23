@@ -1,6 +1,6 @@
 import type { SQSEvent, SQSBatchResponse, Context } from 'aws-lambda';
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { createLambdaLogger } from '@infrastructure/logging/logger';
+import { SsmModelRegistryAdapter } from '@infrastructure/adapters/ai/SsmModelRegistryAdapter';
 import { buildPool } from '@infrastructure/config/db';
 import { TenantContextAdapter } from '@infrastructure/adapters/identity/TenantContextAdapter';
 import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
@@ -30,30 +30,17 @@ import { VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION } from '../../prompts/
 const COUNTS_TOWARD_BUDGET = new Set(['PARSED', 'NEEDS_REVIEW']);
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
-const VISION_MODEL_PARAM = '/wobblio/config/models/vision_parser';
-const AUXILIARY_MODEL_PARAM = '/wobblio/config/models/auxiliary';
-const EMBEDDER_MODEL_PARAM = '/wobblio/config/models/embedder';
-
-const modelIdCache = new Map<string, string>();
-
-async function resolveModelId(param: string): Promise<string> {
-  const cached = modelIdCache.get(param);
-  if (cached) return cached;
-  const ssm = new SSMClient({ region: REGION });
-  const response = await ssm.send(new GetParameterCommand({ Name: param }));
-  const value = response.Parameter?.Value ?? '';
-  if (!value) throw new Error(`SSM parameter ${param} is missing`);
-  modelIdCache.set(param, value);
-  return value;
-}
 
 export const handler = async (event: SQSEvent, context: Context): Promise<SQSBatchResponse> => {
   const log = createLambdaLogger('ingestion-worker', context.awsRequestId);
   const pool = await buildPool(process.env.DB_SECRET_ARN!, process.env.DB_HOST!, process.env.DB_PORT!);
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
-  const visionModelId = await resolveModelId(VISION_MODEL_PARAM);
-  const auxiliaryModelId = await resolveModelId(AUXILIARY_MODEL_PARAM);
-  const embedderModelId = await resolveModelId(EMBEDDER_MODEL_PARAM);
+  // Model IDs resolve through the canonical registry (admin-console 03) so an admin
+  // swap is picked up on the next cold start — no hardcoded IDs in the worker.
+  const modelRegistry = new SsmModelRegistryAdapter(REGION);
+  const visionModelId = await modelRegistry.getModelId('vision_parser');
+  const auxiliaryModelId = await modelRegistry.getModelId('auxiliary');
+  const embedderModelId = await modelRegistry.getModelId('embedder');
   const converse = new BedrockConverseAdapter(REGION);
   const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
 

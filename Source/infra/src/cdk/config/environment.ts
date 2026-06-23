@@ -10,10 +10,16 @@ export interface EnvironmentConfig {
   zoneDomain: string;
   /** CloudFront / webapp domain: app.wobblio.com (prod) | app.dev.wobblio.com (dev) */
   appDomain: string;
+  /** Admin console domain: admin.wobblio.com (prod) | admin.dev.wobblio.com (dev) */
+  adminDomain: string;
   /** API Gateway custom domain: api.wobblio.com (prod) | api.dev.wobblio.com (dev) */
   apiDomain: string;
   /** SSM path where WobblioWebCertStack writes the ACM cert ARN (stage-scoped) */
   webCertSsmPath: string;
+  /** SSM path where WobblioAdminCertStack writes the admin ACM cert ARN (us-east-1) */
+  adminCertSsmPath: string;
+  /** SSM path where WobblioAdminCertStack writes the admin WAF web-ACL ARN (us-east-1) */
+  adminWafAclSsmPath: string;
   /** Stage-isolated shared-DB secret ARN param: prod uses the canonical name,
    *  every other stage an underscore-suffixed alias (e.g. wobblio_dev). */
   dbSecretParam: string;
@@ -48,6 +54,7 @@ export function buildEnvironmentConfig(): EnvironmentConfig {
   // prod: app.wobblio.com  |  dev: app.dev.wobblio.com
   const subdomainInfix = stage === 'prod' ? '' : `${stage}.`;
   const appDomain = `app.${subdomainInfix}${ZONE_DOMAIN}`;
+  const adminDomain = `admin.${subdomainInfix}${ZONE_DOMAIN}`;
   const apiDomain = `api.${subdomainInfix}${ZONE_DOMAIN}`;
 
   return {
@@ -58,8 +65,11 @@ export function buildEnvironmentConfig(): EnvironmentConfig {
     localstackEndpoint,
     zoneDomain: ZONE_DOMAIN,
     appDomain,
+    adminDomain,
     apiDomain,
     webCertSsmPath: `/wobblio/web/${stage}/certificate-arn`,
+    adminCertSsmPath: `/wobblio/admin/${stage}/certificate-arn`,
+    adminWafAclSsmPath: `/wobblio/admin/${stage}/waf-acl-arn`,
     dbSecretParam: stage === 'prod'
       ? '/shared/db/wobblio/secret-arn'
       : `/shared/db/wobblio_${stage}/secret-arn`,

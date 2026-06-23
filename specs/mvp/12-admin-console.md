@@ -4,6 +4,11 @@
 
 ## Overview
 
+> **Implementation-ready breakdown:** this epic is decomposed into per-section sub-specs under
+> [`./admin-console/`](./admin-console/README.md) (build order, dependency/blocker matrix, and the
+> folded-in backend prerequisites). This file remains the canonical epic summary; build against the
+> sub-specs.
+
 Web-only admin console, middleware-gated to `ADMIN` role. Provides live SSM parameter editing, model-swap matrix, waitlist management, DLQ inspection/replay, merchant/product alias-curation queue, and AI-spend dashboard.
 
 **Architecture decision (2026-06-11):** The admin console is a **separate Next.js application** (`Source/admin/`) deployed to its own domain `admin.wobblio.com`. It is NOT part of the main webapp (`wobblio.com`). Rationale: isolated attack surface, separate deployment, strict server-side role enforcement with no admin routes or components leaking into the customer-facing app.
@@ -54,7 +59,6 @@ Live editing of all tunable parameters. Changes take effect on next Lambda warm 
 
 Parameters exposed:
 - `max_free_users_cap` — waitlist trigger
-- `ai/daily_spend_cap` — per-tenant daily AI budget
 - `routing/min_split_saving` — route optimizer saving threshold (€)
 - `routing/max_stores` — max stores in split route
 - `tags/vocabulary` — JSON tag vocabulary with trigger maps
@@ -101,14 +105,22 @@ Per item:
 - Entity name + raw aliases that resolved to it
 - Number of contributing tenants waiting on promotion
 - Corroboration status (eligible corroborator count / quorum)
-- Actions: **Approve** (set `status=ACTIVE`), **Merge** (merge into an existing entity, retarget aliases), **Reject** (set `status=REJECTED`, aliases retargeted or cleared)
+- Actions: **Approve** (set `status=ACTIVE`), **Merge** (merge into an existing entity, retarget aliases), **Reject** (set rejected status, aliases retargeted or cleared). Note: live enums `merchant_status`/`catalog_status` are `('PROVISIONAL','ACTIVE','INACTIVE')` — no `REJECTED`. Reject maps to `INACTIVE` or adds a `REJECTED` value; decide in the migration. See [`./admin-console/06-alias-curation-queue.md`](./admin-console/06-alias-curation-queue.md).
 
 ### 6. AI-Spend Dashboard
 
+> **Amended 2026-06-22:** `ai_spend_ledger` and the per-tenant daily AI-spend cap were **removed**
+> (cost is now bounded by the weekly invoice quota; telemetry is `bedrock_usage` logs rolled into
+> `kpi_daily` nightly). There is no per-tenant spend store and no cap to breach. This dashboard is
+> **aggregate-only** unless a new per-tenant source is built. See
+> [`./admin-console/07-ai-spend-dashboard.md`](./admin-console/07-ai-spend-dashboard.md).
+
 - Daily bar chart: total tokens (input + output) and estimated cost, segmented by model role
+  (sourced from `kpi_daily` / `bedrock_usage` logs)
 - Date range picker (default: last 30 days)
-- Per-tenant top-spenders table (tenant_id, date, model_role, est_cost) — sourced from `ai_spend_ledger`
-- Alert indicator: days where any tenant exceeded the per-tenant daily cap
+- Per-tenant top-spenders table — **dropped** (no per-tenant source after the ledger removal; build a
+  new aggregate table to reinstate)
+- Cap-breach indicator — **dropped** (the per-tenant daily cap no longer exists)
 
 ### 7. KPI Dashboard
 
@@ -169,14 +181,14 @@ Per item:
 - [ ] `GET /admin/curation/products?status=PROVISIONAL` — sorted by pending-tenant count
 - [ ] `POST /admin/curation/merchants/{id}/approve` — set status ACTIVE
 - [ ] `POST /admin/curation/merchants/{id}/merge` with `{ targetId }` — merge + retarget aliases
-- [ ] `POST /admin/curation/merchants/{id}/reject` — set status REJECTED
+- [ ] `POST /admin/curation/merchants/{id}/reject` — set rejected status (`INACTIVE`, or add `REJECTED` enum value)
 - [ ] Same endpoints for products
 - [ ] Batch actions: approve/reject selected items
 
 ### AI-Spend Dashboard
-- [ ] `GET /admin/ai-spend?from=...&to=...` — daily totals by model role + per-tenant top-spenders
+- [ ] `GET /admin/ai-spend?from=...&to=...` — daily aggregate totals by model role (from `kpi_daily` / `bedrock_usage` logs)
 - [ ] Bar chart: tokens + cost by model role, date range picker
-- [ ] Cap-breach indicator per day
+- [ ] ~~Per-tenant top-spenders~~ / ~~cap-breach indicator~~ — dropped (ledger + per-tenant cap removed 2026-06-22)
 
 ### KPI Dashboard
 - [ ] `GET /admin/kpis?metrics=...&from=...&to=...` — reads from `kpi_daily` table

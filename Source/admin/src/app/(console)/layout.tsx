@@ -1,5 +1,5 @@
-import { Shield } from 'lucide-react'
 import { WobblioLogo } from '@/components/ui/logo'
+import { SignOutButton } from '@/components/ui/sign-out-button'
 
 const NAV_ITEMS = [
   { href: '/',          label: 'Hub' },
@@ -15,9 +15,9 @@ const NAV_ITEMS = [
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-[#f8fafc]">
-      {/* Admin sidebar */}
+      {/* Desktop sidebar — hidden on mobile (replaced by the top nav strip below) */}
       <nav
-        className="flex w-56 shrink-0 flex-col border-r border-[#e2e8f0] bg-white"
+        className="hidden w-56 shrink-0 flex-col border-r border-[#e2e8f0] bg-white md:flex"
         aria-label="Admin navigation"
       >
         <div className="flex h-14 items-center gap-2 border-b border-[#e2e8f0] px-4">
@@ -47,17 +47,35 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
       </nav>
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center border-b border-[#e2e8f0] bg-white px-6">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center border-b border-[#e2e8f0] bg-white px-4 md:px-6">
           <div className="flex items-center gap-1.5">
             <WobblioLogo className="h-5 w-5" />
             <span className="text-sm font-bold text-[#0f172a]">
               wobbl<span className="text-electric-indigo">io</span> <span className="text-slate-400">Admin</span>
             </span>
           </div>
-          <span className="ml-auto text-xs text-[#64748b]">admin.wobblio.com</span>
+          <span className="ml-auto mr-3 hidden text-xs text-[#64748b] sm:inline">admin.wobblio.com</span>
+          <SignOutButton />
         </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+
+        {/* Mobile nav — horizontally scrollable pills, shown only on small screens */}
+        <nav
+          className="flex gap-2 overflow-x-auto border-b border-[#e2e8f0] bg-white px-4 py-2 md:hidden"
+          aria-label="Admin navigation"
+        >
+          {NAV_ITEMS.map(({ href, label }) => (
+            <a
+              key={href}
+              href={href}
+              className="whitespace-nowrap rounded-full border border-[#e2e8f0] px-3 py-1 text-xs font-medium text-[#64748b] hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+            >
+              {label}
+            </a>
+          ))}
+        </nav>
+
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   )

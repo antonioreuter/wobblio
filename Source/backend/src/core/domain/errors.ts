@@ -258,3 +258,20 @@ export class ListItemNotFoundError extends Error {
     this.name = 'ListItemNotFoundError';
   }
 }
+
+// Admin console — invalid operator input (e.g. a release count or SSM value that
+// fails validation). Carries a human-readable reason surfaced as a 400/422.
+export class InvalidAdminInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidAdminInputError';
+  }
+}
+
+// Admin console — an unknown/non-allowlisted target (SSM param key or model role).
+export class UnknownAdminTargetError extends Error {
+  constructor(readonly target: string) {
+    super(`Unknown admin target: ${target}`);
+    this.name = 'UnknownAdminTargetError';
+  }
+}

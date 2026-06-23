@@ -223,6 +223,13 @@ export class WobblioBackendStack extends Stack {
     ingestionQueue.grantSendMessages(apiHandlerFn);
     ingestionQueue.grantConsumeMessages(ingestionWorkerFn);
 
+    // Admin DLQ panel (admin-console 05): the api-handler reads + deletes DLQ
+    // messages and replays them onto the main queue (send grant above). No
+    // SendMessage on the DLQ itself — least privilege.
+    ingestionDlq.grantConsumeMessages(apiHandlerFn);
+    apiHandlerFn.addEnvironment('INGEST_DLQ_URL', ingestionDlq.queueUrl);
+    apiHandlerFn.addEnvironment('INGESTION_WORKER_LOG_GROUP', ingestionLogGroupName);
+
     dbStack.kmsKey.grantEncryptDecrypt(apiHandlerFn);
     dbStack.kmsKey.grantEncryptDecrypt(ingestionWorkerFn);
     dbStack.kmsKey.grantEncryptDecrypt(waitlistStatusFn);
@@ -313,6 +320,36 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/routing/max_stores`,
         `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/routing/min_split_saving_eur`,
       ],
+    }));
+
+    // SSM: admin parameter editor (admin-console 02) — read + write the allowlisted
+    // tunables. Paths enumerated (no wildcard) to mirror the allowlist in
+    // core/domain/adminTunables.ts and keep cdk-nag IAM5 clean.
+    const adminTunableSsmPaths = [
+      '/wobblio/config/quotas/max_free_waitlist_cap',
+      '/wobblio/config/routing/min_split_saving_eur',
+      '/wobblio/config/routing/max_stores',
+      '/wobblio/config/tags/vocabulary',
+      '/wobblio/config/tags/dedicated_call_enabled',
+      '/wobblio/config/models/limits/vision_parser_max_tokens',
+      '/wobblio/config/models/limits/auxiliary_max_tokens',
+      '/wobblio/config/models/limits/insight_max_tokens',
+      '/wobblio/config/models/limits/embedder_max_tokens',
+    ];
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameters', 'ssm:PutParameter'],
+      resources: adminTunableSsmPaths.map(
+        (p) => `arn:aws:ssm:${this.region}:${this.account}:parameter${p}`,
+      ),
+    }));
+
+    // SSM: admin model-swap matrix (admin-console 03) — read + write the four model
+    // IDs. Enumerated (no wildcard) to keep cdk-nag IAM5 clean.
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameters', 'ssm:PutParameter'],
+      resources: ['vision_parser', 'auxiliary', 'insight', 'embedder'].map(
+        (role) => `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/models/${role}`,
+      ),
     }));
 
     // Bedrock InvokeModel via cross-region inference profiles needs the profile ARN AND
