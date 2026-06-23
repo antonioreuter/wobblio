@@ -1,5 +1,6 @@
-import type { SQSEvent, SQSBatchResponse, Context } from 'aws-lambda';
-import { createLambdaLogger } from '@infrastructure/logging/logger';
+import type { SQSEvent, SQSBatchResponse, SQSRecord, Context } from 'aws-lambda';
+import type { PoolClient } from 'pg';
+import { createLambdaLogger, type LambdaLogger } from '@infrastructure/logging/logger';
 import { SsmModelRegistryAdapter } from '@infrastructure/adapters/ai/SsmModelRegistryAdapter';
 import { buildPool } from '@infrastructure/config/db';
 import { TenantContextAdapter } from '@infrastructure/adapters/identity/TenantContextAdapter';
@@ -28,6 +29,11 @@ import { VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION } from '../../prompts/
 
 // Budgets a freshly-parsed invoice can move; only PARSED/NEEDS_REVIEW invoices count.
 const COUNTS_TOWARD_BUDGET = new Set(['PARSED', 'NEEDS_REVIEW']);
+
+// Mirrors the SQS redrive policy (maxReceiveCount) in WobblioBackendStack. On the
+// final delivery the message goes to the DLQ, so this is the last chance to flip the
+// invoice out of PROCESSING.
+const MAX_RECEIVE_COUNT = 3;
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 
@@ -129,6 +135,12 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         err: err instanceof Error ? err : new Error(String(err)),
         cause: cause instanceof Error ? cause : cause ? new Error(String(cause)) : undefined,
       });
+      // Final delivery before the DLQ: move the invoice out of the non-terminal
+      // PROCESSING state so it surfaces as failed and becomes deletable (the
+      // rolled-back run persisted no status). Best-effort and isolated — never throws.
+      if (Number(record.attributes.ApproximateReceiveCount) >= MAX_RECEIVE_COUNT) {
+        await markInvoiceFailed(client, record, log);
+      }
       batchItemFailures.push({ itemIdentifier: record.messageId });
     } finally {
       client.release();
@@ -137,3 +149,24 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
 
   return { batchItemFailures };
 };
+
+// Flip an invoice to FAILED_PROCESSING in its own committed transaction (RLS needs
+// the tenant context first). Runs after the main transaction rolled back, so it can
+// reuse the same client. Swallows its own errors — a failure here must not break the
+// batch response or re-throw into the handler.
+async function markInvoiceFailed(client: PoolClient, record: SQSRecord, log: LambdaLogger): Promise<void> {
+  try {
+    const { invoiceId, tenantId } = JSON.parse(record.body) as IngestionMessage;
+    await client.query('BEGIN');
+    await new TenantContextAdapter(client).setTenantId(tenantId);
+    await new InvoiceRepositoryAdapter(client).updateStatus(invoiceId, 'FAILED_PROCESSING');
+    await client.query('COMMIT');
+    log.info('invoice marked FAILED_PROCESSING after final attempt', { invoiceId });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    log.error('could not mark invoice failed', {
+      messageId: record.messageId,
+      err: err instanceof Error ? err : new Error(String(err)),
+    });
+  }
+}
