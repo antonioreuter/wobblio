@@ -2,7 +2,14 @@
 
 All updates to the Wobblio OKF knowledge bundle are recorded here chronologically, with newest changes first.
 
+## 2026-06-24
+
+- Created `architecture/api-integration.md` detailing Cognito auth headers, public vs. protected endpoints, and the transaction-safe 3-step invoice upload flow.
+- Created `architecture/endpoints-components.md` specifying route parameters/behaviors, 12 core Hexagonal module directories, and CloudWatch metrics/alarms telemetry namespaces.
+
+
 ## 2026-06-23
+
 
 - Initialized standard `okf/` bundle directory structure.
 - Created `index.md` catalog for progressive disclosure.

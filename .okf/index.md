@@ -6,6 +6,10 @@ Welcome to the Wobblio project knowledge base, organized according to the Open K
 
 - [Hexagonal Architecture & Conventions](/architecture/overview) - Codebase boundaries, Clean Code constraints, and directory layout.
 - [Database & Multi-Tenancy](/architecture/database-multi-tenancy) - Postgres schema structure, Row-Level Security (RLS) enforcement, and de-identification boundaries.
+- [API Integration Guide](/architecture/api-integration) - Authorization rules, 3-step upload flows, and public endpoints contracts.
+- [API Endpoints, Core Components, & Observability](/architecture/endpoints-components) - Public vs. restricted route definitions, 12 Hexagonal module responsibilities, and CloudWatch metrics.
+
+
 
 ## Ingestion & Pipelines
 
