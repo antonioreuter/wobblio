@@ -13,7 +13,33 @@ const STEP = 0.25
 
 const clampScale = (value: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, value))
 
+// Presigned S3 URLs carry the object key (with its real extension) in the path; the
+// query string holds the signature. A PDF can't render in an <img>, so detect it and
+// hand it to the browser's native PDF viewer in an <iframe>.
+const isPdfUrl = (url: string): boolean => {
+  try {
+    return new URL(url).pathname.toLowerCase().endsWith('.pdf')
+  } catch {
+    return url.split('?')[0].toLowerCase().endsWith('.pdf')
+  }
+}
+
 export function ReceiptViewer({ imageUrl }: ReceiptViewerProps) {
+  if (isPdfUrl(imageUrl)) {
+    return (
+      <div className="receipt-stage receipt-stage--pdf" data-testid="receipt-pdf">
+        <iframe className="receipt-stage-pdf" src={imageUrl} title="Invoice PDF" />
+        <a className="btn btn--outline receipt-pdf-open" href={imageUrl} target="_blank" rel="noreferrer">
+          Open PDF in new tab
+        </a>
+      </div>
+    )
+  }
+
+  return <ReceiptImageViewer imageUrl={imageUrl} />
+}
+
+function ReceiptImageViewer({ imageUrl }: ReceiptViewerProps) {
   const [scale, setScale] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
