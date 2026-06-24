@@ -133,58 +133,60 @@ export default function DashboardPage() {
       <div className="dash-row">
         <SpendOverTimeChart data={metrics.series} dailyData={dailyMetrics} />
 
-        <Card className="panel">
-          <div className="panel-header" style={{ marginBottom: 4 }}>
-            <span className="panel-title">Top Merchants</span>
-          </div>
-          {topMerchants.length === 0 ? (
-            <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', margin: '12px 0 18px' }}>
-              No spending this month yet.
-            </p>
-          ) : (
-            <div style={{ margin: '14px 0 18px' }}>
-              {topMerchants.map((m, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 10, borderBottom: 'var(--border) solid 1px', fontSize: 13 }}>
-                  <div>
-                    <span style={{ fontWeight: 500, marginRight: 8 }}>{idx + 1}.</span>
-                    {m.name}
-                  </div>
-                  <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>€{m.total.toFixed(2)}</span>
-                </div>
-              ))}
+        <div className="stack">
+          <Card className="panel">
+            <div className="panel-header" style={{ marginBottom: 4 }}>
+              <span className="panel-title">Top Merchants</span>
             </div>
-          )}
-        </Card>
-
-        <Card className="panel">
-          <div className="panel-header" style={{ marginBottom: 4 }}>
-            <span className="panel-title">Category Budgets</span>
-          </div>
-          {topBudgets.length === 0 ? (
-            <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', margin: '12px 0 18px' }}>
-              Set budgets to track spending against your goals and get alerted before you overspend.
-            </p>
-          ) : (
-            <div style={{ margin: '14px 0 18px' }}>
-              {topBudgets.map((b) => {
-                const pct = budgetPercent(b)
-                const tone = pct >= 100 ? 'danger' : pct >= 85 ? 'warning' : 'success'
-                return (
-                  <div className="budget-item" key={b.id}>
-                    <div className="budget-meta">
-                      <span className="name">{scopeLabel(b, categoryNames, memberNames)}</span>
-                      <span className="pct" style={{ color: `var(--${tone})` }}>{pct}%</span>
+            {topMerchants.length === 0 ? (
+              <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', margin: '12px 0 18px' }}>
+                No spending this month yet.
+              </p>
+            ) : (
+              <div style={{ margin: '14px 0 18px' }}>
+                {topMerchants.map((m, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 10, borderBottom: 'var(--border) solid 1px', fontSize: 13 }}>
+                    <div>
+                      <span style={{ fontWeight: 500, marginRight: 8 }}>{idx + 1}.</span>
+                      {m.name}
                     </div>
-                    <ProgressBar value={pct} tone={tone} animate />
+                    <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>€{m.total.toFixed(2)}</span>
                   </div>
-                )
-              })}
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card className="panel">
+            <div className="panel-header" style={{ marginBottom: 4 }}>
+              <span className="panel-title">Category Budgets</span>
             </div>
-          )}
-          <Link href="/budgets" className="panel-footer-link" data-testid="dashboard-view-budgets">
-            Go to budgets <ArrowRight size={14} />
-          </Link>
-        </Card>
+            {topBudgets.length === 0 ? (
+              <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', margin: '12px 0 18px' }}>
+                Set budgets to track spending against your goals and get alerted before you overspend.
+              </p>
+            ) : (
+              <div style={{ margin: '14px 0 18px' }}>
+                {topBudgets.map((b) => {
+                  const pct = budgetPercent(b)
+                  const tone = pct >= 100 ? 'danger' : pct >= 85 ? 'warning' : 'success'
+                  return (
+                    <div className="budget-item" key={b.id}>
+                      <div className="budget-meta">
+                        <span className="name">{scopeLabel(b, categoryNames, memberNames)}</span>
+                        <span className="pct" style={{ color: `var(--${tone})` }}>{pct}%</span>
+                      </div>
+                      <ProgressBar value={pct} tone={tone} animate />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            <Link href="/budgets" className="panel-footer-link" data-testid="dashboard-view-budgets">
+              Go to budgets <ArrowRight size={14} />
+            </Link>
+          </Card>
+        </div>
       </div>
 
       <Card className="panel" style={{ padding: 0, marginTop: 20 }}>
