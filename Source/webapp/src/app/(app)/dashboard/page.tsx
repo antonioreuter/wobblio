@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { ArrowRight, RotateCw } from 'lucide-react'
-import { AnimatedNumber, Card, MetricCard, Money, ProgressBar } from '@/components/ds'
+import { AnimatedNumber, Card, MerchantIcon, MetricCard, Money, ProgressBar } from '@/components/ds'
 import {
   budgetPercent,
   InvoiceTable,
@@ -143,16 +143,25 @@ export default function DashboardPage() {
                 No spending this month yet.
               </p>
             ) : (
-              <div style={{ margin: '14px 0 18px' }}>
-                {topMerchants.map((m, idx) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 10, borderBottom: 'var(--border) solid 1px', fontSize: 13 }}>
-                    <div>
-                      <span style={{ fontWeight: 500, marginRight: 8 }}>{idx + 1}.</span>
-                      {m.name}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, margin: '16px 0 4px' }}>
+                {topMerchants.map((m, idx) => {
+                  const max = topMerchants[0].total
+                  const pct = max > 0 ? (m.total / max) * 100 : 0
+                  return (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <MerchantIcon merchant={m.name} size={34} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.name}</span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>€{m.total.toFixed(2)}</span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 999, background: 'var(--glass-border)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: 'var(--brand)', transition: 'width .4s ease' }} />
+                        </div>
+                      </div>
                     </div>
-                    <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>€{m.total.toFixed(2)}</span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </Card>
