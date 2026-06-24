@@ -62,7 +62,9 @@ export class WobblioBackendStack extends Stack {
 
     const ingestionQueue = new sqs.Queue(this, 'IngestionQueue', {
       queueName: config.resourceName('ingestion'),
-      visibilityTimeout: Duration.seconds(30),
+      // Must stay >= the ingestion-worker Lambda timeout (120s, raised for slow PDF/Sonnet
+      // parses) so a message isn't redelivered while still being processed.
+      visibilityTimeout: Duration.seconds(180),
       encryption: sqs.QueueEncryption.KMS,
       encryptionMasterKey: dbStack.kmsKey,
       enforceSSL: true,
@@ -163,9 +165,13 @@ export class WobblioBackendStack extends Stack {
       }));
     }
 
+    // 120s: PDF receipts parse on the document-capable insight model (Sonnet), a single
+    // Converse call of ~20-25s (plus a possible schema retry) — well over the 30s default,
+    // which timed PDFs out mid-pipeline and looped them in PROCESSING. Images (Qwen) are
+    // far faster but share the worker. Queue visibilityTimeout above is kept >= this.
     const ingestionWorkerFn = makeLambda('ingestion-worker', 5, {
       UPLOADS_BUCKET: storageStack.uploadsBucket.bucketName,
-    });
+    }, 120);
 
     const cronBudgetResetFn    = makeLambda('cron-budget-reset', 2, { ANALYTICS_BUCKET: storageStack.analyticsBucket.bucketName });
     const cronFxRateFetchFn    = makeLambda('cron-fx-rate-fetch', 2);
