@@ -72,6 +72,7 @@ export function mapInvoice(b: BackendInvoice): Invoice {
     id: b.id,
     merchant: b.merchantName ?? 'Unknown merchant',
     category: b.categoryName ?? b.categoryId ?? 'Uncategorized',
+    categoryId: b.categoryId ?? null,
     dateISO: b.transactionDate ?? b.createdAt.slice(0, 10),
     status: STATUS_MAP[b.status] ?? ['primary', b.status],
     tags: b.searchTagLabels ?? b.searchTags ?? [],

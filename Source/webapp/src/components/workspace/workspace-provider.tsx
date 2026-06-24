@@ -48,11 +48,11 @@ export interface TopMerchant {
   total: number
 }
 
-async function fetchTopMerchant(): Promise<TopMerchant | null> {
+async function fetchTopMerchants(): Promise<TopMerchant[]> {
   const res = await fetch('/api/me/stats/top-merchant', { cache: 'no-store' })
-  if (!res.ok) return null
-  const data = (await res.json()) as { topMerchant: TopMerchant | null }
-  return data.topMerchant
+  if (!res.ok) return []
+  const data = (await res.json()) as { merchants: TopMerchant[] }
+  return data.merchants ?? []
 }
 
 async function fetchBudgets(): Promise<Budget[]> {
@@ -65,7 +65,7 @@ async function fetchBudgets(): Promise<Budget[]> {
 interface WorkspaceContextValue {
   invoices: Invoice[]
   usage: Usage | null
-  topMerchant: TopMerchant | null
+  topMerchants: TopMerchant[]
   budgets: Budget[]
   loading: boolean
   refreshing: boolean
@@ -101,7 +101,7 @@ export function WorkspaceProvider({
 }) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [usage, setUsage] = useState<Usage | null>(null)
-  const [topMerchant, setTopMerchant] = useState<TopMerchant | null>(null)
+  const [topMerchants, setTopMerchants] = useState<TopMerchant[]>([])
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -113,15 +113,15 @@ export function WorkspaceProvider({
 
   const loadInvoices = useCallback(() => fetchInvoices().then(setInvoices), [])
   const loadUsage = useCallback(() => fetchUsage().then(setUsage), [])
-  const loadTopMerchant = useCallback(() => fetchTopMerchant().then(setTopMerchant), [])
+  const loadTopMerchants = useCallback(() => fetchTopMerchants().then(setTopMerchants), [])
   const loadBudgets = useCallback(() => fetchBudgets().then(setBudgets), [])
 
   useEffect(() => {
     loadInvoices().catch(() => undefined).finally(() => setLoading(false))
     loadUsage().catch(() => undefined)
-    loadTopMerchant().catch(() => undefined)
+    loadTopMerchants().catch(() => undefined)
     loadBudgets().catch(() => undefined)
-  }, [loadInvoices, loadUsage, loadTopMerchant, loadBudgets])
+  }, [loadInvoices, loadUsage, loadTopMerchants, loadBudgets])
 
   const showToast = useCallback((msg: string, tone: ToastTone = 'success') => {
     if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -134,10 +134,10 @@ export function WorkspaceProvider({
     if (refreshing) return
     setRefreshing(true)
     loadUsage().catch(() => undefined)
-    loadTopMerchant().catch(() => undefined)
+    loadTopMerchants().catch(() => undefined)
     loadBudgets().catch(() => undefined)
     loadInvoices().catch(() => undefined).finally(() => setRefreshing(false))
-  }, [refreshing, loadInvoices, loadUsage, loadTopMerchant, loadBudgets])
+  }, [refreshing, loadInvoices, loadUsage, loadTopMerchants, loadBudgets])
 
   const refreshBudgets = useCallback(() => loadBudgets().catch(() => undefined), [loadBudgets])
 
@@ -219,7 +219,7 @@ export function WorkspaceProvider({
   const value: WorkspaceContextValue = {
     invoices,
     usage,
-    topMerchant,
+    topMerchants,
     budgets,
     loading,
     refreshing,

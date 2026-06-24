@@ -10,6 +10,7 @@ export interface Invoice {
   id: string
   merchant: string
   category: string
+  categoryId: string | null
   dateISO: string
   status: Status
   tags: string[]
@@ -83,6 +84,7 @@ function buildInvoices(): Invoice[] {
       id: String(k + 1),
       merchant: MERCHANTS[(k * 3) % MERCHANTS.length],
       category: CATEGORIES[k % CATEGORIES.length],
+      categoryId: ['cat-groceries', 'cat-dining-out', 'cat-transport', 'cat-electronics'][k % 4],
       dateISO: d.toISOString().slice(0, 10),
       status: STATUSES[k % STATUSES.length],
       tags,

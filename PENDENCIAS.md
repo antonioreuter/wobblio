@@ -18,15 +18,17 @@ New features:
 - Users should be able to add an expense manually without an invoice. In this case they can provide a description, a top level category, select the region, date and the currency and the value. Information like Currency we can default to his own currency, date could default to today's date. country and region could default to his country and region too. In this case we need to generate a generic invoice item with the same value of the expense and categorize with something like manual input expense (find a better name for that).
 
 
-Database:
 
-- Review the notification table. Messages should be deleted after 7 days.
-- What the table system_counter represents? 
-- What the table tenant_signature represents?
-- How the table tenant_trust is used?
-- The table Weekly advisor should keep the insights from the last 4 months.
 
-- Maybe we should create one lambda to remove data that expired, this lambda can delete data from multiple tables. Next to that, we should have multiple cron triggers, one for each type of resource, the cron trigger calls the lambda, based on the alarm we know which table to remove the old data.
-    - Analyze tables that could fit here.
-    - Check if there is a better approach to remove old data.
-     -> suggestions: notification, invoice_share, weekly_advisor
+UI:
+- Standardize the icons for the invoices based on the Expense Category.
+- In the dashboard, the chart "Spend over time" should have the option to see everything (in the last 3 months), but by default we should bring the expenses in the current month.
+
+Invoices:
+- The strategy to deduce the location seems to be not working as expected. 
+    1. Check if we can parse the address and correlate with a Country and Region [add tag informing that we resolved via invoice info], if not possible continue;
+    2. If just the country matches, we should resolve the region based on the user's region preference, add a internal tag indicating this; [Note that we are introducing here an internal tag, which we don't have yet], if not possible continue;
+    3. Ask the user to provide Country and Region in the frontend - we should bring pre populated the country and region based on the user's profile.
+
+Budget:
+ - Invoices uploaded are not being computed in the budget. This is a reccuring problem.

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, type MouseEvent } from 'react'
-import { Table2 } from 'lucide-react'
+import { Table2, Calendar, BarChart3 } from 'lucide-react'
 import { Card } from '@/components/ds'
 import { SPEND_OVER_TIME } from './invoice-data'
 
@@ -9,12 +9,14 @@ const eur = (v: number) => `€${v.toFixed(2)}`
 
 interface SpendOverTimeChartProps {
   data?: Array<{ month: string; total: number }>
+  dailyData?: Array<{ day: string; total: number }>
 }
 
-export function SpendOverTimeChart({ data: dataProp }: SpendOverTimeChartProps = {}) {
+export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeChartProps = {}) {
   const [hover, setHover] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
-  const data = dataProp ?? SPEND_OVER_TIME
+  const [mode, setMode] = useState<'month' | 'quarter'>('month')
+  const data = mode === 'month' && dailyData ? dailyData : (dataProp ?? SPEND_OVER_TIME)
 
   const W = 760, H = 300, padL = 52, padR = 18, padT = 20, padB = 34
   const plotW = W - padL - padR
@@ -35,6 +37,8 @@ export function SpendOverTimeChart({ data: dataProp }: SpendOverTimeChartProps =
   const mtdIndex = n - 1
   const total6mo = totals.reduce((a, b) => a + b, 0)
 
+  const getLabel = (d: { month?: string; day?: string; total: number }) => ('month' in d ? d.month : d.day) ?? 'Unknown'
+
   const onMove = (e: MouseEvent<SVGRectElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const px = ((e.clientX - rect.left) / rect.width) * W
@@ -47,8 +51,35 @@ export function SpendOverTimeChart({ data: dataProp }: SpendOverTimeChartProps =
     <Card className="panel">
       <div className="panel-header" style={{ marginBottom: 4 }}>
         <span className="panel-title">Spend over time</span>
-        <div className="panel-actions">
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Last 6 months</span>
+        <div className="panel-actions" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 2, backgroundColor: 'var(--elevated)', borderRadius: 6, padding: 4 }}>
+            <button
+              type="button"
+              onClick={() => setMode('month')}
+              aria-pressed={mode === 'month'}
+              className={`btn-icon has-tip has-tip--bottom`}
+              data-tip="This month"
+              style={{
+                backgroundColor: mode === 'month' ? 'var(--brand)' : 'transparent',
+                color: mode === 'month' ? 'white' : 'inherit',
+              }}
+            >
+              <Calendar size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('quarter')}
+              aria-pressed={mode === 'quarter'}
+              className={`btn-icon has-tip has-tip--bottom`}
+              data-tip="Last 3 months"
+              style={{
+                backgroundColor: mode === 'quarter' ? 'var(--brand)' : 'transparent',
+                color: mode === 'quarter' ? 'white' : 'inherit',
+              }}
+            >
+              <BarChart3 size={14} />
+            </button>
+          </div>
           <button
             type="button"
             className="btn-icon has-tip has-tip--bottom"
@@ -64,7 +95,7 @@ export function SpendOverTimeChart({ data: dataProp }: SpendOverTimeChartProps =
       </div>
       <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 16 }}>
         <strong style={{ color: 'var(--text-primary)' }}>{eur(total6mo)}</strong>{' '}
-        across the last 6 months · {data[mtdIndex].month} is month-to-date.
+        {mode === 'month' ? 'in this month' : 'across the last 3 months'}
       </p>
 
       {showTable ? (
@@ -77,8 +108,8 @@ export function SpendOverTimeChart({ data: dataProp }: SpendOverTimeChartProps =
           </thead>
           <tbody>
             {data.map((d, i) => (
-              <tr key={d.month}>
-                <td>{d.month}{i === mtdIndex ? ' (MTD)' : ''}</td>
+              <tr key={getLabel(d)}>
+                <td>{getLabel(d)}{i === mtdIndex ? ' (MTD)' : ''}</td>
                 <td className="num">{eur(d.total)}</td>
               </tr>
             ))}
@@ -90,7 +121,7 @@ export function SpendOverTimeChart({ data: dataProp }: SpendOverTimeChartProps =
             viewBox={`0 0 ${W} ${H}`}
             className="chart-svg"
             role="img"
-            aria-label={`Total spend over the last 6 months, from ${eur(data[0].total)} in ${data[0].month} to ${eur(data[mtdIndex].total)} month-to-date in ${data[mtdIndex].month}. Toggle the data table for exact figures.`}
+            aria-label={`Total spend, from ${eur(data[0].total)} in ${getLabel(data[0])} to ${eur(data[mtdIndex].total)} month-to-date. Toggle the data table for exact figures.`}
           >
             <defs>
               <linearGradient id="spendArea" x1="0" y1="0" x2="0" y2="1">
@@ -105,7 +136,7 @@ export function SpendOverTimeChart({ data: dataProp }: SpendOverTimeChartProps =
               </g>
             ))}
             {data.map((d, i) => (
-              <text key={d.month} x={x(i)} y={H - 12} className="chart-xlabel">{d.month}</text>
+              <text key={getLabel(d)} x={x(i)} y={H - 12} className="chart-xlabel">{getLabel(d)}</text>
             ))}
             <polygon className="spend-area" points={areaPts} fill="url(#spendArea)" />
             <polyline
@@ -147,7 +178,7 @@ export function SpendOverTimeChart({ data: dataProp }: SpendOverTimeChartProps =
           {hover !== null && (
             <div className="chart-tip" style={{ left: `${(x(hover) / W) * 100}%` }}>
               <div className="chart-tip-head">
-                {data[hover].month}{hover === mtdIndex ? ' · MTD' : ''}
+                {getLabel(data[hover])}{hover === mtdIndex ? ' · MTD' : ''}
               </div>
               <div className="chart-tip-row">
                 <span className="dot" style={{ background: 'var(--brand)' }} />

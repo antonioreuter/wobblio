@@ -263,10 +263,10 @@ async function handleAdvisorCard(db: PoolClient, user: AppUser): Promise<APIGate
 
 // Highest summed-spend merchant for the current month, for the dashboard card.
 async function handleTopMerchant(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
-  const topMerchant = await withTenantTx(db, user.id, () =>
-    new InvoiceRepositoryAdapter(db).getTopMerchantThisMonth(),
+  const merchants = await withTenantTx(db, user.id, () =>
+    new InvoiceRepositoryAdapter(db).getTopMerchantsThisMonth(3),
   );
-  return json(200, { topMerchant });
+  return json(200, { merchants });
 }
 
 async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {

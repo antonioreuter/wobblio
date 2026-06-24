@@ -24,6 +24,8 @@ import { BudgetRecyclerRepositoryAdapter } from '@infrastructure/adapters/budget
 import { NotificationRepositoryAdapter } from '@infrastructure/adapters/notifications/NotificationRepositoryAdapter';
 import { MockPushAdapter } from '@infrastructure/adapters/notifications/MockPushAdapter';
 import { BudgetRecyclerService } from '@core/services/budgets/BudgetRecyclerService';
+import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
+import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
 import type { IngestionMessage } from '@core/ports/ingestion/IIngestionQueue';
 import { VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION } from '../../prompts/visionParse';
 
@@ -151,15 +153,58 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
 };
 
 // Flip an invoice to FAILED_PROCESSING in its own committed transaction (RLS needs
-// the tenant context first). Runs after the main transaction rolled back, so it can
-// reuse the same client. Swallows its own errors — a failure here must not break the
-// batch response or re-throw into the handler.
+// the tenant context first). Also attempt refund if within the weekly cap. Runs after
+// the main transaction rolled back, so it can reuse the same client. Swallows its own
+// errors — a failure here must not break the batch response or re-throw into the handler.
 async function markInvoiceFailed(client: PoolClient, record: SQSRecord, log: LambdaLogger): Promise<void> {
   try {
     const { invoiceId, tenantId } = JSON.parse(record.body) as IngestionMessage;
+    const today = new Date().toISOString().slice(0, 10);
+    const weekStart = weekStartISO(today);
+
     await client.query('BEGIN');
     await new TenantContextAdapter(client).setTenantId(tenantId);
+
+    // Mark invoice failed
     await new InvoiceRepositoryAdapter(client).updateStatus(invoiceId, 'FAILED_PROCESSING');
+
+    // Query invoice for household_id to pick the right counter type
+    const invResult = await client.query<{ household_id: string | null }>(
+      `SELECT household_id FROM invoice WHERE id = $1`,
+      [invoiceId],
+    );
+    const householdId = invResult.rows[0]?.household_id ?? null;
+    const quotaOwnerId = householdId || tenantId;
+    const counterType = householdId ? 'HOUSEHOLD_UPLOADS' : 'UPLOADS';
+
+    // Query user role for refund cap
+    const userResult = await client.query<{ role: string }>(
+      `SELECT role FROM app_user WHERE id = $1`,
+      [tenantId],
+    );
+    const role = (userResult.rows[0]?.role ?? 'STANDARD') as any;
+
+    // Get refund cap from SSM
+    const quotaAdapter = new SsmUploadQuotaAdapter(REGION);
+    const refundCap = await quotaAdapter.getFailureRefundCap(role);
+
+    // Check if we're under the refund cap for this week
+    const quotaRepo = new QuotaRepositoryAdapter(client);
+    const refundsUsed = await quotaRepo.getUsed(tenantId, 'UPLOAD_FAILURE_REFUNDS', weekStart);
+
+    if (refundsUsed < refundCap) {
+      // Within cap: decrement the main counter and increment refund counter
+      await quotaRepo.decrement(quotaOwnerId, counterType, weekStart);
+      await quotaRepo.increment(tenantId, 'UPLOAD_FAILURE_REFUNDS', weekStart);
+      log.info('invoice failure refunded', { invoiceId, counterType });
+    } else {
+      log.info('quota_failure_refund_blocked', {
+        invoiceId,
+        refundsUsed,
+        cap: refundCap,
+      });
+    }
+
     await client.query('COMMIT');
     log.info('invoice marked FAILED_PROCESSING after final attempt', { invoiceId });
   } catch (err) {
@@ -169,4 +214,12 @@ async function markInvoiceFailed(client: PoolClient, record: SQSRecord, log: Lam
       err: err instanceof Error ? err : new Error(String(err)),
     });
   }
+}
+
+function weekStartISO(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
+  return d.toISOString().slice(0, 10);
 }

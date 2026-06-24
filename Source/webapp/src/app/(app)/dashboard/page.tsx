@@ -15,14 +15,14 @@ import {
   useBudgetReference,
   useWorkspace,
 } from '@/components/workspace'
-import { computeSpendMetrics } from '@/lib/invoice-metrics'
+import { computeSpendMetrics, computeDailySeriesForMonth } from '@/lib/invoice-metrics'
 
 export default function DashboardPage() {
   const { data: session } = useSession()
   const {
     invoices,
     usage,
-    topMerchant,
+    topMerchants,
     budgets,
     loading,
     refreshing,
@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const { categoryNames, memberNames } = useBudgetReference(budgets.length > 0, session?.user?.id)
 
   const metrics = useMemo(() => computeSpendMetrics(invoices, new Date()), [invoices])
+  const dailyMetrics = useMemo(() => computeDailySeriesForMonth(invoices, new Date()), [invoices])
   const pendingLocation = useMemo(() => invoices.filter(needsLocationConfirmation), [invoices])
 
   // Top budgets by utilisation lead the dashboard card; the health metric
@@ -125,19 +126,35 @@ export default function DashboardPage() {
                 }
                 tone={usage && !usage.unlimited && (usage.remaining ?? 0) <= 3 ? 'warning' : 'neutral'}
               />
-              <MetricCard
-                className="metric-ultrawide"
-                label="Top Merchant"
-                value={topMerchant?.name ?? '—'}
-                delta={topMerchant ? `€${topMerchant.total.toFixed(2)} this month` : 'No spend this month'}
-                tone="neutral"
-              />
             </>
           )}
       </div>
 
       <div className="dash-row">
-        <SpendOverTimeChart data={metrics.series} />
+        <SpendOverTimeChart data={metrics.series} dailyData={dailyMetrics} />
+
+        <Card className="panel">
+          <div className="panel-header" style={{ marginBottom: 4 }}>
+            <span className="panel-title">Top Merchants</span>
+          </div>
+          {topMerchants.length === 0 ? (
+            <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', margin: '12px 0 18px' }}>
+              No spending this month yet.
+            </p>
+          ) : (
+            <div style={{ margin: '14px 0 18px' }}>
+              {topMerchants.map((m, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 10, borderBottom: 'var(--border) solid 1px', fontSize: 13 }}>
+                  <div>
+                    <span style={{ fontWeight: 500, marginRight: 8 }}>{idx + 1}.</span>
+                    {m.name}
+                  </div>
+                  <span style={{ color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>€{m.total.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
 
         <Card className="panel">
           <div className="panel-header" style={{ marginBottom: 4 }}>

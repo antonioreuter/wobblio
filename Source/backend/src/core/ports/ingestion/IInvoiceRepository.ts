@@ -155,6 +155,6 @@ export interface IInvoiceRepository {
   softDelete(invoiceId: string): Promise<void>;
   listForTenant(limit: number): Promise<InvoiceListItem[]>;
   getDetail(invoiceId: string): Promise<InvoiceDetail | null>;
-  // Top merchant by summed spend for the current month; null when there is none.
-  getTopMerchantThisMonth(): Promise<TopMerchant | null>;
+  // Top merchants by summed spend for the current month; returns up to limit results.
+  getTopMerchantsThisMonth(limit: number): Promise<TopMerchant[]>;
 }

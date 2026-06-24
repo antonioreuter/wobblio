@@ -271,7 +271,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     return result.rows.map(toListItem);
   }
 
-  async getTopMerchantThisMonth(): Promise<TopMerchant | null> {
+  async getTopMerchantsThisMonth(limit: number): Promise<TopMerchant[]> {
     const result = await this.client.query<{ merchant_name: string; total: string }>(
       `SELECT m.brand_name AS merchant_name, SUM(i.total)::text AS total
        FROM invoice i JOIN merchant m ON m.id = i.merchant_id
@@ -281,10 +281,10 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
          AND i.transaction_date <  date_trunc('month', CURRENT_DATE) + interval '1 month'
        GROUP BY m.brand_name
        ORDER BY SUM(i.total) DESC
-       LIMIT 1`,
+       LIMIT $1`,
+      [limit],
     );
-    const row = result.rows[0];
-    return row ? { name: row.merchant_name, total: parseFloat(row.total) } : null;
+    return result.rows.map(row => ({ name: row.merchant_name, total: parseFloat(row.total) }));
   }
 
   async getDetail(invoiceId: string): Promise<InvoiceDetail | null> {

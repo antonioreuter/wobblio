@@ -23,8 +23,9 @@ export type InvoiceLocationStatus = 'RESOLVED' | 'PENDING' | 'HELD_UNMAPPED';
 // Where the invoice location came from. Resolved at ingestion from the printed
 // receipt address (RECEIPT — the only tier that auto-resolves), the browser upload
 // geolocation (GEO), or the contributor profile (PROFILE); or set later by the user
-// confirming the gate (USER).
-export type LocationSource = 'PROFILE' | 'USER' | 'RECEIPT' | 'GEO';
+// confirming the gate (USER). COUNTRY_WITH_PROFILE_REGION is an internal tag for
+// invoices where receipt country matched the profile but the region came from profile.
+export type LocationSource = 'PROFILE' | 'USER' | 'RECEIPT' | 'GEO' | 'COUNTRY_WITH_PROFILE_REGION';
 
 // A country-qualified location candidate. countryCode is always known (the profile
 // always has one); regionCode is null until it maps to an ISO 3166-2 subdivision.
@@ -44,16 +45,24 @@ export interface ResolvedIngestionLocation extends LocationCandidate {
   source: LocationSource;
 }
 
-// Single decision point for an invoice's sharing location (§6.5). Only a receipt with
-// a mapped region auto-resolves (RECEIPT → RESOLVED); a brand spans countries, so the
-// printed address is the sole authority for unattended emission. Upload geolocation
-// and the profile are prefills the user must confirm (PENDING), since neither proves
-// where the receipt was issued.
+// Single decision point for an invoice's sharing location (§6.5). Three-step fallback:
+// 1. Receipt with country + region → RESOLVED (RECEIPT source)
+// 2. Receipt country only, matches profile country, profile has region → RESOLVED (COUNTRY_WITH_PROFILE_REGION source)
+// 3. Else → PENDING (GEO or PROFILE source, user must confirm)
 export function resolveIngestionLocation(input: IngestionLocationInput): ResolvedIngestionLocation {
   const { receipt, uploadGeo, profile } = input;
+
+  // Step 1: Receipt with both country and region → auto-resolve
   if (receipt.countryCode && receipt.regionCode) {
     return { countryCode: receipt.countryCode, regionCode: receipt.regionCode, status: 'RESOLVED', source: 'RECEIPT' };
   }
+
+  // Step 2: Receipt country only, and it matches profile country, and profile has region
+  if (receipt.countryCode && receipt.countryCode === profile.countryCode && profile.regionCode) {
+    return { countryCode: receipt.countryCode, regionCode: profile.regionCode, status: 'RESOLVED', source: 'COUNTRY_WITH_PROFILE_REGION' };
+  }
+
+  // Step 3: Else → PENDING (prefer GEO over PROFILE)
   if (uploadGeo) {
     return { countryCode: uploadGeo.countryCode, regionCode: uploadGeo.regionCode, status: 'PENDING', source: 'GEO' };
   }

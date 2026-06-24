@@ -10,6 +10,7 @@ import { handleAdminModelRoute } from './adminModelRoutes';
 import { handleAdminCurationRoute } from './adminCurationRoutes';
 import { handleAdminAnalyticsRoute } from './adminAnalyticsRoutes';
 import { handleAdminTroubleshootingRoute } from './adminTroubleshootingRoutes';
+import { handleAdminQuotaRoute } from './adminQuotaRoutes';
 
 // Admin-console backend entry. The FIRST line is the server-side ADMIN guard —
 // independent of the edge middleware in Source/admin, both must pass (admin-console
@@ -31,6 +32,7 @@ export async function handleAdminRoute(
   if (path.startsWith('/admin/waitlist')) return handleAdminWaitlistRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/dlq')) return handleAdminDlqRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/troubleshooting')) return handleAdminTroubleshootingRoute(db, user, path, method, event, log);
+  if (path.startsWith('/admin/users')) return handleAdminQuotaRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/config')) return handleAdminConfigRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/models')) return handleAdminModelRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/curation')) return handleAdminCurationRoute(db, user, path, method, event, log);

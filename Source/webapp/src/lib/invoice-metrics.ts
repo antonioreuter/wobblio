@@ -37,3 +37,27 @@ export function computeSpendMetrics(invoices: Invoice[], now: Date): SpendMetric
     series,
   }
 }
+
+// Daily spend series for the current month (day by day up to today)
+export function computeDailySeriesForMonth(invoices: Invoice[], now: Date): { day: string; total: number }[] {
+  const currentMonth = now.getUTCMonth()
+  const currentYear = now.getUTCFullYear()
+  const daysInMonth = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate()
+
+  const byDay = new Map<number, number>()
+
+  for (const inv of invoices) {
+    const d = new Date(inv.dateISO)
+    if (d.getUTCMonth() === currentMonth && d.getUTCFullYear() === currentYear) {
+      const day = d.getUTCDate()
+      byDay.set(day, (byDay.get(day) ?? 0) + inv.total)
+    }
+  }
+
+  // Return series for each day from 1 to today (or last day if today is past month-end)
+  const lastDay = Math.min(now.getUTCDate(), daysInMonth)
+  return Array.from({ length: lastDay }, (_, i) => {
+    const day = i + 1
+    return { day: String(day), total: byDay.get(day) ?? 0 }
+  })
+}
