@@ -9,8 +9,8 @@ import { CLASSIFICATION_TIEBREAK_PROMPT, CLASSIFICATION_TIEBREAK_PROMPT_VERSION 
 
 const RESTAURANT_BILL_HINT = 'RESTAURANT_BILL';
 
-// §6.4 invoice classification: a clear line-item majority wins; otherwise the
-// merchant's default-category prior; otherwise an LLM tiebreak.
+// §6.4 invoice classification: merchant DB prior is authoritative; line-item vote
+// and LLM tiebreak are fallbacks for merchants not yet in the catalog.
 export class InvoiceClassifier implements IInvoiceClassifier {
   constructor(
     private readonly catalog: IMerchantCatalog,
@@ -21,14 +21,14 @@ export class InvoiceClassifier implements IInvoiceClassifier {
   async classify(input: ClassificationInput): Promise<string | null> {
     if (input.documentKindHint === RESTAURANT_BILL_HINT) return DINING_OUT_CATEGORY_ID;
 
-    // A clear majority macro (>50% spend) is decisive on its own.
+    // Merchant prior is authoritative — a DB-classified merchant is never overridden
+    // by line-item votes or LLM; the fallback path only runs for unknown merchants.
+    const prior = input.merchantId ? await this.catalog.getDefaultCategory(input.merchantId) : null;
+    if (prior) return macroCategoryId(prior);
+
+    // No merchant prior: line-item majority vote, then LLM tiebreak.
     const vote = voteCategory(toVoteLines(input));
     if (!vote.needsTiebreak) return vote.categoryId;
-
-    // Otherwise the merchant prior is trusted only when the line-item vote agrees with
-    // it (or there is no competing vote); a disagreement goes to the LLM tiebreak (§6.4).
-    const prior = input.merchantId ? await this.catalog.getDefaultCategory(input.merchantId) : null;
-    if (prior && (vote.categoryId === null || vote.categoryId === prior)) return prior;
 
     return this.tiebreak(input);
   }

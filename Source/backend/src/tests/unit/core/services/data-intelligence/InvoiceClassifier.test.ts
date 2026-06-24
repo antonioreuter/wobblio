@@ -50,31 +50,31 @@ describe('InvoiceClassifier', () => {
     expect(converse).not.toHaveBeenCalled();
   });
 
-  it('returns the clear line-item majority without a prior or LLM', async () => {
+  it('returns the line-item majority when merchant has no prior', async () => {
+    catalog.getDefaultCategory.mockResolvedValue(null);
     const result = await sut.classify(input()); // 8 vs 2 => groceries > 50%
     expect(result).toBe('cat-groceries');
-    expect(catalog.getDefaultCategory).not.toHaveBeenCalled();
     expect(converse).not.toHaveBeenCalled();
   });
 
-  it('uses the merchant prior when it agrees with the inconclusive vote', async () => {
+  it('returns the merchant prior regardless of line-item vote', async () => {
     catalog.getDefaultCategory.mockResolvedValue('cat-groceries');
-    // 5 vs 5: no macro clears 50%, so the vote is inconclusive; the prior agrees with it.
+    // Even with a clear personal-care majority, the DB prior wins.
     const result = await sut.classify(input({
-      lines: [{ rawText: 'a', quantity: 1, lineTotal: 5 }, { rawText: 'b', quantity: 1, lineTotal: 5 }],
+      normalized: [norm('cat-personal-care'), norm('cat-personal-care')],
     }));
     expect(result).toBe('cat-groceries');
     expect(converse).not.toHaveBeenCalled();
   });
 
-  it('runs the LLM tiebreak when the prior disagrees with the vote', async () => {
-    catalog.getDefaultCategory.mockResolvedValue('cat-personal-care');
-    converse.mockResolvedValue(converseResult('{"category_id":"cat-household"}'));
+  it('merchant prior overrides even when vote disagrees', async () => {
+    catalog.getDefaultCategory.mockResolvedValue('cat-groceries');
     const result = await sut.classify(input({
       lines: [{ rawText: 'a', quantity: 1, lineTotal: 5 }, { rawText: 'b', quantity: 1, lineTotal: 5 }],
+      normalized: [norm('cat-personal-care'), norm('cat-household')],
     }));
-    expect(result).toBe('cat-household'); // vote (cat-groceries) ≠ prior → LLM arbitrates
-    expect(converse).toHaveBeenCalledTimes(1);
+    expect(result).toBe('cat-groceries');
+    expect(converse).not.toHaveBeenCalled();
   });
 
   it('runs the LLM tiebreak with no prior and maps the result to its macro', async () => {
@@ -84,6 +84,15 @@ describe('InvoiceClassifier', () => {
       lines: [{ rawText: 'a', quantity: 1, lineTotal: 5 }, { rawText: 'b', quantity: 1, lineTotal: 5 }],
     }));
     expect(result).toBe('cat-groceries'); // cat-snacks rolls up to its macro
+  });
+
+  it('normalises a sub-category merchant prior to its macro', async () => {
+    catalog.getDefaultCategory.mockResolvedValue('cat-dairy'); // sub-category of cat-groceries
+    const result = await sut.classify(input({
+      lines: [{ rawText: 'a', quantity: 1, lineTotal: 5 }, { rawText: 'b', quantity: 1, lineTotal: 5 }],
+    }));
+    expect(result).toBe('cat-groceries');
+    expect(converse).not.toHaveBeenCalled();
   });
 
   it('runs the LLM tiebreak when there is no merchant and lines are uncategorized', async () => {

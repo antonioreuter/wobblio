@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from 'react'
 import { MapPin, ReceiptText, Share2, Trash2 } from 'lucide-react'
-import { Badge, MerchantIcon, Tag, CategoryIcon } from '@/components/ds'
+import { Badge, Tag, CategoryIcon } from '@/components/ds'
 import { eur, fmtDate, needsLocationConfirmation, type Invoice } from './invoice-data'
 import { StatusHelpButton } from './status-legend'
 
@@ -72,11 +72,15 @@ export function InvoiceTable({
               >
                 <td className="cell-merchant">
                   <div className="merchant-cell">
-                    <span className="m-icon"><MerchantIcon merchant={inv.merchant} /></span>{' '}
+                    <span className="m-icon">
+                      <span style={{ width: 28, height: 28, borderRadius: 'var(--radius-md)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <CategoryIcon categoryId={inv.categoryId} size={16} />
+                      </span>
+                    </span>{' '}
                     <span className="m-name">{inv.merchant}</span>
                   </div>
                 </td>
-                <td className="col-cat cell-cat"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><CategoryIcon categoryId={inv.categoryId} size={14} /></span>{inv.category}</td>
+                <td className="col-cat cell-cat">{inv.category}</td>
                 <td className="cell-date">{fmtDate(inv.dateISO)}</td>
                 <td className="cell-status">
                   <Badge tone={inv.status[0]}>{inv.status[1]}</Badge>
