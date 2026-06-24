@@ -30,7 +30,14 @@ Based on the v2.4 engineering & product specification. Files are numbered by bui
 | ⬜ | [09 — Households](./09-households.md) |
 | ⬜ | [10 — Budgets, Shopping Lists & Route Optimizer](./10-budgets-shopping-lists-optimizer.md) |
 | ⬜ | [11 — Bill Splitting, FX & Reporting](./11-bill-splitting-fx-reporting.md) |
-| ⬜ | [12 — Admin Console](./12-admin-console.md) |
+| ⬜ | [12 — Admin Console](./12-admin-console.md) *(index — split into 12a–12g)* |
+| ⬜ | &nbsp;&nbsp;↳ [12a — Admin Foundation](./12a-admin-foundation.md) *(blocks 12b–12f)* |
+| ⬜ | &nbsp;&nbsp;↳ [12b — Waitlist Panel](./12b-admin-waitlist.md) |
+| ⬜ | &nbsp;&nbsp;↳ [12c — Config & Model Matrix](./12c-admin-config-models.md) |
+| ⬜ | &nbsp;&nbsp;↳ [12d — DLQ Inspection & Replay](./12d-admin-dlq.md) |
+| ⬜ | &nbsp;&nbsp;↳ [12e — Alias-Curation Queue](./12e-admin-curation.md) |
+| ⬜ | &nbsp;&nbsp;↳ [12f — Analytics Dashboards](./12f-admin-analytics.md) |
+| ⬜ | &nbsp;&nbsp;↳ [12g — Admin Deployment (CDK)](./12g-admin-deployment.md) |
 | ⬜ | [13 — Security Controls](./13-security-controls.md) |
 | ⬜ | [14 — GDPR & Data Lifecycle](./14-gdpr-data-lifecycle.md) |
 | ⬜ | [15 — Observability, KPIs & Analytics](./15-observability-kpis-analytics.md) |
