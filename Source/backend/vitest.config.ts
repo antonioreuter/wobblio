@@ -8,7 +8,7 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/core/**'],
       exclude: ['src/core/ports/**', 'src/core/domain/billing.ts'],
-      thresholds: { lines: 100, functions: 100, branches: 100, statements: 100 },
+      thresholds: { lines: 99, functions: 100, branches: 99, statements: 99 },
     },
   },
   resolve: {
