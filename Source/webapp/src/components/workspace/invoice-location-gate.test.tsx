@@ -7,6 +7,7 @@ const invoice = (overrides: Partial<Invoice>): Invoice => ({
   id: 'inv-1',
   merchant: 'Albert Heijn',
   category: 'Groceries',
+  categoryId: null,
   dateISO: '2026-06-10',
   status: ['success', 'Ready'],
   tags: [],

@@ -18,11 +18,14 @@ New features:
 - Users should be able to add an expense manually without an invoice. In this case they can provide a description, a top level category, select the region, date and the currency and the value. Information like Currency we can default to his own currency, date could default to today's date. country and region could default to his country and region too. In this case we need to generate a generic invoice item with the same value of the expense and categorize with something like manual input expense (find a better name for that).
 
 
+Admin:
+- Adicionar uma funçao para dar mais ou menos creditos de invoice para um usuario nao semana corrente. Em caso de falha em uma invoice a mesma nao deve ser contabilizada para deduzir do numero de invoices que um usuario pode submeter.
 
 
-UI:
+WebApp UI:
 - Standardize the icons for the invoices based on the Expense Category.
 - In the dashboard, the chart "Spend over time" should have the option to see everything (in the last 3 months), but by default we should bring the expenses in the current month.
+- Add a report to visualize the top 3 merchants. Show the top 3 merchants in the dashboard and the total amount spent in each of them for the current month.
 
 Invoices:
 - The strategy to deduce the location seems to be not working as expected. 

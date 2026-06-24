@@ -16,7 +16,9 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
   const [hover, setHover] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
   const [mode, setMode] = useState<'month' | 'quarter'>('month')
-  const data = mode === 'month' && dailyData ? dailyData : (dataProp ?? SPEND_OVER_TIME)
+  const monthlyData = dataProp ?? SPEND_OVER_TIME
+  // Quarter view shows the trailing 3 months; month view shows the daily series.
+  const data = mode === 'month' ? (dailyData ?? monthlyData) : monthlyData.slice(-3)
 
   const W = 760, H = 300, padL = 52, padR = 18, padT = 20, padB = 34
   const plotW = W - padL - padR
@@ -35,7 +37,7 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
   const linePts = data.map((d, i) => `${x(i)},${y(d.total)}`).join(' ')
   const areaPts = `${padL},${y(yMin)} ${linePts} ${x(n - 1)},${y(yMin)}`
   const mtdIndex = n - 1
-  const total6mo = totals.reduce((a, b) => a + b, 0)
+  const totalShown = totals.reduce((a, b) => a + b, 0)
 
   const getLabel = (d: { month?: string; day?: string; total: number }) => ('month' in d ? d.month : d.day) ?? 'Unknown'
 
@@ -94,7 +96,7 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
         </div>
       </div>
       <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 16 }}>
-        <strong style={{ color: 'var(--text-primary)' }}>{eur(total6mo)}</strong>{' '}
+        <strong style={{ color: 'var(--text-primary)' }}>{eur(totalShown)}</strong>{' '}
         {mode === 'month' ? 'in this month' : 'across the last 3 months'}
       </p>
 

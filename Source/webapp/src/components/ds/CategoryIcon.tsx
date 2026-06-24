@@ -69,7 +69,7 @@ function getMacroCategoryId(categoryId: string): string {
   return CATEGORY_PARENTS[categoryId] ?? categoryId
 }
 
-interface CategoryIconProps {
+export interface CategoryIconProps {
   categoryId: string | null | undefined
   size?: number
   className?: string

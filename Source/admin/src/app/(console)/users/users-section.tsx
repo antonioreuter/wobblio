@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Minus } from 'lucide-react'
+import { Plus, Minus, Search } from 'lucide-react'
 import { Card } from '@/components/ui/card/card'
 import { EmptyState } from '@/components/ui/empty-state/empty-state'
 
@@ -10,7 +10,7 @@ interface User {
   email: string
   role: string
   quotaUsed: number
-  quotaCap: number
+  quotaCap: number | null // null = unlimited (TESTER/ADMIN)
 }
 
 export function UsersSection() {
@@ -85,9 +85,9 @@ export function UsersSection() {
 
       {users.length === 0 ? (
         <EmptyState
-          icon="search"
-          title="No users found"
-          description="Search by email to find and manage user quotas."
+          icon={Search}
+          heading="No users found"
+          body="Search by email to find and manage user quotas."
         />
       ) : (
         <Card className="overflow-hidden">
@@ -118,9 +118,10 @@ export function UsersSection() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {user.quotaUsed} / {user.quotaCap === Infinity ? '∞' : user.quotaCap}
+                    {user.quotaUsed} / {user.quotaCap === null ? '∞' : user.quotaCap}
                   </td>
                   <td className="px-4 py-3">
+                    {/* delta is scans GRANTED: +1 frees a scan (lowers used), -1 consumes one. */}
                     <div className="flex justify-center gap-2">
                       <button
                         onClick={() => adjust(user.id, 1)}

@@ -13,6 +13,24 @@ describe('resolveIngestionLocation', () => {
     expect(result).toEqual({ countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'RECEIPT' });
   });
 
+  it('tier 1b: receipt country only matching the profile country resolves via COUNTRY_WITH_PROFILE_REGION', () => {
+    const result = resolveIngestionLocation({
+      receipt: { countryCode: 'BR', regionCode: null },
+      uploadGeo: { countryCode: 'NL', regionCode: 'NL-NB' },
+      profile,
+    });
+    expect(result).toEqual({ countryCode: 'BR', regionCode: 'BR-BA', status: 'RESOLVED', source: 'COUNTRY_WITH_PROFILE_REGION' });
+  });
+
+  it('tier 1b: a receipt country that differs from the profile country does not resolve from the profile', () => {
+    const result = resolveIngestionLocation({
+      receipt: { countryCode: 'NL', regionCode: null },
+      uploadGeo: null,
+      profile,
+    });
+    expect(result).toEqual({ countryCode: 'BR', regionCode: 'BR-BA', status: 'PENDING', source: 'PROFILE' });
+  });
+
   it('tier 2: no receipt region falls through to upload-geo as PENDING/GEO', () => {
     const result = resolveIngestionLocation({
       receipt: { countryCode: 'NL', regionCode: null },
