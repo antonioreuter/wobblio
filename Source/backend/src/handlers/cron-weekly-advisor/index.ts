@@ -18,14 +18,15 @@ export const handler = async (_event: unknown, context: Context): Promise<void> 
     30000,
   );
 
-  // Haiku-class tier (cost): advisor uses the auxiliary model, not Sonnet insight.
-  // See docs/amendments/2026-06-17-weekly-advisor-tier-and-concurrency.md. Resolved
-  // via the canonical model registry (admin-console 03) — no hardcoded id.
-  const auxiliaryModelId = await new SsmModelRegistryAdapter(REGION).getModelId('auxiliary');
+  // Insight tier (Sonnet): the weekly advisor generates the user-facing savings
+  // narrative, so it runs on the highest-quality insight model — same tier as PDF
+  // parsing. Resolved via the canonical model registry (admin-console 03) — no
+  // hardcoded id. (Supersedes the 2026-06-17 cost-tier amendment that used auxiliary.)
+  const insightModelId = await new SsmModelRegistryAdapter(REGION).getModelId('insight');
   const service = new WeeklyAdvisorService(
     new WeeklyAdvisorRepositoryAdapter(pool),
     new BedrockConverseAdapter(REGION),
-    auxiliaryModelId,
+    insightModelId,
     WEEKLY_ADVISOR_PROMPT,
     WEEKLY_ADVISOR_PROMPT_VERSION,
   );
