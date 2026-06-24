@@ -19,6 +19,7 @@
     "cdk:deploy:observability": "cdk deploy WobblioObservabilityStack-${STAGE:-dev}",
     "cdk:deploy:backend": "cdk deploy WobblioBackendStack-${STAGE:-dev}",
     "cdk:deploy:web": "cdk deploy WobblioWebStack-${STAGE:-dev}",
+    "cdk:deploy:admin": "cdk deploy WobblioAdminCertStack-${STAGE:-dev} WobblioAdminStack-${STAGE:-dev}",
     "migrate:up": "node-pg-migrate up -m src/migrations --ts-node",
     "migrate:down": "node-pg-migrate down -m src/migrations --ts-node",
     "migrate:create": "node-pg-migrate create -m src/migrations --ts",

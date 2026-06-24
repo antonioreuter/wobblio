@@ -15,10 +15,13 @@ export class WaitlistReleaseService {
     private readonly emailSender: IEmailSender,
   ) {}
 
-  async releaseEligibleUsers(): Promise<ReleaseResult> {
+  // maxToRelease bounds a manual operator release (admin waitlist panel) to N users;
+  // the FIFO cron passes nothing and releases the full cap headroom as before.
+  async releaseEligibleUsers(maxToRelease?: number): Promise<ReleaseResult> {
     const cap = await this.capProvider.getMaxFreeUsersCap();
     const current = await this.counter.getCurrentCount();
-    const available = Math.max(0, cap - current);
+    const headroom = Math.max(0, cap - current);
+    const available = maxToRelease === undefined ? headroom : Math.min(headroom, maxToRelease);
 
     if (available === 0) return { released: 0 };
 

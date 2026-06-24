@@ -141,14 +141,26 @@ export class WobblioAuthStack extends Stack {
     // One per NextAuth provider id. `cognito` = login; `cognito-signup` deep-links
     // to the Hosted-UI /signup tab (separate provider → separate callback path).
     // Both must be allowlisted or Cognito rejects the redirect (redirect_mismatch).
+    // The admin console (admin-console 00/01) shares this web client + the same
+    // Cognito pool; its sign-in OAuth redirect comes back to the admin origin, so
+    // that callback must be allowlisted too (only the `cognito` login provider —
+    // the admin app has no sign-up flow).
+    const adminOrigin = `https://${config.adminDomain}`;
     const callbackUrls = [
       `${appOrigin}/api/auth/callback/cognito`,
       `${appOrigin}/api/auth/callback/cognito-signup`,
+      `${adminOrigin}/api/auth/callback/cognito`,
     ];
     // Post-logout destinations for the Cognito Hosted-UI /logout endpoint (used by
     // the federated sign-out so the IdP SSO cookie is cleared, not just the local
     // session). Each must exactly match the logout_uri the app sends.
-    const logoutUrls = [`${appOrigin}/`, `${appOrigin}/login`, `${appOrigin}/api/auth/signout`];
+    const logoutUrls = [
+      `${appOrigin}/`,
+      `${appOrigin}/login`,
+      `${appOrigin}/api/auth/signout`,
+      `${adminOrigin}/`,
+      `${adminOrigin}/login`,
+    ];
 
     this.userPoolClientMobile = this.userPool.addClient('MobileClient', {
       userPoolClientName: config.resourceName('mobile-client'),

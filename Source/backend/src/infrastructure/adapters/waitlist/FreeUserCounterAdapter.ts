@@ -1,10 +1,10 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { IFreeUserCounter } from '@core/ports/waitlist/IFreeUserCounter';
 
 const COUNTER_NAME = 'free_user_count';
 
 export class FreeUserCounterAdapter implements IFreeUserCounter {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: Pool | PoolClient) {}
 
   async tryClaimSlot(cap: number): Promise<boolean> {
     const result = await this.pool.query(

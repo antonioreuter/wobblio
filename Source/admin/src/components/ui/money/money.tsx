@@ -46,9 +46,9 @@ export function DeltaChip({ value, suffix = '%', className }: DeltaChipProps) {
     <span
       className={cn(
         'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-        isNeutral && 'bg-[#f1f5f9] text-[#64748b] dark:bg-[#1e293b] dark:text-[#94a3b8]',
-        isPositive && 'bg-[#fee2e2] text-[#dc2626]',
-        !isPositive && !isNeutral && 'bg-[#dcfce7] text-[#16a34a]',
+        isNeutral && 'bg-elevated text-muted  ',
+        isPositive && 'bg-danger-soft text-danger',
+        !isPositive && !isNeutral && 'bg-success-soft text-success',
         className
       )}
       style={{ fontVariantNumeric: 'tabular-nums' }}

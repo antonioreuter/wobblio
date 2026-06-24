@@ -4,7 +4,7 @@ import { ConfirmService } from '@core/services/ingestion/ConfirmService';
 import type { IInvoiceRepository, InvoiceRecord } from '@core/ports/ingestion/IInvoiceRepository';
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
 import type { IIngestionQueue } from '@core/ports/ingestion/IIngestionQueue';
-import { InvoiceNotFoundError, StaleUploadError } from '@core/domain/errors';
+import { InvoiceNotFoundError, OversizeUploadError, StaleUploadError } from '@core/domain/errors';
 
 const record: InvoiceRecord = {
   id: 'inv-1',
@@ -14,6 +14,8 @@ const record: InvoiceRecord = {
   imageSha256: 'abc',
   householdId: null,
 };
+
+const pdfRecord: InvoiceRecord = { ...record, imageS3Key: 'receipts/tenant-1/abc.pdf' };
 
 describe('ConfirmService', () => {
   let invoiceRepo: MockedObject<IInvoiceRepository>;
@@ -33,7 +35,7 @@ describe('ConfirmService', () => {
       listForTenant: vi.fn(),
       getDetail: vi.fn(),
     };
-    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
+    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     queue = { enqueue: vi.fn() };
     sut = new ConfirmService(invoiceRepo, storage, queue);
   });
@@ -47,7 +49,7 @@ describe('ConfirmService', () => {
 
   it('throws StaleUploadError when the S3 object is missing', async () => {
     invoiceRepo.getById.mockResolvedValue(record);
-    storage.headExists.mockResolvedValue(false);
+    storage.headObject.mockResolvedValue({ exists: false, size: 0 });
 
     await expect(sut.confirm('inv-1', 'tenant-1')).rejects.toBeInstanceOf(StaleUploadError);
     expect(queue.enqueue).not.toHaveBeenCalled();
@@ -55,7 +57,7 @@ describe('ConfirmService', () => {
 
   it('enqueues the ingestion message when the upload exists', async () => {
     invoiceRepo.getById.mockResolvedValue(record);
-    storage.headExists.mockResolvedValue(true);
+    storage.headObject.mockResolvedValue({ exists: true, size: 800_000 });
 
     await sut.confirm('inv-1', 'tenant-1');
 
@@ -63,6 +65,27 @@ describe('ConfirmService', () => {
       invoiceId: 'inv-1',
       tenantId: 'tenant-1',
       s3Key: 'receipts/tenant-1/abc.jpg',
+    });
+  });
+
+  it('rejects an oversize PDF with OversizeUploadError', async () => {
+    invoiceRepo.getById.mockResolvedValue(pdfRecord);
+    storage.headObject.mockResolvedValue({ exists: true, size: 5_000_000 });
+
+    await expect(sut.confirm('inv-1', 'tenant-1')).rejects.toBeInstanceOf(OversizeUploadError);
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('enqueues a within-limit PDF upload', async () => {
+    invoiceRepo.getById.mockResolvedValue(pdfRecord);
+    storage.headObject.mockResolvedValue({ exists: true, size: 2_000_000 });
+
+    await sut.confirm('inv-1', 'tenant-1');
+
+    expect(queue.enqueue).toHaveBeenCalledWith({
+      invoiceId: 'inv-1',
+      tenantId: 'tenant-1',
+      s3Key: 'receipts/tenant-1/abc.pdf',
     });
   });
 });

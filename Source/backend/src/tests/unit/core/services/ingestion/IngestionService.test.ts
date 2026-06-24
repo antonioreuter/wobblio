@@ -48,6 +48,7 @@ describe('IngestionService', () => {
   let ledger: MockedObject<IIngestionLedger>;
   let storage: MockedObject<IS3FileStorage>;
   let visionParser: { parse: ReturnType<typeof vi.fn> };
+  let documentParser: { parse: ReturnType<typeof vi.fn> };
   let merchantResolver: MockedObject<IMerchantResolver>;
   let productNormalizer: MockedObject<IProductNormalizer>;
   let classifier: MockedObject<IInvoiceClassifier>;
@@ -61,8 +62,9 @@ describe('IngestionService', () => {
   beforeEach(() => {
     tenantContext = { setTenantId: vi.fn() };
     ledger = { claim: vi.fn(), setStatus: vi.fn(), release: vi.fn() };
-    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
+    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     visionParser = { parse: vi.fn() };
+    documentParser = { parse: vi.fn() };
     merchantResolver = { resolve: vi.fn() };
     productNormalizer = { normalize: vi.fn() };
     classifier = { classify: vi.fn() };
@@ -96,6 +98,7 @@ describe('IngestionService', () => {
     sut = new IngestionService(
       tenantContext, ledger, storage,
       visionParser as unknown as VisionParseService,
+      documentParser as unknown as VisionParseService,
       merchantResolver, productNormalizer, classifier, tagGenerator, invoiceRepo,
       priceObservationStore, contributorContext, regionReference,
     );
@@ -105,6 +108,7 @@ describe('IngestionService', () => {
     ledger.claim.mockResolvedValue(true);
     storage.getObjectBytes.mockResolvedValue(new Uint8Array([1]));
     visionParser.parse.mockResolvedValue(receipt(parseConfidence));
+    documentParser.parse.mockResolvedValue(receipt(parseConfidence));
     merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'Albert Heijn', provisional: false, confidence: 0.9 });
     productNormalizer.normalize.mockResolvedValue({ lines: [normalizedLine(lowConfidence), normalizedLine()], suggestedTags: [] });
     classifier.classify.mockResolvedValue('groceries');
@@ -143,6 +147,30 @@ describe('IngestionService', () => {
     // Negative line → discount; category is forced to the deterministic discount leaf.
     expect(persisted.lines[1]).toMatchObject({ lineIndex: 1, unitPrice: null, isDiscount: true, categoryId: 'cat-other-discount' });
     expect(ledger.setStatus).toHaveBeenCalledWith(MESSAGE.s3Key, 'DONE');
+  });
+
+  it('sends a PDF to the document parser as a document attachment', async () => {
+    arrangeHappyPath();
+
+    await sut.process({ ...MESSAGE, s3Key: 'receipts/tenant-1/abc.pdf' });
+
+    expect(documentParser.parse).toHaveBeenCalledWith(
+      { format: 'pdf', bytes: expect.any(Uint8Array), name: 'receipt' },
+      expect.objectContaining({ countryCode: 'NL' }),
+    );
+    expect(visionParser.parse).not.toHaveBeenCalled();
+  });
+
+  it('sends an image to the vision parser as an image attachment', async () => {
+    arrangeHappyPath();
+
+    await sut.process(MESSAGE);
+
+    expect(visionParser.parse).toHaveBeenCalledWith(
+      { format: 'jpeg', bytes: expect.any(Uint8Array) },
+      expect.objectContaining({ countryCode: 'NL' }),
+    );
+    expect(documentParser.parse).not.toHaveBeenCalled();
   });
 
   it('forces a deposit line to the per-macro deposit category, keeping the macro', async () => {
@@ -263,6 +291,21 @@ describe('IngestionService', () => {
     expect(priceObservationStore.emit).toHaveBeenCalledTimes(1);
     // Emitted against the receipt region, never the contributor's BR/Bahia profile.
     expect(priceObservationStore.emit.mock.calls[0][0][0]).toMatchObject({ countryCode: 'NL', regionCode: 'NL-NB' });
+  });
+
+  it('stamps merchant + product with the resolved invoice country (no NL launch default)', async () => {
+    arrangeHappyPath();
+    // No receipt country and no upload-geo → the profile country (BR) is the invoice's
+    // country. The catalog must be stamped with it, proving location resolves BEFORE the
+    // merchant/product writes and that the old hardcoded launch country is gone.
+    contributorContext.getContext.mockResolvedValue({ optedOut: false, regionCode: 'BR-BA', countryCode: 'BR', trustScore: 50 });
+    regionReference.resolveReceiptLocation.mockResolvedValue({ countryCode: null, regionCode: null });
+    invoiceRepo.getById.mockResolvedValue(null);
+
+    await sut.process(MESSAGE);
+
+    expect(merchantResolver.resolve).toHaveBeenCalledWith(expect.anything(), 'BR');
+    expect(productNormalizer.normalize).toHaveBeenCalledWith('m1', expect.anything(), 'BR');
   });
 
   it('tier 1: keeps the receipt city out of tags and stores it as searchCity', async () => {

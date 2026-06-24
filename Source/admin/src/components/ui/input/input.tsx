@@ -14,7 +14,7 @@ export function Input({ label, helper, error, className, id, ...props }: InputPr
       {label && (
         <label
           htmlFor={inputId}
-          className="text-xs font-medium text-[#0f172a] dark:text-[#f1f5f9]"
+          className="text-xs font-medium text-fg "
         >
           {label}
         </label>
@@ -22,12 +22,12 @@ export function Input({ label, helper, error, className, id, ...props }: InputPr
       <input
         id={inputId}
         className={cn(
-          'h-10 w-full rounded-[8px] border border-[#e2e8f0] bg-white px-3 text-sm text-[#0f172a]',
-          'placeholder:text-[#64748b]',
-          'focus:border-[#0d9488] focus:outline-none focus:ring-2 focus:ring-[#0d9488]/20',
+          'h-10 w-full rounded-[8px] border border-line bg-card px-3 text-sm text-fg',
+          'placeholder:text-muted',
+          'focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20',
           'disabled:cursor-not-allowed disabled:opacity-50',
-          'dark:border-[#334155] dark:bg-[#111827] dark:text-[#f1f5f9] dark:placeholder:text-[#94a3b8]',
-          error && 'border-[#dc2626] focus:border-[#dc2626] focus:ring-[#dc2626]/20',
+          '   ',
+          error && 'border-danger focus:border-danger focus:ring-danger/20',
           className
         )}
         aria-invalid={!!error}
@@ -35,12 +35,12 @@ export function Input({ label, helper, error, className, id, ...props }: InputPr
         {...props}
       />
       {error && (
-        <p id={`${inputId}-error`} className="text-xs text-[#dc2626]" role="alert">
+        <p id={`${inputId}-error`} className="text-xs text-danger" role="alert">
           {error}
         </p>
       )}
       {!error && helper && (
-        <p id={`${inputId}-helper`} className="text-xs text-[#64748b] dark:text-[#94a3b8]">
+        <p id={`${inputId}-helper`} className="text-xs text-muted ">
           {helper}
         </p>
       )}

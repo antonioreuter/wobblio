@@ -72,23 +72,38 @@ function getUploadCoordinates(): Promise<{ lat: number; lon: number } | undefine
   })
 }
 
-export async function uploadReceipt(file: File): Promise<{ invoiceId: string }> {
+const MAX_PDF_BYTES = 4_500_000 // mirrors the backend ConfirmService limit (Bedrock document cap)
+
+// A PDF is uploaded as-is (no canvas re-encode): there is no EXIF/geotag to strip and
+// rasterizing would lose the native text. Images still go through prepareImage.
+async function prepareUpload(file: File): Promise<{ blob: Blob; sha256: string; contentType: string }> {
+  if (file.type === 'application/pdf') {
+    if (file.size > MAX_PDF_BYTES) throw new UploadError('failed', 'This PDF is too large (max 4.5 MB).')
+    const sha256 = await sha256Hex(await file.arrayBuffer())
+    return { blob: file, sha256, contentType: 'application/pdf' }
+  }
   const { blob, sha256 } = await prepareImage(file)
+  return { blob, sha256, contentType: 'image/jpeg' }
+}
+
+export async function uploadReceipt(file: File): Promise<{ invoiceId: string }> {
+  const { blob, sha256, contentType } = await prepareUpload(file)
   const coordinates = await getUploadCoordinates()
 
   const presign = await fetch('/api/invoices/presign', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageSha256: sha256, contentType: 'image/jpeg', ...coordinates }),
+    body: JSON.stringify({ imageSha256: sha256, contentType, ...coordinates }),
   })
   if (presign.status === 409) throw new UploadError('duplicate', 'This receipt was already scanned.')
   if (presign.status === 429) throw new UploadError('quota', 'You’ve reached your weekly scan limit.')
+  if (presign.status === 403) throw new UploadError('failed', 'PDF uploads require a premium plan.')
   if (!presign.ok) throw new UploadError('failed', 'Could not start the upload.')
 
   const { invoiceId, uploadUrl } = (await presign.json()) as { invoiceId: string; uploadUrl: string }
 
-  const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: blob })
-  if (!put.ok) throw new UploadError('failed', 'Uploading the photo failed.')
+  const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob })
+  if (!put.ok) throw new UploadError('failed', 'Uploading the file failed.')
 
   const confirm = await fetch(`/api/invoices/${invoiceId}/confirm`, { method: 'POST' })
   if (!confirm.ok) throw new UploadError('failed', 'Could not start processing.')

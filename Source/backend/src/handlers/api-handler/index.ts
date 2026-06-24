@@ -44,6 +44,9 @@ import {
   LocationNotConfirmableError,
   InvalidLocationError,
   InvalidFeedbackError,
+  PremiumRequiredError,
+  UnsupportedUploadTypeError,
+  OversizeUploadError,
 } from '@core/domain/errors';
 import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import { CATEGORY_TAXONOMY } from '@core/domain/categoryTaxonomy';
@@ -55,6 +58,7 @@ import { handleNotificationsRoute } from './notificationRoutes';
 import { handleListsRoute } from './listRoutes';
 import { handleProductsRoute } from './productRoutes';
 import { handlePriceTrendsRoute } from './priceTrendRoutes';
+import { handleAdminRoute } from './adminRoutes';
 
 export const handler = async (
   event: APIGatewayProxyEvent,
@@ -105,6 +109,7 @@ export const handler = async (
     const isListsRoute = path.startsWith('/lists');
     const isProductsRoute = path.startsWith('/products');
     const isPriceTrendsRoute = path.startsWith('/price-trends');
+    const isAdminRoute = path.startsWith('/admin/');
 
     // Billing (upgrade), own-profile onboarding, and reference lookups stay
     // reachable while waitlisted; everything else is gated until a slot is released.
@@ -159,6 +164,10 @@ export const handler = async (
 
     if (isPriceTrendsRoute) {
       return handlePriceTrendsRoute(client, user, path, method, event);
+    }
+
+    if (isAdminRoute) {
+      return handleAdminRoute(client, user, path, method, event, log);
     }
 
     return json(200, { status: 'ok' });
@@ -480,6 +489,8 @@ async function handlePresign(
     log.info('presign issued', { userId: user.id, invoiceId: result.invoiceId });
     return json(201, result);
   } catch (err) {
+    if (err instanceof UnsupportedUploadTypeError) return json(415, { message: 'Unsupported file type' });
+    if (err instanceof PremiumRequiredError) return json(403, { message: 'PDF uploads require a premium plan' });
     if (err instanceof DuplicateInvoiceError) return json(409, { message: 'Receipt already scanned' });
     if (err instanceof QuotaExceededError) {
       // Quota is the sole AI-cost/abuse control; surface blocks so repeat offenders are
@@ -551,6 +562,7 @@ async function handleConfirm(
   } catch (err) {
     if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
     if (err instanceof StaleUploadError) return json(410, { message: 'Upload missing or expired; re-initiate presign' });
+    if (err instanceof OversizeUploadError) return json(413, { message: 'PDF is too large (max 4.5 MB)' });
     throw err;
   }
 }

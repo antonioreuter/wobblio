@@ -1,24 +1,13 @@
 import type { Context } from 'aws-lambda';
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { createLambdaLogger } from '@infrastructure/logging/logger';
 import { buildPool } from '@infrastructure/config/db';
 import { BedrockConverseAdapter } from '@infrastructure/adapters/ai/BedrockConverseAdapter';
+import { SsmModelRegistryAdapter } from '@infrastructure/adapters/ai/SsmModelRegistryAdapter';
 import { WeeklyAdvisorRepositoryAdapter } from '@infrastructure/adapters/ai/WeeklyAdvisorRepositoryAdapter';
 import { WeeklyAdvisorService } from '@core/services/ai/WeeklyAdvisorService';
 import { WEEKLY_ADVISOR_PROMPT, WEEKLY_ADVISOR_PROMPT_VERSION } from '../../prompts/weeklyAdvisor';
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
-// Haiku-class tier (cost): advisor moved off the Sonnet insight model. See
-// docs/amendments/2026-06-17-weekly-advisor-tier-and-concurrency.md.
-const AUXILIARY_MODEL_PARAM = '/wobblio/config/models/auxiliary';
-
-async function resolveAuxiliaryModel(): Promise<string> {
-  const ssm = new SSMClient({ region: REGION });
-  const response = await ssm.send(new GetParameterCommand({ Name: AUXILIARY_MODEL_PARAM }));
-  const value = response.Parameter?.Value ?? '';
-  if (!value) throw new Error(`SSM parameter ${AUXILIARY_MODEL_PARAM} is missing`);
-  return value;
-}
 
 export const handler = async (_event: unknown, context: Context): Promise<void> => {
   const log = createLambdaLogger('cron-weekly-advisor', context.awsRequestId);
@@ -29,10 +18,15 @@ export const handler = async (_event: unknown, context: Context): Promise<void> 
     30000,
   );
 
+  // Insight tier (Sonnet): the weekly advisor generates the user-facing savings
+  // narrative, so it runs on the highest-quality insight model — same tier as PDF
+  // parsing. Resolved via the canonical model registry (admin-console 03) — no
+  // hardcoded id. (Supersedes the 2026-06-17 cost-tier amendment that used auxiliary.)
+  const insightModelId = await new SsmModelRegistryAdapter(REGION).getModelId('insight');
   const service = new WeeklyAdvisorService(
     new WeeklyAdvisorRepositoryAdapter(pool),
     new BedrockConverseAdapter(REGION),
-    await resolveAuxiliaryModel(),
+    insightModelId,
     WEEKLY_ADVISOR_PROMPT,
     WEEKLY_ADVISOR_PROMPT_VERSION,
   );

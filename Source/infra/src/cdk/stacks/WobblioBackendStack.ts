@@ -62,7 +62,9 @@ export class WobblioBackendStack extends Stack {
 
     const ingestionQueue = new sqs.Queue(this, 'IngestionQueue', {
       queueName: config.resourceName('ingestion'),
-      visibilityTimeout: Duration.seconds(30),
+      // Must stay >= the ingestion-worker Lambda timeout (120s, raised for slow PDF/Sonnet
+      // parses) so a message isn't redelivered while still being processed.
+      visibilityTimeout: Duration.seconds(180),
       encryption: sqs.QueueEncryption.KMS,
       encryptionMasterKey: dbStack.kmsKey,
       enforceSSL: true,
@@ -163,9 +165,13 @@ export class WobblioBackendStack extends Stack {
       }));
     }
 
+    // 120s: PDF receipts parse on the document-capable insight model (Sonnet), a single
+    // Converse call of ~20-25s (plus a possible schema retry) — well over the 30s default,
+    // which timed PDFs out mid-pipeline and looped them in PROCESSING. Images (Qwen) are
+    // far faster but share the worker. Queue visibilityTimeout above is kept >= this.
     const ingestionWorkerFn = makeLambda('ingestion-worker', 5, {
       UPLOADS_BUCKET: storageStack.uploadsBucket.bucketName,
-    });
+    }, 120);
 
     const cronBudgetResetFn    = makeLambda('cron-budget-reset', 2, { ANALYTICS_BUCKET: storageStack.analyticsBucket.bucketName });
     const cronFxRateFetchFn    = makeLambda('cron-fx-rate-fetch', 2);
@@ -222,6 +228,39 @@ export class WobblioBackendStack extends Stack {
 
     ingestionQueue.grantSendMessages(apiHandlerFn);
     ingestionQueue.grantConsumeMessages(ingestionWorkerFn);
+
+    // Admin DLQ panel (admin-console 05): the api-handler reads + deletes DLQ
+    // messages and replays them onto the main queue (send grant above). No
+    // SendMessage on the DLQ itself — least privilege.
+    ingestionDlq.grantConsumeMessages(apiHandlerFn);
+    apiHandlerFn.addEnvironment('INGEST_DLQ_URL', ingestionDlq.queueUrl);
+    apiHandlerFn.addEnvironment('INGESTION_WORKER_LOG_GROUP', ingestionLogGroupName);
+
+    // Admin Troubleshooting page: the api-handler reads worker logs (Logs Insights),
+    // flips its log level live (Lambda env update — read-merge-write), snapshots
+    // queue depth, and reads its error-rate metrics. Resource-scoped where the action
+    // allows; '*' only for actions that do not support resource-level IAM.
+    apiHandlerFn.addEnvironment('INGESTION_WORKER_FUNCTION_NAME', ingestionWorkerFn.functionName);
+    ingestionQueue.grant(apiHandlerFn, 'sqs:GetQueueAttributes');
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['logs:StartQuery'],
+      resources: [`arn:aws:logs:${this.region}:${this.account}:log-group:${ingestionLogGroupName}:*`],
+    }));
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['logs:GetQueryResults', 'logs:StopQuery', 'cloudwatch:GetMetricData'],
+      resources: ['*'],
+    }));
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['lambda:GetFunctionConfiguration', 'lambda:UpdateFunctionConfiguration'],
+      resources: [ingestionWorkerFn.functionArn],
+    }));
+    NagSuppressions.addResourceSuppressions(apiHandlerFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'logs:GetQueryResults/StopQuery act on an ephemeral queryId and cloudwatch:GetMetricData has no resource-level form',
+        appliesTo: ['Resource::*'],
+      },
+    ], true);
 
     dbStack.kmsKey.grantEncryptDecrypt(apiHandlerFn);
     dbStack.kmsKey.grantEncryptDecrypt(ingestionWorkerFn);
@@ -314,6 +353,51 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/routing/min_split_saving_eur`,
       ],
     }));
+
+    // SSM: admin parameter editor (admin-console 02) — read + write the allowlisted
+    // tunables. Paths enumerated (no wildcard) to mirror the allowlist in
+    // core/domain/adminTunables.ts and keep cdk-nag IAM5 clean.
+    const adminTunableSsmPaths = [
+      '/wobblio/config/quotas/max_free_waitlist_cap',
+      '/wobblio/config/routing/min_split_saving_eur',
+      '/wobblio/config/routing/max_stores',
+      '/wobblio/config/tags/vocabulary',
+      '/wobblio/config/tags/dedicated_call_enabled',
+      '/wobblio/config/models/limits/vision_parser_max_tokens',
+      '/wobblio/config/models/limits/auxiliary_max_tokens',
+      '/wobblio/config/models/limits/insight_max_tokens',
+      '/wobblio/config/models/limits/embedder_max_tokens',
+    ];
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameters', 'ssm:PutParameter'],
+      resources: adminTunableSsmPaths.map(
+        (p) => `arn:aws:ssm:${this.region}:${this.account}:parameter${p}`,
+      ),
+    }));
+
+    // SSM: admin model-swap matrix (admin-console 03) — read + write the four model
+    // IDs. Enumerated (no wildcard) to keep cdk-nag IAM5 clean.
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameters', 'ssm:PutParameter'],
+      resources: ['vision_parser', 'auxiliary', 'insight', 'embedder'].map(
+        (role) => `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/models/${role}`,
+      ),
+    }));
+
+    // Cost Explorer: admin AI-spend "actual" view (admin-console 07) reads billed
+    // Bedrock cost per model. ce:GetCostAndUsage has no resource-level permissions —
+    // it only supports a "*" resource — so a matching IAM5 suppression is required.
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ce:GetCostAndUsage'],
+      resources: ['*'],
+    }));
+    NagSuppressions.addResourceSuppressions(apiHandlerFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'ce:GetCostAndUsage does not support resource-level permissions; "*" is the only valid resource',
+        appliesTo: ['Resource::*'],
+      },
+    ], true);
 
     // Bedrock InvokeModel via cross-region inference profiles needs the profile ARN AND
     // the underlying foundation models in every member region; model IDs are runtime SSM
@@ -538,10 +622,11 @@ export class WobblioBackendStack extends Stack {
       cronWeeklyAdvisorFn,
     );
 
-    // Daily 01:30 UTC: roll the prior day's ingestion-timing logs into kpi_daily.
+    // Hourly (at :30): roll yesterday + today into kpi_daily so the admin dashboard
+    // stays near-current (the handler upserts, so each run finalizes the figures).
     makeCron(
       'IngestionMetricsRollupCron',
-      events.Schedule.cron({ minute: '30', hour: '1' }),
+      events.Schedule.cron({ minute: '30' }),
       cronIngestionMetricsRollupFn,
     );
 

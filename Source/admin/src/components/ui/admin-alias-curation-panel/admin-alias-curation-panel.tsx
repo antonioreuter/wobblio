@@ -30,23 +30,23 @@ export function AdminAliasCurationPanel({
 }: AdminAliasCurationPanelProps) {
   return (
     <div className={cn('flex flex-col gap-3', className)} data-testid="admin-alias-curation-panel">
-      <p className="text-sm font-semibold text-[#0f172a] dark:text-[#f1f5f9]">
+      <p className="text-sm font-semibold text-fg ">
         Alias Curation Queue ({entities.length} provisional)
       </p>
 
       {entities.length === 0 ? (
-        <p className="text-sm text-[#64748b] dark:text-[#94a3b8]">Queue is empty.</p>
+        <p className="text-sm text-muted ">Queue is empty.</p>
       ) : (
         <ul className="flex flex-col gap-2" role="list">
           {entities.map((entity) => (
             <li
               key={entity.id}
-              className="rounded-[12px] border border-[#e2e8f0] bg-white p-3 dark:border-[#334155] dark:bg-[#111827]"
+              className="rounded-[12px] border border-line bg-card p-3  "
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-[#0f172a] dark:text-[#f1f5f9]">
+                    <p className="text-sm font-medium text-fg ">
                       {entity.name}
                     </p>
                     <Badge variant="muted" className="text-xs">
@@ -56,13 +56,13 @@ export function AdminAliasCurationPanel({
                       PROVISIONAL
                     </Badge>
                   </div>
-                  <p className="text-xs text-[#64748b] dark:text-[#94a3b8]">
+                  <p className="text-xs text-muted ">
                     {entity.observationCount} observations
                   </p>
                   {entity.suggestedCanonical && (
-                    <p className="text-xs text-[#64748b] dark:text-[#94a3b8]">
+                    <p className="text-xs text-muted ">
                       Suggested canonical:{' '}
-                      <span className="font-medium text-[#0f172a] dark:text-[#f1f5f9]">
+                      <span className="font-medium text-fg ">
                         {entity.suggestedCanonical}
                       </span>
                     </p>

@@ -41,6 +41,8 @@ function buildCsp(nonce: string): string {
     `img-src 'self' data: blob: ${uploadsOrigin}`,
     "font-src 'self'",
     `connect-src 'self' ${apiOrigin} ${uploadsOrigin}`,
+    // PDF invoices render in an <iframe> from the same presigned S3 GET (images use <img>).
+    `frame-src 'self' ${uploadsOrigin}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

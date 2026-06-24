@@ -100,4 +100,24 @@ describe('WaitlistReleaseService', () => {
 
     expect(mockWaitlist.getWaitlistedBatch).toHaveBeenCalledWith(5);
   });
+
+  it('caps a manual release to maxToRelease even when more headroom exists', async () => {
+    mockCap.getMaxFreeUsersCap.mockResolvedValue(100);
+    mockCounter.getCurrentCount.mockResolvedValue(90); // 10 headroom
+    mockWaitlist.getWaitlistedBatch.mockResolvedValue([]);
+
+    await sut.releaseEligibleUsers(3);
+
+    expect(mockWaitlist.getWaitlistedBatch).toHaveBeenCalledWith(3);
+  });
+
+  it('clamps maxToRelease down to the available headroom', async () => {
+    mockCap.getMaxFreeUsersCap.mockResolvedValue(100);
+    mockCounter.getCurrentCount.mockResolvedValue(98); // 2 headroom
+    mockWaitlist.getWaitlistedBatch.mockResolvedValue([]);
+
+    await sut.releaseEligibleUsers(50);
+
+    expect(mockWaitlist.getWaitlistedBatch).toHaveBeenCalledWith(2);
+  });
 });

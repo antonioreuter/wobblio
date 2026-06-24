@@ -35,13 +35,13 @@ export class ProductNormalizer implements IProductNormalizer {
     private readonly modelId: string,
   ) {}
 
-  async normalize(merchantId: string | null, lines: ParsedLine[]): Promise<NormalizationResult> {
+  async normalize(merchantId: string | null, lines: ParsedLine[], countryCode: string): Promise<NormalizationResult> {
     const normalizedTexts = lines.map(line => normalizeProductText(line.rawText));
     // Sequential, not Promise.all: every stage shares one pg connection, which
     // cannot run queries concurrently.
     const exact: (ProductMatch | null)[] = [];
     for (const text of normalizedTexts) {
-      exact.push(await this.catalog.findExactAlias(merchantId, text));
+      exact.push(await this.catalog.findExactAlias(merchantId, text, countryCode));
     }
 
     const unmatched = exact.flatMap((match, index) => (match ? [] : [index]));
@@ -55,7 +55,7 @@ export class ProductNormalizer implements IProductNormalizer {
     });
     for (let k = 0; k < unmatched.length; k++) {
       const index = unmatched[k];
-      resolved[index] = await this.resolveProduct(merchantId, normalizedTexts[index], expansion.items[k]);
+      resolved[index] = await this.resolveProduct(merchantId, normalizedTexts[index], countryCode, expansion.items[k]);
     }
 
     return {
@@ -64,13 +64,13 @@ export class ProductNormalizer implements IProductNormalizer {
     };
   }
 
-  private async resolveProduct(merchantId: string | null, normalizedText: string, item: ExpandedItem): Promise<ResolvedProduct> {
+  private async resolveProduct(merchantId: string | null, normalizedText: string, countryCode: string, item: ExpandedItem): Promise<ResolvedProduct> {
     if (item.isDepositOrFee) {
       return { productId: null, categoryId: item.categoryId, baseUnit: null, packSizeBaseUnits: null, isDepositOrFee: true, provisional: false, confidence: 1, lowConfidence: false };
     }
 
     const embedding = await this.embedder.embed(item.displayName);
-    const [match] = await this.catalog.searchByEmbedding(embedding, item.categoryId, 1);
+    const [match] = await this.catalog.searchByEmbedding(embedding, item.categoryId, countryCode, 1);
 
     if (match && match.similarity >= ConfidenceThresholds.embeddingAccept) {
       return this.acceptMatch(merchantId, normalizedText, match, false);
@@ -78,7 +78,7 @@ export class ProductNormalizer implements IProductNormalizer {
     if (match && match.similarity >= ConfidenceThresholds.embeddingLow) {
       return this.acceptMatch(merchantId, normalizedText, match, true);
     }
-    return this.createProvisional(merchantId, normalizedText, item, embedding);
+    return this.createProvisional(merchantId, normalizedText, countryCode, item, embedding);
   }
 
   private async acceptMatch(merchantId: string | null, normalizedText: string, match: ProductMatch, lowConfidence: boolean): Promise<ResolvedProduct> {
@@ -86,11 +86,12 @@ export class ProductNormalizer implements IProductNormalizer {
     return { productId: match.productId, categoryId: match.categoryId, baseUnit: match.baseUnit, packSizeBaseUnits: match.packSizeBaseUnits, isDepositOrFee: false, provisional: false, confidence: match.similarity, lowConfidence };
   }
 
-  private async createProvisional(merchantId: string | null, normalizedText: string, item: ExpandedItem, embedding: number[]): Promise<ResolvedProduct> {
+  private async createProvisional(merchantId: string | null, normalizedText: string, countryCode: string, item: ExpandedItem, embedding: number[]): Promise<ResolvedProduct> {
     const productId = await this.catalog.createProvisionalProduct({
       displayName: item.displayName,
       brand: item.brand,
       categoryId: item.categoryId,
+      countryCode,
       baseUnit: item.baseUnit,
       packSizeBaseUnits: item.packSizeBaseUnits,
       embedding,

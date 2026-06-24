@@ -1,10 +1,6 @@
-export default function ConfigPage() {
-  return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold text-[#0f172a]">Config</h1>
-      <div className="flex items-center justify-center rounded-[12px] border border-dashed border-[#e2e8f0] bg-white p-16 text-sm text-[#64748b]">
-        Coming soon — requires backend API
-      </div>
-    </div>
-  )
+import { redirect } from 'next/navigation'
+
+// Merged into the unified Platform Controls page (#config section).
+export default function ConfigRedirect() {
+  redirect('/platform#config')
 }

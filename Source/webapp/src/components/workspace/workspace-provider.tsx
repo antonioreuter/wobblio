@@ -88,7 +88,17 @@ export function useWorkspace(): WorkspaceContextValue {
   return ctx
 }
 
-export function WorkspaceProvider({ children }: { children: ReactNode }) {
+const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp'
+// Some OS/browser file dialogs match by extension rather than MIME, so list both.
+const PDF_ACCEPT = `${IMAGE_ACCEPT},application/pdf,.pdf`
+
+export function WorkspaceProvider({
+  children,
+  pdfUploadEnabled = false,
+}: {
+  children: ReactNode
+  pdfUploadEnabled?: boolean
+}) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [usage, setUsage] = useState<Usage | null>(null)
   const [topMerchant, setTopMerchant] = useState<TopMerchant | null>(null)
@@ -179,7 +189,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const scanReceipt = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/png,image/jpeg,image/webp'
+    input.accept = pdfUploadEnabled ? PDF_ACCEPT : IMAGE_ACCEPT
     input.onchange = async () => {
       const file = input.files?.[0]
       if (!file) return
@@ -204,7 +214,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
     }
     input.click()
-  }, [showToast, loadInvoices])
+  }, [showToast, loadInvoices, loadUsage, pdfUploadEnabled])
 
   const value: WorkspaceContextValue = {
     invoices,

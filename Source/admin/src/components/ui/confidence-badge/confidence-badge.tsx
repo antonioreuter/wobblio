@@ -9,22 +9,22 @@ interface ConfidenceBadgeProps {
 
 const config: Record<Confidence, { dot: string; label: string; bg: string; text: string }> = {
   confirmed: {
-    dot: 'bg-[#16a34a]',
+    dot: 'bg-success',
     label: 'Confirmed',
-    bg: 'bg-[#dcfce7]',
-    text: 'text-[#16a34a]',
+    bg: 'bg-success-soft',
+    text: 'text-success',
   },
   auto: {
-    dot: 'bg-[#0d9488]',
+    dot: 'bg-brand',
     label: 'Auto',
-    bg: 'bg-[#ccfbf1]',
-    text: 'text-[#0d9488]',
+    bg: 'bg-brand-soft',
+    text: 'text-brand',
   },
   low: {
-    dot: 'bg-[#d97706]',
+    dot: 'bg-warning',
     label: 'Low',
-    bg: 'bg-[#fef3c7]',
-    text: 'text-[#d97706]',
+    bg: 'bg-warning-soft',
+    text: 'text-warning',
   },
 }
 

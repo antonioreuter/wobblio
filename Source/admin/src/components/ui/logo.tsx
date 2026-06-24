@@ -12,8 +12,8 @@ export function WobblioLogo({ className = "h-6 w-6" }: { className?: string }) {
     >
       <defs>
         <linearGradient id="wob-logo-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#6366F1" />
-          <stop offset="100%" stopColor="#0D9488" />
+          <stop offset="0%" stopColor="#34d399" />
+          <stop offset="100%" stopColor="#0d9488" />
         </linearGradient>
       </defs>
       {/* Top wave: rises to peak, drops, and goes horizontal */}

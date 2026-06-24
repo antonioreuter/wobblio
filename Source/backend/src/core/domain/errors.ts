@@ -138,6 +138,20 @@ export class StaleUploadError extends Error {
   }
 }
 
+export class UnsupportedUploadTypeError extends Error {
+  constructor(readonly contentType: string) {
+    super(`Unsupported upload type: ${contentType}`);
+    this.name = 'UnsupportedUploadTypeError';
+  }
+}
+
+export class OversizeUploadError extends Error {
+  constructor(readonly invoiceId: string, readonly size: number, readonly limit: number) {
+    super(`Upload for invoice ${invoiceId} is ${size} bytes, over the ${limit}-byte limit`);
+    this.name = 'OversizeUploadError';
+  }
+}
+
 export class PremiumRequiredError extends Error {
   constructor(readonly feature: string) {
     super(`Premium subscription required for ${feature}`);
@@ -256,5 +270,22 @@ export class ListItemNotFoundError extends Error {
   constructor(readonly itemId: string) {
     super(`Shopping list item not found: ${itemId}`);
     this.name = 'ListItemNotFoundError';
+  }
+}
+
+// Admin console — invalid operator input (e.g. a release count or SSM value that
+// fails validation). Carries a human-readable reason surfaced as a 400/422.
+export class InvalidAdminInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidAdminInputError';
+  }
+}
+
+// Admin console — an unknown/non-allowlisted target (SSM param key or model role).
+export class UnknownAdminTargetError extends Error {
+  constructor(readonly target: string) {
+    super(`Unknown admin target: ${target}`);
+    this.name = 'UnknownAdminTargetError';
   }
 }

@@ -33,7 +33,7 @@ describe('DeleteInvoiceService', () => {
       listForTenant: vi.fn(),
       getDetail: vi.fn(),
     };
-    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headExists: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
+    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     ledger = { claim: vi.fn(), setStatus: vi.fn(), release: vi.fn() };
     sut = new DeleteInvoiceService(invoiceRepo, storage, ledger);
   });

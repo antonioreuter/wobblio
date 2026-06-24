@@ -16,6 +16,7 @@ export interface CreateProvisionalProductInput {
   displayName: string;
   brand: string | null;
   categoryId: string;
+  countryCode: string; // catalog is country-scoped (§ingestion); stamped from the resolved invoice location
   baseUnit: BaseUnit;
   packSizeBaseUnits: number | null;
   embedding: number[];
@@ -29,8 +30,8 @@ export interface WriteProductAliasInput {
 }
 
 export interface IProductCatalog {
-  findExactAlias(merchantId: string | null, normalized: string): Promise<ProductMatch | null>;
-  searchByEmbedding(embedding: number[], categoryId: string | null, limit: number): Promise<ProductMatch[]>;
+  findExactAlias(merchantId: string | null, normalized: string, countryCode: string): Promise<ProductMatch | null>;
+  searchByEmbedding(embedding: number[], categoryId: string | null, countryCode: string, limit: number): Promise<ProductMatch[]>;
   createProvisionalProduct(input: CreateProvisionalProductInput): Promise<string>;
   writeAlias(input: WriteProductAliasInput): Promise<void>;
 }

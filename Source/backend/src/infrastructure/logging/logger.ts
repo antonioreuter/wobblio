@@ -7,12 +7,24 @@ export interface LambdaLogger {
   debug(msg: string, data?: Record<string, unknown>): void;
 }
 
+// Resolve the active level from the environment, honouring an optional auto-revert
+// stamp. The admin Troubleshooting page can raise the level live (Lambda env update)
+// with a `LOG_LEVEL_EXPIRES_AT` deadline; once that passes we fall back to INFO so a
+// forgotten debug level cannot keep inflating log volume/PII exposure. Re-evaluated
+// per logger creation (per request), so the revert needs no scheduler.
+export function resolveLogLevel(): string {
+  const configured = process.env.LOG_LEVEL ?? (process.env.DEBUG ? 'debug' : 'info');
+  const expiresAt = process.env.LOG_LEVEL_EXPIRES_AT;
+  if (!expiresAt) return configured;
+  const deadline = Date.parse(expiresAt);
+  if (Number.isFinite(deadline) && Date.now() > deadline) return 'info';
+  return configured;
+}
+
 export function createLambdaLogger(service: string, requestId: string): LambdaLogger {
   // pino's signature is (mergingObject, msg); our callers use (msg, data). Without
   // this adapter pino treats `data` as a printf arg and silently drops it.
-  // Default INFO; set LOG_LEVEL=debug (or DEBUG=1) to surface debug logs such as the
-  // full parsed-receipt JSON from the ingestion worker.
-  const level = process.env.LOG_LEVEL ?? (process.env.DEBUG ? 'debug' : 'info');
+  const level = resolveLogLevel();
   // Serialize Error values under `err`/`cause` to full {type, message, stack} —
   // logging only `.message` discards the stack and makes faults un-debuggable.
   const logger = pino({

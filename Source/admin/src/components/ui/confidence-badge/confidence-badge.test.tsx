@@ -19,9 +19,9 @@ describe('ConfidenceBadge', () => {
     expect(screen.getByText('Low')).toBeTruthy()
   })
 
-  it('applies amber styling for low confidence', () => {
+  it('applies amber/warning styling for low confidence', () => {
     render(<ConfidenceBadge confidence="low" />)
     const badge = screen.getByTestId('confidence-badge-low')
-    expect(badge.className).toContain('#fef3c7')
+    expect(badge.className).toContain('warning')
   })
 })

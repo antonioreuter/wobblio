@@ -9,15 +9,25 @@ Full CloudWatch dashboard and alarm inventory, business KPI aggregation into `kp
 ## Dependencies
 
 - [03 — Observability Foundation](./03-observability-foundation.md) (SNS ops topic, structured logging, budgets)
-- [07 — Core Ingestion Pipeline](./07-core-ingestion-pipeline.md) (ingestion metrics)
-- [08 — Data Intelligence Layer](./08-data-intelligence-layer.md) (AI spend ledger)
+- [07 — Core Ingestion Pipeline](./07-core-ingestion-pipeline.md) (ingestion timing + `bedrock_usage` token/cost logs)
 - [05 — Billing & Stripe](./05-billing-stripe.md) (payment_transaction table)
+
+> **Gates the Admin Console.** The admin [KPI dashboard](./admin-console/08-kpi-dashboard.md) and
+> [AI-spend dashboard](./admin-console/07-ai-spend-dashboard.md) read `kpi_daily` and compute nothing
+> live. Today the nightly rollup (`cron-ingestion-metrics-rollup`) only writes **ingestion timing**
+> rows (`ingestion_processing_ms_avg`, `ingestion_worker_ms_avg`, `ingestion_count` per status). The
+> business KPIs and AI-spend aggregates those dashboards display **do not exist in `kpi_daily` yet** —
+> the KPI job below must produce them before (or alongside) the admin console.
 
 ## CloudWatch Dashboard
 
 One dashboard per environment: `wobblio-{env}-ops`.
 
-Custom metrics emitted via Embedded Metric Format (no separate metric publishing agents). X-Ray active tracing on API handlers + ingestion worker, sampled at 10%.
+**Telemetry method (amended):** no CloudWatch EMF / custom-metric publishing. Per-call and per-stage
+telemetry are plain **structured logs** (`event: bedrock_usage`, `ingestion timing`); log-derived
+metrics are produced by a nightly **Logs Insights → `kpi_daily`** rollup and plotted from SQL.
+Operational widgets that need a live CloudWatch metric use the built-in AWS namespaces (Lambda, API
+Gateway, SQS, RDS). X-Ray active tracing on API handlers + ingestion worker, sampled at 10%.
 
 ## Alarm Inventory
 
@@ -44,7 +54,6 @@ All alarms route to the SNS ops topic (`wobblio-ops-{env}`).
 | GDPR | Export/purge job failures | >0 |
 | Cost | AWS Budgets | 50% / 80% / 100% of €100/mo |
 | Cost | Cost Anomaly Detection | anomaly >€10 |
-| Cost | `ai_spend_ledger` daily total | >SSM daily AI budget |
 
 The RDS credit balance alarm is the single most important DB alarm on db.t3.micro — it is the early warning for the scaling-ladder decision (§7.3.1).
 
@@ -52,7 +61,7 @@ The RDS credit balance alarm is the single most important DB alarm on db.t3.micr
 
 ### Implementation
 
-One nightly EventBridge cron Lambda computes all KPIs in a single pass and upserts into `kpi_daily(metric_date, metric_name, value, dimensions)`. KPIs read from `kpi_daily`, never computed live against production tables.
+One nightly EventBridge cron Lambda computes all KPIs in a single pass and upserts into `kpi_daily(metric_date, metric_name, value, dimensions)`. KPIs read from `kpi_daily`, never computed live against production tables. Two sources feed the upsert: **DB-derived** KPIs (users, subscription, invoice counts) run as direct SQL against production tables; **log-derived** KPIs (ingestion timing, AI tokens/cost from `bedrock_usage`, schema-retry rate, feedback DOWN-ratio) come from a Logs Insights query over the prior day. The existing `cron-ingestion-metrics-rollup` already produces the ingestion-timing rows via this path; extend it (or add the business-KPI pass) to cover the rest of the catalog.
 
 Monthly: previous month's `kpi_daily` rows + `payment_transaction` snapshot exported as Parquet to `s3://wobblio-analytics-{env}/kpi/yyyy/mm/` → Glue table + Athena.
 
@@ -65,7 +74,7 @@ Monthly: previous month's `kpi_daily` rows + `payment_transaction` snapshot expo
 | Users | new registrations, total registered, DAU, MAU, waitlist size | `app_user`, `system_counter` |
 | Subscription | new premium subs, total premium, conversion rate (premium ÷ registered), churn rate (cancellations ÷ active), MRR (active monthly × €2.50 + annual × €25/12) | `payment_transaction`, `app_user.role` |
 | Invoices | total scanned (cumulative + per day), avg invoices/active user, parse success rate (PARSED ÷ ingested), schema-retry rate (OCR quality proxy), feedback score (UP ÷ votes), needs-review rate, duplicate-detection rate, tag-edit rate | `invoice`, `ingestion_ledger`, `invoice_feedback` |
-| Operational | avg processing time (ledger created→completed), cost per processed invoice (day's ai_spend ÷ ingestions), export requests, deletion requests, quarantined-observation rate | `ingestion_ledger`, `ai_spend_ledger`, `data_request`, `price_observation` |
+| Operational | avg processing time (ledger created→completed), cost per processed invoice (day's AI cost ÷ ingestions), export requests, deletion requests, quarantined-observation rate | `ingestion_ledger`, `bedrock_usage` logs, `data_request`, `price_observation` |
 
 ## Payment Analytics (Audit & Reconciliation)
 
@@ -93,9 +102,9 @@ Monthly close procedure (manual, 10 min):
 ### Alarm Definitions (all alarms route to SNS ops topic)
 - [ ] Ingestion DLQ depth >0 for 5 min
 - [ ] Ingestion queue oldest message age >15 min
-- [ ] FAILED_PROCESSING rate >5% (custom metric from worker EMF)
-- [ ] Schema-validation retry rate >10% (custom metric)
-- [ ] Feedback DOWN-ratio >20% daily with min 10 votes (custom metric from nightly KPI job)
+- [ ] FAILED_PROCESSING rate >5% (log-derived via nightly rollup → `kpi_daily`)
+- [ ] Schema-validation retry rate >10% (log-derived via nightly rollup → `kpi_daily`)
+- [ ] Feedback DOWN-ratio >20% daily with min 10 votes (nightly KPI job → `kpi_daily`)
 - [ ] Lambda errors >1% per function group (15-min period)
 - [ ] Lambda throttles >0 sustained 15 min
 - [ ] API Gateway 5xx >1% (15-min period)
@@ -125,7 +134,7 @@ Monthly close procedure (manual, 10 min):
 
 ### Feedback DOWN-Ratio Alarm
 - [ ] Nightly KPI job computes daily DOWN-ratio and writes to `kpi_daily` as `feedback_down_ratio`
-- [ ] CloudWatch alarm reads this custom metric (emitted via EMF from KPI job)
+- [ ] Alarm sourced from the `kpi_daily` row (no EMF) — e.g. metric-filter/scheduled check on the rollup output
 - [ ] Threshold: >20% with min 10 votes — filters out low-volume noise
 
 ### Payment Analytics

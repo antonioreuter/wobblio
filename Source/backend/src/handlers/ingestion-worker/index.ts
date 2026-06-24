@@ -1,6 +1,7 @@
-import type { SQSEvent, SQSBatchResponse, Context } from 'aws-lambda';
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
-import { createLambdaLogger } from '@infrastructure/logging/logger';
+import type { SQSEvent, SQSBatchResponse, SQSRecord, Context } from 'aws-lambda';
+import type { PoolClient } from 'pg';
+import { createLambdaLogger, type LambdaLogger } from '@infrastructure/logging/logger';
+import { SsmModelRegistryAdapter } from '@infrastructure/adapters/ai/SsmModelRegistryAdapter';
 import { buildPool } from '@infrastructure/config/db';
 import { TenantContextAdapter } from '@infrastructure/adapters/identity/TenantContextAdapter';
 import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
@@ -29,31 +30,26 @@ import { VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION } from '../../prompts/
 // Budgets a freshly-parsed invoice can move; only PARSED/NEEDS_REVIEW invoices count.
 const COUNTS_TOWARD_BUDGET = new Set(['PARSED', 'NEEDS_REVIEW']);
 
+// Mirrors the SQS redrive policy (maxReceiveCount) in WobblioBackendStack. On the
+// final delivery the message goes to the DLQ, so this is the last chance to flip the
+// invoice out of PROCESSING.
+const MAX_RECEIVE_COUNT = 3;
+
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
-const VISION_MODEL_PARAM = '/wobblio/config/models/vision_parser';
-const AUXILIARY_MODEL_PARAM = '/wobblio/config/models/auxiliary';
-const EMBEDDER_MODEL_PARAM = '/wobblio/config/models/embedder';
-
-const modelIdCache = new Map<string, string>();
-
-async function resolveModelId(param: string): Promise<string> {
-  const cached = modelIdCache.get(param);
-  if (cached) return cached;
-  const ssm = new SSMClient({ region: REGION });
-  const response = await ssm.send(new GetParameterCommand({ Name: param }));
-  const value = response.Parameter?.Value ?? '';
-  if (!value) throw new Error(`SSM parameter ${param} is missing`);
-  modelIdCache.set(param, value);
-  return value;
-}
 
 export const handler = async (event: SQSEvent, context: Context): Promise<SQSBatchResponse> => {
   const log = createLambdaLogger('ingestion-worker', context.awsRequestId);
   const pool = await buildPool(process.env.DB_SECRET_ARN!, process.env.DB_HOST!, process.env.DB_PORT!);
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
-  const visionModelId = await resolveModelId(VISION_MODEL_PARAM);
-  const auxiliaryModelId = await resolveModelId(AUXILIARY_MODEL_PARAM);
-  const embedderModelId = await resolveModelId(EMBEDDER_MODEL_PARAM);
+  // Model IDs resolve through the canonical registry (admin-console 03) so an admin
+  // swap is picked up on the next cold start — no hardcoded IDs in the worker.
+  const modelRegistry = new SsmModelRegistryAdapter(REGION);
+  const visionModelId = await modelRegistry.getModelId('vision_parser');
+  // The vision model rejects PDF document blocks, so PDFs parse on the doc-capable
+  // insight model (same receipt prompt + schema).
+  const insightModelId = await modelRegistry.getModelId('insight');
+  const auxiliaryModelId = await modelRegistry.getModelId('auxiliary');
+  const embedderModelId = await modelRegistry.getModelId('embedder');
   const converse = new BedrockConverseAdapter(REGION);
   const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
 
@@ -67,6 +63,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       await client.query('BEGIN');
 
       const visionParser = new VisionParseService(converse, visionModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
+      const documentParser = new VisionParseService(converse, insightModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
       const merchantCatalog = new MerchantCatalogAdapter(client);
       const productCatalog = new ProductCatalogAdapter(client);
       const service = new IngestionService(
@@ -74,6 +71,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         new IngestionLedgerAdapter(client),
         new S3FileStorageAdapter(REGION, uploadsBucket),
         visionParser,
+        documentParser,
         new MerchantResolver(merchantCatalog, converse, auxiliaryModelId),
         new ProductNormalizer(productCatalog, embedder, converse, auxiliaryModelId),
         new InvoiceClassifier(merchantCatalog, converse, auxiliaryModelId),
@@ -137,6 +135,12 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         err: err instanceof Error ? err : new Error(String(err)),
         cause: cause instanceof Error ? cause : cause ? new Error(String(cause)) : undefined,
       });
+      // Final delivery before the DLQ: move the invoice out of the non-terminal
+      // PROCESSING state so it surfaces as failed and becomes deletable (the
+      // rolled-back run persisted no status). Best-effort and isolated — never throws.
+      if (Number(record.attributes.ApproximateReceiveCount) >= MAX_RECEIVE_COUNT) {
+        await markInvoiceFailed(client, record, log);
+      }
       batchItemFailures.push({ itemIdentifier: record.messageId });
     } finally {
       client.release();
@@ -145,3 +149,24 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
 
   return { batchItemFailures };
 };
+
+// Flip an invoice to FAILED_PROCESSING in its own committed transaction (RLS needs
+// the tenant context first). Runs after the main transaction rolled back, so it can
+// reuse the same client. Swallows its own errors — a failure here must not break the
+// batch response or re-throw into the handler.
+async function markInvoiceFailed(client: PoolClient, record: SQSRecord, log: LambdaLogger): Promise<void> {
+  try {
+    const { invoiceId, tenantId } = JSON.parse(record.body) as IngestionMessage;
+    await client.query('BEGIN');
+    await new TenantContextAdapter(client).setTenantId(tenantId);
+    await new InvoiceRepositoryAdapter(client).updateStatus(invoiceId, 'FAILED_PROCESSING');
+    await client.query('COMMIT');
+    log.info('invoice marked FAILED_PROCESSING after final attempt', { invoiceId });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    log.error('could not mark invoice failed', {
+      messageId: record.messageId,
+      err: err instanceof Error ? err : new Error(String(err)),
+    });
+  }
+}

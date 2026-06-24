@@ -15,8 +15,7 @@ import { decideStatus, isArithmeticConsistent, type InvoiceStatus, type ParsedLi
 import { depositCategoryFor, discountCategoryFor } from '../../domain/categoryTaxonomy';
 import { buildPriceObservations, type ContributorContext, type ObservationLine } from '../../domain/priceObservation';
 import { resolveIngestionLocation, type LocationCandidate } from '../../domain/region';
-
-const LAUNCH_COUNTRY = 'NL';
+import { attachmentFormatFromKey } from '../../domain/uploadFormat';
 
 export interface IngestionOutcome {
   handled: boolean; // false => duplicate SQS delivery, skipped
@@ -33,6 +32,9 @@ export class IngestionService {
     private readonly ledger: IIngestionLedger,
     private readonly fileStorage: IS3FileStorage,
     private readonly visionParser: VisionParseService,
+    // PDFs go to a document-capable model (the vision model rejects document blocks);
+    // both run the same receipt prompt + schema, differing only in the model ID.
+    private readonly documentParser: VisionParseService,
     private readonly merchantResolver: IMerchantResolver,
     private readonly productNormalizer: IProductNormalizer,
     private readonly classifier: IInvoiceClassifier,
@@ -55,13 +57,23 @@ export class IngestionService {
     const processedDate = new Date().toISOString().slice(0, 10);
 
     const bytes = await this.fileStorage.getObjectBytes(message.s3Key);
-    const receipt = await this.visionParser.parse(
-      { format: 'jpeg', bytes },
-      { countryCode: context.countryCode, processedDate },
-    );
+    const format = attachmentFormatFromKey(message.s3Key);
+    const attachment =
+      format === 'pdf' ? { format, bytes, name: 'receipt' } : { format, bytes };
+    const parser = format === 'pdf' ? this.documentParser : this.visionParser;
+    const receipt = await parser.parse(attachment, {
+      countryCode: context.countryCode,
+      processedDate,
+    });
 
-    const merchant = await this.merchantResolver.resolve(receipt.merchantRaw, LAUNCH_COUNTRY);
-    const { lines: normalized, suggestedTags } = await this.productNormalizer.normalize(merchant.merchantId, receipt.lines);
+    // Resolve the sharing location first (§6.5) so the catalog is stamped with the
+    // invoice's country: merchant and product belong to where the purchase happened
+    // (receipt address → upload geo → profile fallback), not a launch-market default.
+    // countryCode is always known; region precision still follows the user gate below.
+    const location = await this.resolveLocation(message.invoiceId, receipt, context);
+
+    const merchant = await this.merchantResolver.resolve(receipt.merchantRaw, location.countryCode);
+    const { lines: normalized, suggestedTags } = await this.productNormalizer.normalize(merchant.merchantId, receipt.lines, location.countryCode);
     const categoryId = await this.classifier.classify({
       merchantId: merchant.merchantId,
       documentKindHint: receipt.documentKindHint,
@@ -101,10 +113,6 @@ export class IngestionService {
       isSuspectedDuplicate,
     });
 
-    // Resolve the sharing location across the three tiers in one place (§6.5). Only a
-    // printed receipt address with a mapped region auto-resolves; upload geolocation
-    // and the profile are prefills held PENDING for the user to confirm via the gate.
-    const location = await this.resolveLocation(message.invoiceId, receipt, context);
     await this.invoiceRepo.persistParsed({
       invoiceId: message.invoiceId,
       merchantId: merchant.merchantId,
