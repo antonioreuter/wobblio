@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { ScrollText, RefreshCw, Search } from 'lucide-react'
+import { ScrollText, RefreshCw, Search, Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ConsoleSection } from '@/components/ui/console-section'
@@ -36,6 +36,7 @@ export function LogsSection() {
   const [auto, setAuto] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,6 +61,12 @@ export function LogsSection() {
     const id = setInterval(() => void load(), REFRESH_MS)
     return () => clearInterval(id)
   }, [auto, load])
+
+  async function handleCopy(text: string, copyId: string) {
+    await navigator.clipboard.writeText(text)
+    setCopied(copyId)
+    setTimeout(() => setCopied(null), 2000)
+  }
 
   return (
     <ConsoleSection
@@ -130,7 +137,7 @@ export function LogsSection() {
           {loading ? 'Loading…' : 'No matching log lines in this window.'}
         </div>
       ) : (
-        <ul className="flex flex-col gap-1 font-mono text-xs" data-testid="logs-list">
+        <ul className="flex flex-col gap-2 font-mono text-xs" data-testid="logs-list">
           {events.map((ev, i) => (
             <li key={`${ev.timestamp}-${i}`} className="rounded-[8px] border border-line bg-card">
               <button
@@ -146,7 +153,25 @@ export function LogsSection() {
                 <span className="flex-1 truncate text-fg">{ev.message}</span>
               </button>
               {expanded === i && (
-                <pre className="overflow-x-auto border-t border-line bg-bg p-2 text-fg">{prettify(ev.raw)}</pre>
+                <div className="border-t border-line bg-bg p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <p className="text-xs font-semibold text-fg">Full Details</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => handleCopy(prettify(ev.raw), `log-${i}`)}
+                      title="Copy formatted log"
+                    >
+                      {copied === `log-${i}` ? (
+                        <Check size={14} className="text-green-600" strokeWidth={2} />
+                      ) : (
+                        <Copy size={14} strokeWidth={1.5} />
+                      )}
+                    </Button>
+                  </div>
+                  <pre className="overflow-x-auto whitespace-pre-wrap break-words text-fg leading-relaxed">{prettify(ev.raw)}</pre>
+                </div>
               )}
             </li>
           ))}

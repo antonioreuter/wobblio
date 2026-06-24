@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Trash2, Eye, ExternalLink, Inbox } from 'lucide-react'
+import { RefreshCw, Trash2, Eye, ExternalLink, Inbox, Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ConsoleSection } from '@/components/ui/console-section'
@@ -26,6 +26,7 @@ export function DlqSection() {
   const [inspecting, setInspecting] = useState<string | null>(null)
   const [bulk, setBulk] = useState<Bulk>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const res = await fetch('/api/admin/dlq/messages')
@@ -72,6 +73,20 @@ export function DlqSection() {
     await load()
   }
 
+  async function handleCopy(text: string, copyId: string) {
+    await navigator.clipboard.writeText(text)
+    setCopied(copyId)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  function formatJson(text: string): string {
+    try {
+      return JSON.stringify(JSON.parse(text), null, 2)
+    } catch {
+      return text
+    }
+  }
+
   return (
     <ConsoleSection
       id="dlq"
@@ -84,10 +99,10 @@ export function DlqSection() {
             <RefreshCw size={14} strokeWidth={1.5} /> Refresh
           </Button>
           <Button variant="outline" size="sm" disabled={messages.length === 0} onClick={() => setBulk('replay-all')} data-testid="dlq-replay-all">
-            Replay all
+            Retry All
           </Button>
           <Button variant="destructive" size="sm" disabled={messages.length === 0} onClick={() => setBulk('delete-all')} data-testid="dlq-delete-all">
-            Delete all
+            Discard All
           </Button>
         </div>
       }
@@ -103,34 +118,73 @@ export function DlqSection() {
           {messages.map((m) => (
             <li key={m.messageId} className="rounded-[12px] border border-line bg-card p-3" data-testid="dlq-row">
               <div className="flex items-start justify-between gap-2">
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1 flex-1">
                   <p className="font-mono text-xs text-muted">{m.messageId}</p>
-                  <p className="font-mono text-xs text-fg">{m.preview}</p>
                   <p className="text-xs text-muted">
                     tenant {m.tenantId ?? '—'} · {m.approximateReceiveCount} attempts ·{' '}
                     {m.firstFailedAt ? new Date(m.firstFailedAt).toLocaleString() : 'unknown time'}
                   </p>
                 </div>
                 {m.logsUrl && (
-                  <a href={m.logsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-brand hover:underline">
+                  <a href={m.logsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-brand hover:underline shrink-0">
                     Logs <ExternalLink size={12} strokeWidth={1.5} />
                   </a>
                 )}
               </div>
 
-              {inspecting === m.messageId && (
-                <pre className="mt-2 overflow-x-auto rounded bg-bg p-2 font-mono text-xs text-fg">{m.body}</pre>
-              )}
+              <div className="mt-3 space-y-3">
+                <div className="rounded-lg bg-bg p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <p className="text-xs font-semibold text-fg">Preview</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => handleCopy(m.preview, `preview-${m.messageId}`)}
+                      title="Copy preview"
+                    >
+                      {copied === `preview-${m.messageId}` ? (
+                        <Check size={14} className="text-green-600" strokeWidth={2} />
+                      ) : (
+                        <Copy size={14} strokeWidth={1.5} />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="font-mono text-sm text-fg break-words">{m.preview}</p>
+                </div>
 
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {inspecting === m.messageId && (
+                  <div className="rounded-lg bg-bg p-3">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <p className="text-xs font-semibold text-fg">Full Payload</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleCopy(formatJson(m.body), `body-${m.messageId}`)}
+                        title="Copy full payload"
+                      >
+                        {copied === `body-${m.messageId}` ? (
+                          <Check size={14} className="text-green-600" strokeWidth={2} />
+                        ) : (
+                          <Copy size={14} strokeWidth={1.5} />
+                        )}
+                      </Button>
+                    </div>
+                    <pre className="overflow-x-auto font-mono text-xs text-fg leading-relaxed whitespace-pre-wrap break-words">{formatJson(m.body)}</pre>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setInspecting(inspecting === m.messageId ? null : m.messageId)} data-testid="dlq-inspect">
-                  <Eye size={12} strokeWidth={1.5} /> {inspecting === m.messageId ? 'Hide' : 'Inspect'}
+                  <Eye size={12} strokeWidth={1.5} /> {inspecting === m.messageId ? 'Hide Details' : 'View Details'}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => replay(m)} data-testid="dlq-replay">
-                  <RefreshCw size={12} strokeWidth={1.5} /> Replay
+                  <RefreshCw size={12} strokeWidth={1.5} /> Retry
                 </Button>
                 <Button variant="destructive" size="sm" onClick={() => remove(m)} data-testid="dlq-delete">
-                  <Trash2 size={12} strokeWidth={1.5} /> Delete
+                  <Trash2 size={12} strokeWidth={1.5} /> Discard
                 </Button>
               </div>
             </li>
@@ -140,13 +194,13 @@ export function DlqSection() {
 
       <ConfirmDialog
         open={bulk !== null}
-        title={bulk === 'replay-all' ? 'Replay all DLQ messages?' : 'Delete all DLQ messages?'}
+        title={bulk === 'replay-all' ? 'Retry all DLQ messages?' : 'Discard all DLQ messages?'}
         body={
           bulk === 'replay-all'
             ? 'Sends up to 100 messages back to the ingestion queue and removes them from the DLQ.'
-            : 'Permanently deletes up to 100 messages from the DLQ. This cannot be undone.'
+            : 'Permanently discards up to 100 messages from the DLQ. This cannot be undone.'
         }
-        confirmLabel={bulk === 'replay-all' ? 'Replay all' : 'Delete all'}
+        confirmLabel={bulk === 'replay-all' ? 'Retry All' : 'Discard All'}
         destructive={bulk === 'delete-all'}
         onConfirm={runBulk}
         onCancel={() => setBulk(null)}
