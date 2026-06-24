@@ -49,9 +49,11 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   // swap is picked up on the next cold start — no hardcoded IDs in the worker.
   const modelRegistry = new SsmModelRegistryAdapter(REGION);
   const visionModelId = await modelRegistry.getModelId('vision_parser');
-  // The vision model rejects PDF document blocks, so PDFs parse on the doc-capable
-  // insight model (same receipt prompt + schema).
   const insightModelId = await modelRegistry.getModelId('insight');
+  // The vision model rejects PDF document blocks, so PDFs parse on a doc-capable model
+  // (same receipt prompt + schema). pdf_parser is its own swappable role; where the
+  // param is not yet provisioned it falls back to the insight model.
+  const pdfModelId = await modelRegistry.getModelId('pdf_parser').catch(() => insightModelId);
   const auxiliaryModelId = await modelRegistry.getModelId('auxiliary');
   const embedderModelId = await modelRegistry.getModelId('embedder');
   const converse = new BedrockConverseAdapter(REGION);
@@ -67,7 +69,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       await client.query('BEGIN');
 
       const visionParser = new VisionParseService(converse, visionModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
-      const documentParser = new VisionParseService(converse, insightModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
+      const documentParser = new VisionParseService(converse, pdfModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
       const merchantCatalog = new MerchantCatalogAdapter(client);
       const productCatalog = new ProductCatalogAdapter(client);
       const service = new IngestionService(

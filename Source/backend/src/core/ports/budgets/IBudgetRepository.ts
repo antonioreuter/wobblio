@@ -16,6 +16,7 @@ export interface CreateBudgetInput {
   memberUserId: string | null;
   amount: number;
   period: BudgetPeriod;
+  cycleStart: string; // calendar period start; see domain periodStart
 }
 
 export interface BudgetPatch {

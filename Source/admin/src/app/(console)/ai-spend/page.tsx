@@ -22,6 +22,7 @@ type Granularity = 'DAILY' | 'MONTHLY'
 // Distinct, non-purple chart hues that read on both themes.
 const ROLE_COLOR: Record<string, string> = {
   vision_parser: '#10b981',
+  pdf_parser: '#2dd4bf',
   auxiliary: '#38bdf8',
   insight: '#f59e0b',
   embedder: '#a3e635',

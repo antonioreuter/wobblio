@@ -84,9 +84,10 @@ function createBudget(
   log: LambdaLogger,
 ): Promise<APIGatewayProxyResult> {
   const input = parseNewBudget(parseJsonBody(event.body));
+  const today = new Date().toISOString().slice(0, 10);
   return guard(() =>
     withTenantTx(db, user.id, async () => {
-      const budget = await service(db).create(user.id, user.role, input);
+      const budget = await service(db).create(user.id, user.role, input, today);
       log.info('budget created', { userId: user.id, budgetId: budget.id });
       await fireBudgetAlerts(db, user.id, log);
       return json(201, budget);

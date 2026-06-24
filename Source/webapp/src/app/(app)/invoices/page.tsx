@@ -85,10 +85,9 @@ function deriveFacets(invoices: Invoice[]) {
 }
 
 function InvoicesWorkspace() {
-  const { invoices, loading, setOpenInvoice, setConfirmDelete, setShareTarget } = useWorkspace()
+  const { invoices, loading, refreshing, refresh, setOpenInvoice, setConfirmDelete, setShareTarget } = useWorkspace()
   const pendingLocation = useMemo(() => invoices.filter(needsLocationConfirmation), [invoices])
   const [draft, setDraft] = useState<FilterDraft>(BLANK)
-  const [searching, setSearching] = useState(false)
   const [visible, setVisible] = useState(PAGE_SIZE)
   const [loadingMore, setLoadingMore] = useState(false)
 
@@ -108,20 +107,15 @@ function InvoicesWorkspace() {
   const searchParams = useSearchParams()
   const query = (searchParams.get('q') ?? '').trim().toLowerCase()
 
-  const filtered = useMemo(
-    () => filterInvoices(invoices, draft, rangeInvalid, now, query),
-    [invoices, draft, rangeInvalid, now, query],
-  )
+  const filtered = useMemo(() => {
+    const result = filterInvoices(invoices, draft, rangeInvalid, now, query)
+    return result.slice().sort((a, b) => (b.dateISO > a.dateISO ? 1 : b.dateISO < a.dateISO ? -1 : 0))
+  }, [invoices, draft, rangeInvalid, now, query])
 
   useEffect(() => { setVisible(PAGE_SIZE) }, [draft, query])
 
   const shown = filtered.slice(0, visible)
   const remaining = filtered.length - shown.length
-
-  const search = () => {
-    setSearching(true)
-    setTimeout(() => setSearching(false), 550)
-  }
 
   const loadMore = () => {
     if (loadingMore) return
@@ -250,13 +244,13 @@ function InvoicesWorkspace() {
             </button>
             <Button
               variant="primary"
-              disabled={rangeInvalid}
+              disabled={rangeInvalid || refreshing}
               style={{ padding: '9px 20px', fontSize: 13 }}
-              onClick={search}
-              iconLeft={searching ? null : <Search size={15} />}
+              onClick={refresh}
+              iconLeft={refreshing ? null : <Search size={15} />}
               data-testid="invoices-search"
             >
-              {searching ? 'Searching…' : 'Search'}
+              {refreshing ? 'Searching…' : 'Search'}
             </Button>
           </div>
         </div>

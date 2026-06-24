@@ -20,6 +20,7 @@ const STAGE_ROLE: Record<string, ModelRole> = {
 // the dashboard presents the result as an estimate, not a billed figure.
 const RATE_PER_1K: Record<ModelRole, { input: number; output: number }> = {
   vision_parser: { input: 0.0008, output: 0.0008 },
+  pdf_parser: { input: 0.003, output: 0.015 },
   auxiliary: { input: 0.0008, output: 0.004 },
   insight: { input: 0.003, output: 0.015 },
   embedder: { input: 0.00002, output: 0 },

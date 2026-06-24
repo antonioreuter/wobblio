@@ -18,26 +18,32 @@ describe('AdminModelService', () => {
     sut = new AdminModelService(registry, audit);
   });
 
-  it('lists all four roles with current ids', async () => {
+  it('lists all roles with current ids', async () => {
     registry.getAll.mockResolvedValue({
       vision_parser: 'v1',
+      pdf_parser: 'p1',
       auxiliary: 'a1',
       insight: null,
       embedder: 'e1',
     });
     const list = await sut.list();
-    expect(list).toHaveLength(4);
+    expect(list).toHaveLength(5);
     const insight = list.find((e) => e.role === 'insight');
     expect(insight?.modelId).toBeNull();
     // each role carries curated options for the dropdown
     expect(list.every((e) => e.options.length > 0)).toBe(true);
     const vision = list.find((e) => e.role === 'vision_parser');
     expect(vision?.options.some((o) => o.id.startsWith('qwen'))).toBe(true);
+    // PDFs have a dedicated, document-capable swap entry
+    const pdf = list.find((e) => e.role === 'pdf_parser');
+    expect(pdf?.modelId).toBe('p1');
+    expect(pdf?.options.length).toBeGreaterThan(0);
   });
 
   it('swaps a valid role, writing SSM and auditing old → new', async () => {
     registry.getAll.mockResolvedValue({
       vision_parser: 'old-vision',
+      pdf_parser: 'p1',
       auxiliary: 'a1',
       insight: 'i1',
       embedder: 'e1',

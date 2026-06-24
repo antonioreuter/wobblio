@@ -17,6 +17,12 @@ export const MODEL_OPTIONS: Record<ModelRole, ModelOption[]> = {
     { id: 'eu.amazon.nova-pro-v1:0', label: 'Amazon Nova Pro — vision' },
     { id: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5 — vision' },
   ],
+  // Document-capable models only — PDF invoices ride as a native document block.
+  pdf_parser: [
+    { id: 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 — document' },
+    { id: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5 — document' },
+    { id: 'eu.amazon.nova-pro-v1:0', label: 'Amazon Nova Pro — document' },
+  ],
   auxiliary: [
     { id: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5' },
     { id: 'eu.amazon.nova-lite-v1:0', label: 'Amazon Nova Lite' },

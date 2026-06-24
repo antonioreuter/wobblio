@@ -50,10 +50,10 @@ export class BudgetRepositoryAdapter implements IBudgetRepository {
 
   async create(input: CreateBudgetInput): Promise<string> {
     const result = await this.client.query<{ id: string }>(
-      `INSERT INTO budget (tenant_id, scope, category_id, member_user_id, amount, period)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO budget (tenant_id, scope, category_id, member_user_id, amount, period, cycle_start)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [input.tenantId, input.scope, input.categoryId, input.memberUserId, input.amount, input.period],
+      [input.tenantId, input.scope, input.categoryId, input.memberUserId, input.amount, input.period, input.cycleStart],
     );
     return result.rows[0].id;
   }

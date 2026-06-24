@@ -11,6 +11,10 @@ import {
   NotHouseholdOwnerError,
 } from '@core/domain/errors';
 
+// Mid-month creation date: periodStart anchors a MONTH budget to 2026-06-01, a
+// WEEK budget to Monday 2026-06-22, a DAY budget to 2026-06-24.
+const TODAY = '2026-06-24';
+
 const view: BudgetView = {
   id: 'b1', scope: 'TOTAL', categoryId: null, memberUserId: null,
   amount: 200, period: 'MONTH', accumulated: 0,
@@ -56,46 +60,46 @@ describe('BudgetService', () => {
 
   describe('create', () => {
     it('rejects STANDARD users', async () => {
-      await expect(sut.create('u1', 'STANDARD', totalBudget)).rejects.toBeInstanceOf(PremiumRequiredError);
+      await expect(sut.create('u1', 'STANDARD', totalBudget, TODAY)).rejects.toBeInstanceOf(PremiumRequiredError);
     });
 
     it('allows an ADMIN user (elevated role has premium access)', async () => {
       repo.create.mockResolvedValue('b1');
       repo.get.mockResolvedValue(view);
-      await expect(sut.create('u1', 'ADMIN', totalBudget)).resolves.toEqual(view);
+      await expect(sut.create('u1', 'ADMIN', totalBudget, TODAY)).resolves.toEqual(view);
     });
 
     it('rejects a non-positive amount', async () => {
-      await expect(sut.create('u1', 'PREMIUM', { ...totalBudget, amount: 0 })).rejects.toBeInstanceOf(InvalidBudgetError);
+      await expect(sut.create('u1', 'PREMIUM', { ...totalBudget, amount: 0 }, TODAY)).rejects.toBeInstanceOf(InvalidBudgetError);
     });
 
     it('rejects an unknown scope', async () => {
       await expect(
-        sut.create('u1', 'PREMIUM', { ...totalBudget, scope: 'WEEKLY' as never }),
+        sut.create('u1', 'PREMIUM', { ...totalBudget, scope: 'WEEKLY' as never }, TODAY),
       ).rejects.toBeInstanceOf(InvalidBudgetError);
     });
 
     it('rejects an unknown period', async () => {
       await expect(
-        sut.create('u1', 'PREMIUM', { ...totalBudget, period: 'YEAR' as never }),
+        sut.create('u1', 'PREMIUM', { ...totalBudget, period: 'YEAR' as never }, TODAY),
       ).rejects.toBeInstanceOf(InvalidBudgetError);
     });
 
     it('requires a categoryId for CATEGORY scope', async () => {
       await expect(
-        sut.create('u1', 'PREMIUM', { ...totalBudget, scope: 'CATEGORY', categoryId: null }),
+        sut.create('u1', 'PREMIUM', { ...totalBudget, scope: 'CATEGORY', categoryId: null }, TODAY),
       ).rejects.toBeInstanceOf(InvalidBudgetError);
     });
 
     it('requires a memberUserId for MEMBER scope', async () => {
       await expect(
-        sut.create('u1', 'PREMIUM', { ...totalBudget, scope: 'MEMBER', memberUserId: null }),
+        sut.create('u1', 'PREMIUM', { ...totalBudget, scope: 'MEMBER', memberUserId: null }, TODAY),
       ).rejects.toBeInstanceOf(InvalidBudgetError);
     });
 
     it('enforces the 10-budget limit', async () => {
       repo.countForTenant.mockResolvedValue(10);
-      await expect(sut.create('u1', 'PREMIUM', totalBudget)).rejects.toBeInstanceOf(BudgetLimitError);
+      await expect(sut.create('u1', 'PREMIUM', totalBudget, TODAY)).rejects.toBeInstanceOf(BudgetLimitError);
       expect(repo.create).not.toHaveBeenCalled();
     });
 
@@ -103,16 +107,47 @@ describe('BudgetService', () => {
       repo.create.mockResolvedValue('b1');
       repo.get.mockResolvedValue(view);
 
-      const result = await sut.create('u1', 'PREMIUM', totalBudget);
+      const result = await sut.create('u1', 'PREMIUM', totalBudget, TODAY);
 
-      expect(repo.create).toHaveBeenCalledWith({ tenantId: 'u1', ...totalBudget });
+      expect(repo.create).toHaveBeenCalledWith({ tenantId: 'u1', ...totalBudget, cycleStart: '2026-06-01' });
       expect(result).toEqual(view);
     });
 
     it('throws BudgetNotFoundError when the created budget cannot be read back', async () => {
       repo.create.mockResolvedValue('b1');
       repo.get.mockResolvedValue(null);
-      await expect(sut.create('u1', 'PREMIUM', totalBudget)).rejects.toBeInstanceOf(BudgetNotFoundError);
+      await expect(sut.create('u1', 'PREMIUM', totalBudget, TODAY)).rejects.toBeInstanceOf(BudgetNotFoundError);
+    });
+
+    // The recurring "uploaded invoices not computed" defect: a mid-period budget must
+    // anchor to the calendar period start, not the creation day, so the live window
+    // spans the whole current period.
+    it('anchors a MONTH budget to the first of the creation month', async () => {
+      repo.create.mockResolvedValue('b1');
+      repo.get.mockResolvedValue(view);
+      await sut.create('u1', 'PREMIUM', totalBudget, TODAY);
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ period: 'MONTH', cycleStart: '2026-06-01' }),
+      );
+    });
+
+    it('anchors a WEEK budget to the Monday of the creation week', async () => {
+      repo.create.mockResolvedValue('b1');
+      repo.get.mockResolvedValue(view);
+      // 2026-06-24 is a Wednesday → Monday is 2026-06-22.
+      await sut.create('u1', 'PREMIUM', { ...totalBudget, period: 'WEEK' }, TODAY);
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ period: 'WEEK', cycleStart: '2026-06-22' }),
+      );
+    });
+
+    it('anchors a DAY budget to the creation day', async () => {
+      repo.create.mockResolvedValue('b1');
+      repo.get.mockResolvedValue(view);
+      await sut.create('u1', 'PREMIUM', { ...totalBudget, period: 'DAY' }, TODAY);
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ period: 'DAY', cycleStart: '2026-06-24' }),
+      );
     });
   });
 
@@ -120,17 +155,17 @@ describe('BudgetService', () => {
     it('lets a solo user (no household) create a TOTAL budget', async () => {
       repo.create.mockResolvedValue('b1');
       repo.get.mockResolvedValue(view);
-      await expect(sut.create('u1', 'PREMIUM', totalBudget)).resolves.toEqual(view);
+      await expect(sut.create('u1', 'PREMIUM', totalBudget, TODAY)).resolves.toEqual(view);
     });
 
     it('rejects a solo user creating a MEMBER budget (no household to scope)', async () => {
-      await expect(sut.create('u1', 'PREMIUM', memberBudget)).rejects.toBeInstanceOf(NotHouseholdOwnerError);
+      await expect(sut.create('u1', 'PREMIUM', memberBudget, TODAY)).rejects.toBeInstanceOf(NotHouseholdOwnerError);
       expect(repo.create).not.toHaveBeenCalled();
     });
 
     it('rejects a non-owner household member for every scope', async () => {
       households.findMembershipForUser.mockResolvedValue({ householdId: 'h1', ownerUserId: 'owner' });
-      await expect(sut.create('u1', 'PREMIUM', totalBudget)).rejects.toBeInstanceOf(NotHouseholdOwnerError);
+      await expect(sut.create('u1', 'PREMIUM', totalBudget, TODAY)).rejects.toBeInstanceOf(NotHouseholdOwnerError);
       expect(repo.create).not.toHaveBeenCalled();
     });
 
@@ -139,18 +174,18 @@ describe('BudgetService', () => {
       households.listMembers.mockResolvedValue([member('m9')]);
       repo.create.mockResolvedValue('b1');
       repo.get.mockResolvedValue(view);
-      await expect(sut.create('u1', 'PREMIUM', memberBudget)).resolves.toEqual(view);
+      await expect(sut.create('u1', 'PREMIUM', memberBudget, TODAY)).resolves.toEqual(view);
     });
 
     it('rejects an owner MEMBER budget for someone outside the household', async () => {
       households.findMembershipForUser.mockResolvedValue({ householdId: 'h1', ownerUserId: 'u1' });
       households.listMembers.mockResolvedValue([member('someone-else')]);
-      await expect(sut.create('u1', 'PREMIUM', memberBudget)).rejects.toBeInstanceOf(InvalidBudgetError);
+      await expect(sut.create('u1', 'PREMIUM', memberBudget, TODAY)).rejects.toBeInstanceOf(InvalidBudgetError);
       expect(repo.create).not.toHaveBeenCalled();
     });
 
     it('rejects a solo user creating a HOUSEHOLD budget (no household to scope)', async () => {
-      await expect(sut.create('u1', 'PREMIUM', householdBudget)).rejects.toBeInstanceOf(NotHouseholdOwnerError);
+      await expect(sut.create('u1', 'PREMIUM', householdBudget, TODAY)).rejects.toBeInstanceOf(NotHouseholdOwnerError);
       expect(repo.create).not.toHaveBeenCalled();
     });
 
@@ -158,8 +193,8 @@ describe('BudgetService', () => {
       households.findMembershipForUser.mockResolvedValue({ householdId: 'h1', ownerUserId: 'u1' });
       repo.create.mockResolvedValue('b1');
       repo.get.mockResolvedValue(view);
-      await expect(sut.create('u1', 'PREMIUM', householdBudget)).resolves.toEqual(view);
-      expect(repo.create).toHaveBeenCalledWith({ tenantId: 'u1', ...householdBudget });
+      await expect(sut.create('u1', 'PREMIUM', householdBudget, TODAY)).resolves.toEqual(view);
+      expect(repo.create).toHaveBeenCalledWith({ tenantId: 'u1', ...householdBudget, cycleStart: '2026-06-01' });
     });
 
     it('lets the owner create a HOUSEHOLD budget scoped to one category', async () => {
@@ -167,8 +202,8 @@ describe('BudgetService', () => {
       repo.create.mockResolvedValue('b1');
       repo.get.mockResolvedValue(view);
       const scoped = { ...householdBudget, categoryId: 'cat-groceries' };
-      await expect(sut.create('u1', 'PREMIUM', scoped)).resolves.toEqual(view);
-      expect(repo.create).toHaveBeenCalledWith({ tenantId: 'u1', ...scoped });
+      await expect(sut.create('u1', 'PREMIUM', scoped, TODAY)).resolves.toEqual(view);
+      expect(repo.create).toHaveBeenCalledWith({ tenantId: 'u1', ...scoped, cycleStart: '2026-06-01' });
     });
   });
 

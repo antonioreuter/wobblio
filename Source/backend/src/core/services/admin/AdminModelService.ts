@@ -27,8 +27,8 @@ export class AdminModelService {
     return MODEL_ROLES.map((role) => ({ role, modelId: all[role], options: MODEL_OPTIONS[role] }));
   }
 
-  // Swaps one role's model ID. Validates the role against the 4-role allowlist and
-  // requires a non-empty ID; audits model.swap with the old → new id.
+  // Swaps one role's model ID. Validates the role against the MODEL_ROLES allowlist
+  // and requires a non-empty ID; audits model.swap with the old → new id.
   async swap(actor: AdminActor, role: string, newId: unknown): Promise<string> {
     if (!isModelRole(role)) throw new UnknownAdminTargetError(role);
     const id = typeof newId === 'string' ? newId.trim() : '';

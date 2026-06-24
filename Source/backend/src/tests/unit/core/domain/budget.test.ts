@@ -1,5 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { periodEnd, advanceCycleStart, buildBudgetAlert } from '@core/domain/budget';
+import { periodEnd, periodStart, advanceCycleStart, buildBudgetAlert } from '@core/domain/budget';
+
+describe('periodStart', () => {
+  it('returns the day itself for a DAY period', () => {
+    expect(periodStart('2026-06-24', 'DAY')).toBe('2026-06-24');
+  });
+
+  it('anchors a WEEK period to the Monday of that week', () => {
+    // 2026-06-24 is a Wednesday.
+    expect(periodStart('2026-06-24', 'WEEK')).toBe('2026-06-22');
+  });
+
+  it('leaves a WEEK period unchanged when the day is already Monday', () => {
+    expect(periodStart('2026-06-22', 'WEEK')).toBe('2026-06-22');
+  });
+
+  it('anchors a WEEK period across a month boundary', () => {
+    // 2026-07-01 is a Wednesday → Monday is 2026-06-29.
+    expect(periodStart('2026-07-01', 'WEEK')).toBe('2026-06-29');
+  });
+
+  it('anchors a MONTH period to the first of the month', () => {
+    expect(periodStart('2026-06-24', 'MONTH')).toBe('2026-06-01');
+  });
+
+  it('round-trips so the start period contains its own day', () => {
+    expect(advanceCycleStart(periodStart('2026-06-24', 'MONTH'), 'MONTH', '2026-06-24')).toBe('2026-06-01');
+    expect(advanceCycleStart(periodStart('2026-06-24', 'WEEK'), 'WEEK', '2026-06-24')).toBe('2026-06-22');
+  });
+});
 
 describe('periodEnd', () => {
   it('adds one day for a DAY period', () => {

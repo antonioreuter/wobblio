@@ -20,6 +20,8 @@ New features:
 
 Admin:
 - Adicionar uma funçao para dar mais ou menos creditos de invoice para um usuario nao semana corrente. Em caso de falha em uma invoice a mesma nao deve ser contabilizada para deduzir do numero de invoices que um usuario pode submeter.
+- In the model matrix, add one entry related to the model used to process PDFs.
+- Review the curation of products and the merge of different products.
 
 
 WebApp UI:
@@ -28,10 +30,19 @@ WebApp UI:
 - Add a report to visualize the top 3 merchants. Show the top 3 merchants in the dashboard and the total amount spent in each of them for the current month.
 
 Invoices:
+- Define the max usage based on the number of invoices or credits (tokens) consumed per week. If the user in his last invoice exceeds to max credits available for that week, we still process the request, however if he has reached the limit already, we must reject the next invoices. We need to define how to define.
+
+- A implementacao do household so vai permitir apenas mais duas pessoas, totalizando 3 pessoas, contando com o owner do household. O numero de invoices vai de 10 para 15 no maximo, quando operando com household.
+
 - The strategy to deduce the location seems to be not working as expected. 
     1. Check if we can parse the address and correlate with a Country and Region [add tag informing that we resolved via invoice info], if not possible continue;
     2. If just the country matches, we should resolve the region based on the user's region preference, add a internal tag indicating this; [Note that we are introducing here an internal tag, which we don't have yet], if not possible continue;
     3. Ask the user to provide Country and Region in the frontend - we should bring pre populated the country and region based on the user's profile.
 
 Budget:
- - Invoices uploaded are not being computed in the budget. This is a reccuring problem.
+ - [RESOLVED] Invoices uploaded are not being computed in the budget. Root cause: cycle_start
+   defaulted to the creation day (CURRENT_DATE), so a mid-period budget's window
+   [cycle_start, cycle_start + period) dropped every receipt issue-dated earlier in the
+   period. Fix: anchor cycle_start to the calendar period start (DAY→today, WEEK→Monday,
+   MONTH→1st) at creation, plus a backfill migration re-anchoring existing budgets.
+   Covered by domain/service unit tests + BudgetCycleCalendarAnchor integration test.

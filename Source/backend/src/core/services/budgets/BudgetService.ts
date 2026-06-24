@@ -9,6 +9,7 @@ import {
   MAX_BUDGETS_PER_TENANT,
   advanceCycleStart,
   periodEnd,
+  periodStart,
   type BudgetScope,
   type BudgetPeriod,
 } from '../../domain/budget';
@@ -38,7 +39,7 @@ export class BudgetService {
     private readonly households: IHouseholdRepository,
   ) {}
 
-  async create(userId: string, role: UserRole, input: NewBudget): Promise<BudgetView> {
+  async create(userId: string, role: UserRole, input: NewBudget, today: string): Promise<BudgetView> {
     if (!hasPremiumAccess(role)) throw new PremiumRequiredError('budgets');
     validateNewBudget(input);
     await this.authorizeCreate(userId, input);
@@ -46,7 +47,8 @@ export class BudgetService {
     const count = await this.budgets.countForTenant();
     if (count >= MAX_BUDGETS_PER_TENANT) throw new BudgetLimitError(MAX_BUDGETS_PER_TENANT);
 
-    const id = await this.budgets.create({ tenantId: userId, ...input });
+    const cycleStart = periodStart(today, input.period);
+    const id = await this.budgets.create({ tenantId: userId, ...input, cycleStart });
     const view = await this.budgets.get(id);
     if (!view) throw new BudgetNotFoundError(id);
     return view;

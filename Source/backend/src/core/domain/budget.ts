@@ -26,6 +26,22 @@ function addCalendarMonth(d: Date): void {
   d.setUTCDate(Math.min(day, daysInTarget));
 }
 
+// Start of the natural calendar period containing `today` (ISO yyyy-mm-dd):
+// DAY → today, WEEK → Monday of that week, MONTH → the 1st. Anchoring a new
+// budget's cycle here (not its creation day) makes the live window span the whole
+// current period, so receipts dated earlier in the period are still counted.
+export function periodStart(today: string, period: BudgetPeriod): string {
+  if (period === 'DAY') return today;
+  const d = new Date(`${today}T00:00:00Z`);
+  if (period === 'WEEK') {
+    const mondayOffset = (d.getUTCDay() + 6) % 7; // getUTCDay: 0=Sun → 6, 1=Mon → 0
+    d.setUTCDate(d.getUTCDate() - mondayOffset);
+  } else {
+    d.setUTCDate(1);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 // Roll cycleStart forward to the period that currently contains `today`. A budget
 // whose period has not yet ended is returned unchanged (no future roll).
 export function advanceCycleStart(cycleStart: string, period: BudgetPeriod, today: string): string {

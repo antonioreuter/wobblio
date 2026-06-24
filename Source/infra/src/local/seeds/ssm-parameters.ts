@@ -30,6 +30,7 @@ export async function seedSsmParameters(): Promise<void> {
     // models use eu.* cross-region inference profiles — not invokable on-demand
     // by bare foundation-model ID in eu-west-1.
     '/wobblio/config/models/vision_parser': 'qwen.qwen3-vl-235b-a22b',
+    '/wobblio/config/models/pdf_parser': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
     '/wobblio/config/models/auxiliary': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
     '/wobblio/config/models/embedder': 'amazon.titan-embed-text-v2:0',
     '/wobblio/config/models/insight': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
