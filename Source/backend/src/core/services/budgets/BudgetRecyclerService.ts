@@ -20,9 +20,9 @@ export interface RecyclerOutcome {
 }
 
 // Nightly EventBridge cron (§10). Recomputes accumulation per active budget,
-// fires 85%/100% alerts once each, rolls periods over, and purges expired
-// notifications. Backdated invoices in a closed period never re-fire because each
-// run only sums the current window.
+// fires 85%/100% alerts once each, and rolls periods over. Backdated invoices in
+// a closed period never re-fire because each run only sums the current window.
+// Notification purge is handled separately by the data-retention cron.
 export class BudgetRecyclerService {
   constructor(
     private readonly budgets: IBudgetRecyclerRepository,
@@ -36,7 +36,6 @@ export class BudgetRecyclerService {
     for (const budget of all) {
       alertsFired += await this.reconcile(budget, today);
     }
-    await this.notifications.purgeExpired();
     return { processed: all.length, alertsFired };
   }
 

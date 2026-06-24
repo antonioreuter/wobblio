@@ -44,13 +44,13 @@ describe('BudgetRecyclerService', () => {
     sut = new BudgetRecyclerService(budgets, notifications, push);
   });
 
-  it('purges expired notifications and reports the processed count', async () => {
+  it('reports the processed budget count without purging', async () => {
     budgets.listAllActive.mockResolvedValue([budget(), budget({ id: 'b2' })]);
 
     const outcome = await sut.run('2026-06-10');
 
     expect(outcome.processed).toBe(2);
-    expect(notifications.purgeExpired).toHaveBeenCalledTimes(1);
+    expect(notifications.purgeExpired).not.toHaveBeenCalled();
   });
 
   it('fires the 85% alert once and persists the flag', async () => {
@@ -104,7 +104,7 @@ describe('BudgetRecyclerService', () => {
   });
 
   describe('evaluateForInvoice', () => {
-    it('evaluates only the invoice-affected budgets and never purges', async () => {
+    it('evaluates only the invoice-affected budgets', async () => {
       budgets.listActiveForInvoice.mockResolvedValue([budget()]);
       budgets.computeSpend.mockResolvedValue(90);
 
@@ -112,7 +112,6 @@ describe('BudgetRecyclerService', () => {
 
       expect(budgets.listActiveForInvoice).toHaveBeenCalledWith('inv-1');
       expect(budgets.listAllActive).not.toHaveBeenCalled();
-      expect(notifications.purgeExpired).not.toHaveBeenCalled();
       expect(outcome).toEqual({ processed: 1, alertsFired: 1 });
       expect(push.push).toHaveBeenCalledTimes(1);
     });

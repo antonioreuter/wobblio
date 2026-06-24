@@ -188,6 +188,11 @@ export class WobblioBackendStack extends Stack {
       'cron-ingestion-metrics-rollup', 2, { INGESTION_LOG_GROUP: ingestionLogGroupName }, 120,
     );
 
+    // Data retention (cron-data-retention): purge old rows from notification, invoice_share,
+    // household_invite, ingestion_ledger, quota_counter, weekly_advisor via SECURITY DEFINER
+    // functions per retention policy. Dispatched by resource key in EventBridge input.
+    const cronDataRetentionFn = makeLambda('cron-data-retention', 2);
+
     // Public endpoints — no Cognito auth, called by unauthenticated landing-page visitors
     const waitlistStatusFn = makeLambda('waitlist-status', 5, {
       MAX_FREE_USERS: ssm.StringParameter.valueForStringParameter(
@@ -282,6 +287,7 @@ export class WobblioBackendStack extends Stack {
     dbSecret.grantRead(cronBudgetResetFn);
     dbSecret.grantRead(cronWeeklyAdvisorFn);
     dbSecret.grantRead(cronIngestionMetricsRollupFn);
+    dbSecret.grantRead(cronDataRetentionFn);
     dbSecret.grantRead(waitlistStatusFn);
     dbSecret.grantRead(shareInvoiceFn);
 
@@ -313,7 +319,7 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
       ],
     });
-    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, waitlistStatusFn, shareInvoiceFn]
+    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, shareInvoiceFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
 
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
@@ -630,10 +636,31 @@ export class WobblioBackendStack extends Stack {
       cronIngestionMetricsRollupFn,
     );
 
+    // Data retention cleanup: staggered daily starting at 03:00 UTC.
+    // Each rule passes a { resource: string } input to dispatch by table.
+    const retentionSchedules = [
+      { id: 'Notification',     resource: 'notification',      minute: '0',  hour: '3' },
+      { id: 'InvoiceShare',     resource: 'invoice_share',     minute: '5',  hour: '3' },
+      { id: 'HouseholdInvite',  resource: 'household_invite',  minute: '10', hour: '3' },
+      { id: 'IngestionLedger',  resource: 'ingestion_ledger',  minute: '15', hour: '3' },
+      { id: 'QuotaCounter',     resource: 'quota_counter',     minute: '20', hour: '3' },
+      { id: 'WeeklyAdvisor',    resource: 'weekly_advisor',    minute: '25', hour: '3' },
+    ];
+
+    for (const s of retentionSchedules) {
+      new events.Rule(this, `DataRetention${s.id}Cron`, {
+        schedule: events.Schedule.cron({ minute: s.minute, hour: s.hour }),
+        enabled: config.stage === 'prod',
+        targets: [new targets.LambdaFunction(cronDataRetentionFn, {
+          event: events.RuleTargetInput.fromObject({ resource: s.resource }),
+        })],
+      });
+    }
+
     const allLambdas = [
       apiHandlerFn, ingestionWorkerFn,
       cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn,
-      cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, waitlistStatusFn, analyticsEventsFn, shareInvoiceFn,
+      cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, analyticsEventsFn, shareInvoiceFn,
     ];
 
     // ── Lambda log retention ──────────────────────────────────────────────────

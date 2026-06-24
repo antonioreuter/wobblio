@@ -7,7 +7,7 @@ import { MockPushAdapter } from '@infrastructure/adapters/notifications/MockPush
 import { BudgetRecyclerService } from '@core/services/budgets/BudgetRecyclerService';
 
 // Nightly EventBridge cron (§10): recompute budget accumulation, fire 85%/100%
-// alerts, roll periods over, and purge expired notifications.
+// alerts, and roll periods over. Notification purge moved to cron-data-retention.
 export const handler = async (_event: unknown, context: Context): Promise<void> => {
   const log = createLambdaLogger('cron-budget-reset', context.awsRequestId);
   const pool = await buildPool(
