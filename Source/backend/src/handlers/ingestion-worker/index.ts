@@ -49,11 +49,10 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   // swap is picked up on the next cold start — no hardcoded IDs in the worker.
   const modelRegistry = new SsmModelRegistryAdapter(REGION);
   const visionModelId = await modelRegistry.getModelId('vision_parser');
-  const insightModelId = await modelRegistry.getModelId('insight');
-  // The vision model rejects PDF document blocks, so PDFs parse on a doc-capable model
-  // (same receipt prompt + schema). pdf_parser is its own swappable role; where the
-  // param is not yet provisioned it falls back to the insight model.
-  const pdfModelId = await modelRegistry.getModelId('pdf_parser').catch(() => insightModelId);
+  // The vision model rejects PDF document blocks, so PDFs parse exclusively on the
+  // dedicated, doc-capable pdf_parser model (same receipt prompt + schema). No
+  // fallback: the param must be provisioned in every environment.
+  const pdfModelId = await modelRegistry.getModelId('pdf_parser');
   const auxiliaryModelId = await modelRegistry.getModelId('auxiliary');
   const embedderModelId = await modelRegistry.getModelId('embedder');
   const converse = new BedrockConverseAdapter(REGION);
