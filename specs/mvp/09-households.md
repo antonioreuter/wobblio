@@ -15,10 +15,10 @@ Household creation and management for Premium users (≤5 members), shared uploa
 
 - **Create household:** Premium only. One household per user as owner at a time.
 - **Join household:** STANDARD users can join (but not create). Accept invite link.
-- **Household size:** ≤5 members (owner + 4).
-- **Household upload pool:** 20 uploads/week (additive, draws only from household-space uploads)
-- **Pooling rule (critical):** upload targeted at household draws from household pool (20/week); upload targeted at personal space draws from personal quota. Neither borrows from the other.
-- A household of 5 Premium members: 5×10 personal + 20 pooled = 70 theoretical weekly uploads.
+- **Household size:** ≤3 members (owner + 2).
+- **Household upload pool:** 15 uploads/week (additive, draws only from household-space uploads), **active only once the household has more than one member** (owner + ≥1). A solo owner cannot draw from the pool and uploads from personal quota.
+- **Pooling rule (critical):** upload targeted at household draws from household pool (15/week); upload targeted at personal space draws from personal quota. Neither borrows from the other.
+- A household of 3 Premium members: 3×10 personal + 15 pooled = 45 theoretical weekly uploads.
 - **Household data:** invoices uploaded into the household space have `tenant_id = household_id` (RLS scoped to household members).
 
 ## Invite Flow
@@ -59,7 +59,7 @@ Weekly bucket: resets on Monday 00:00 UTC.
 - [ ] `GET /households/{id}` — get household details + member list
 - [ ] `DELETE /households/{id}` — disband household (owner only); detach members
 - [ ] `POST /households/{id}/invite` — generate invite link (owner only); encrypt token, store with expiry
-- [ ] `POST /households/accept-invite/{token}` — join household; validate token, enforce max 5 members
+- [ ] `POST /households/accept-invite/{token}` — join household; validate token, enforce max 3 members
 - [ ] `DELETE /households/{id}/members/{user_id}` — remove member (owner only)
 - [ ] `POST /households/{id}/leave` — leave household (non-owner members)
 
@@ -75,7 +75,7 @@ Weekly bucket: resets on Monday 00:00 UTC.
 - [ ] Revoke invite button
 - [ ] Remove member button (owner)
 - [ ] Leave household button (non-owner)
-- [ ] Household upload pool: progress bar showing XX/20 used this week
+- [ ] Household upload pool: progress bar showing XX/15 used this week (pool active only with ≥2 members)
 - [ ] Disbanding household: confirmation modal + warning about shared data
 
 ### Mobile UI
