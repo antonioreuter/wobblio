@@ -1,3 +1,5 @@
+import { MAX_HOUSEHOLD_MEMBERS, MIN_MEMBERS_FOR_POOL } from './household';
+
 export class EncryptionError extends Error {
   constructor(message: string, readonly cause?: unknown) {
     super(message);
@@ -205,8 +207,18 @@ export class OwnerCannotLeaveError extends Error {
 
 export class HouseholdFullError extends Error {
   constructor(readonly householdId: string) {
-    super(`Household ${householdId} already has the maximum of 5 members`);
+    super(`Household ${householdId} already has the maximum of ${MAX_HOUSEHOLD_MEMBERS} members`);
     this.name = 'HouseholdFullError';
+  }
+}
+
+// A household-targeted upload was attempted while the shared pool is inactive —
+// the household has fewer than MIN_MEMBERS_FOR_POOL members, so the uploader must
+// use their personal quota instead.
+export class HouseholdPoolUnavailableError extends Error {
+  constructor(readonly householdId: string) {
+    super(`Household ${householdId} pool is inactive until it has at least ${MIN_MEMBERS_FOR_POOL} members`);
+    this.name = 'HouseholdPoolUnavailableError';
   }
 }
 

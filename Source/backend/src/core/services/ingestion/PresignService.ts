@@ -5,10 +5,18 @@ import type { QuotaType } from '../../ports/quota/IQuotaRepository';
 import type { UserRole } from '../../ports/identity/IAppUserRepository';
 import type { IReverseGeocoder } from '../../ports/data-intelligence/IReverseGeocoder';
 import type { IRegionReference } from '../../ports/data-intelligence/IRegionReference';
+import type { IHouseholdRepository } from '../../ports/households/IHouseholdRepository';
 import type { QuotaService } from '../quota/QuotaService';
-import { DuplicateInvoiceError, PremiumRequiredError, UnsupportedUploadTypeError } from '../../domain/errors';
+import {
+  DuplicateInvoiceError,
+  HouseholdNotFoundError,
+  HouseholdPoolUnavailableError,
+  PremiumRequiredError,
+  UnsupportedUploadTypeError,
+} from '../../domain/errors';
 import { extensionFor, isAllowedUploadType, isPdf } from '../../domain/uploadFormat';
 import { hasPremiumAccess } from '../../domain/access';
+import { MIN_MEMBERS_FOR_POOL } from '../../domain/household';
 
 const PRESIGN_TTL_SECONDS = 300; // hard invariant #10
 
@@ -48,6 +56,7 @@ export class PresignService {
     private readonly fileStorage: IS3FileStorage,
     private readonly reverseGeocoder: IReverseGeocoder,
     private readonly regionReference: IRegionReference,
+    private readonly households: IHouseholdRepository,
   ) {}
 
   async presign(input: PresignInput): Promise<PresignResult> {
@@ -61,6 +70,14 @@ export class PresignService {
     if (existing) throw new DuplicateInvoiceError(input.imageSha256);
 
     const isHousehold = input.householdId !== null;
+    // The shared pool only activates once the household has more than one member.
+    // A non-member (count 0) targeting a household must not reach its pool at all.
+    if (isHousehold) {
+      const memberCount = await this.households.memberCountForUser(input.householdId!, input.uploadedByUserId);
+      if (memberCount === 0) throw new HouseholdNotFoundError(input.householdId!);
+      if (memberCount < MIN_MEMBERS_FOR_POOL) throw new HouseholdPoolUnavailableError(input.householdId!);
+    }
+
     const counter: QuotaType = isHousehold ? 'HOUSEHOLD_UPLOADS' : 'UPLOADS';
     const cap = isHousehold
       ? await this.quotaProvider.getHouseholdUploadsCap()

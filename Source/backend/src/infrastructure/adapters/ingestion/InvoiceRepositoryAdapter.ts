@@ -264,7 +264,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       `SELECT ${LIST_COLUMNS}
        FROM invoice i LEFT JOIN merchant m ON m.id = i.merchant_id
        WHERE i.status <> 'DISCARDED'
-       ORDER BY i.transaction_date DESC NULLS LAST, i.created_at DESC
+       ORDER BY i.created_at DESC
        LIMIT $1`,
       [limit],
     );

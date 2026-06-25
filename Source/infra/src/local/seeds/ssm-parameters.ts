@@ -34,9 +34,18 @@ export async function seedSsmParameters(): Promise<void> {
     '/wobblio/config/models/auxiliary': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
     '/wobblio/config/models/embedder': 'amazon.titan-embed-text-v2:0',
     '/wobblio/config/models/insight': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
+    // Per-role weekly caps. SsmUploadQuotaAdapter requires every role's uploads +
+    // failure-refunds param to exist (it fails closed on a missing cap), so all four
+    // roles are seeded. -1 = unlimited (TESTER/ADMIN stay effectively uncapped).
     '/wobblio/config/quotas/standard_uploads_per_week': '3',
     '/wobblio/config/quotas/premium_uploads_per_week': '10',
-    '/wobblio/config/quotas/household_uploads_per_week': '20',
+    '/wobblio/config/quotas/tester_uploads_per_week': '-1',
+    '/wobblio/config/quotas/admin_uploads_per_week': '-1',
+    '/wobblio/config/quotas/household_uploads_per_week': '15',
+    '/wobblio/config/quotas/standard_failure_refunds_per_week': '3',
+    '/wobblio/config/quotas/premium_failure_refunds_per_week': '10',
+    '/wobblio/config/quotas/tester_failure_refunds_per_week': '-1',
+    '/wobblio/config/quotas/admin_failure_refunds_per_week': '-1',
     '/wobblio/config/quotas/max_free_waitlist_cap': '5000',
     '/wobblio/config/routing/max_stores': '3',
     '/wobblio/config/routing/min_split_saving_eur': '5.00',

@@ -9,6 +9,7 @@ import { SsmBillingWhitelistAdapter } from '@infrastructure/adapters/billing/Ssm
 import { PaymentTransactionRepositoryAdapter } from '@infrastructure/adapters/billing/PaymentTransactionRepositoryAdapter';
 import { S3BillingArchiveAdapter } from '@infrastructure/adapters/billing/S3BillingArchiveAdapter';
 import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceRepositoryAdapter';
+import { HouseholdRepositoryAdapter } from '@infrastructure/adapters/households/HouseholdRepositoryAdapter';
 import { InvoiceShareRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceShareRepositoryAdapter';
 import { InvoiceFeedbackRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceFeedbackRepositoryAdapter';
 import { SecureTokenAdapter } from '@infrastructure/adapters/security/SecureTokenAdapter';
@@ -47,6 +48,8 @@ import {
   PremiumRequiredError,
   UnsupportedUploadTypeError,
   OversizeUploadError,
+  HouseholdNotFoundError,
+  HouseholdPoolUnavailableError,
 } from '@core/domain/errors';
 import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import { CATEGORY_TAXONOMY } from '@core/domain/categoryTaxonomy';
@@ -87,8 +90,11 @@ export const handler = async (
     const waitlistRepo = new WaitlistRepositoryAdapter(client);
 
     const user = await userRepo.findByCognitoSub(cognitoSub);
-    if (!user) {
-      log.warn('user not found in app_user', { cognitoSub });
+    // A missing user, or one that resolved without a tenant id, must never reach a
+    // route: an empty id would set an empty RLS tenant context and surface as an
+    // opaque uuid cast error (22P02) on the first query of any route.
+    if (!user || !user.id) {
+      log.warn('user not resolved to a tenant', { cognitoSub, hasUser: !!user });
       return json(401, { message: 'Unauthorized' });
     }
 
@@ -472,6 +478,7 @@ async function handlePresign(
     new S3FileStorageAdapter(REGION, uploadsBucket),
     new AwsLocationReverseGeocoderAdapter(REGION, process.env.LOCATION_PLACE_INDEX ?? ''),
     new RegionReferenceAdapter(db),
+    new HouseholdRepositoryAdapter(db),
   );
 
   try {
@@ -492,6 +499,10 @@ async function handlePresign(
     if (err instanceof UnsupportedUploadTypeError) return json(415, { message: 'Unsupported file type' });
     if (err instanceof PremiumRequiredError) return json(403, { message: 'PDF uploads require a premium plan' });
     if (err instanceof DuplicateInvoiceError) return json(409, { message: 'Receipt already scanned' });
+    if (err instanceof HouseholdNotFoundError) return json(404, { message: 'Household not found' });
+    if (err instanceof HouseholdPoolUnavailableError) {
+      return json(409, { message: 'Household pool needs at least 2 members; upload to your personal space instead' });
+    }
     if (err instanceof QuotaExceededError) {
       // Quota is the sole AI-cost/abuse control; surface blocks so repeat offenders are
       // visible in CloudWatch (no per-tenant cap to tune — see 2026-06-22 amendment).

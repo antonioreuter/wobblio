@@ -8,7 +8,15 @@ import type { IUploadQuotaProvider } from '@core/ports/quota/IUploadQuotaProvide
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
 import type { IReverseGeocoder } from '@core/ports/data-intelligence/IReverseGeocoder';
 import type { IRegionReference } from '@core/ports/data-intelligence/IRegionReference';
-import { DuplicateInvoiceError, PremiumRequiredError, QuotaExceededError, UnsupportedUploadTypeError } from '@core/domain/errors';
+import type { IHouseholdRepository } from '@core/ports/households/IHouseholdRepository';
+import {
+  DuplicateInvoiceError,
+  HouseholdNotFoundError,
+  HouseholdPoolUnavailableError,
+  PremiumRequiredError,
+  QuotaExceededError,
+  UnsupportedUploadTypeError,
+} from '@core/domain/errors';
 
 const SHA = 'a'.repeat(64);
 
@@ -28,6 +36,7 @@ describe('PresignService', () => {
   let storage: MockedObject<IS3FileStorage>;
   let reverseGeocoder: MockedObject<IReverseGeocoder>;
   let regionReference: MockedObject<IRegionReference>;
+  let households: MockedObject<IHouseholdRepository>;
   let sut: PresignService;
 
   beforeEach(() => {
@@ -50,7 +59,12 @@ describe('PresignService', () => {
       listCountries: vi.fn(), listSubdivisions: vi.fn(), isValidRegion: vi.fn(),
       isMappedLocation: vi.fn(), resolveReceiptLocation: vi.fn(),
     };
-    sut = new PresignService(invoiceRepo, new QuotaService(quotaRepo), quotaProvider, storage, reverseGeocoder, regionReference);
+    households = {
+      countOwnedByUser: vi.fn(), create: vi.fn(), findMembershipForUser: vi.fn(),
+      memberCountForUser: vi.fn(), findForMember: vi.fn(), listMembers: vi.fn(),
+      removeMember: vi.fn(), disband: vi.fn(), leave: vi.fn(),
+    };
+    sut = new PresignService(invoiceRepo, new QuotaService(quotaRepo), quotaProvider, storage, reverseGeocoder, regionReference, households);
   });
 
   it('rejects a same-tenant duplicate without touching quota or creating an invoice', async () => {
@@ -101,18 +115,41 @@ describe('PresignService', () => {
     expect(storage.presignPut).toHaveBeenCalledWith(`receipts/tenant-1/${SHA}.pdf`, 'application/pdf', 300);
   });
 
-  it('reserves the household pool when a householdId is provided', async () => {
+  it('reserves the household pool when the household has at least two members', async () => {
     invoiceRepo.findSameTenantByHash.mockResolvedValue(null);
-    quotaProvider.getHouseholdUploadsCap.mockResolvedValue(20);
+    households.memberCountForUser.mockResolvedValue(2);
+    quotaProvider.getHouseholdUploadsCap.mockResolvedValue(15);
     quotaRepo.getUsed.mockResolvedValue(5);
     invoiceRepo.createPending.mockResolvedValue('inv-2');
     storage.presignPut.mockResolvedValue('https://s3/put');
 
     await sut.presign({ ...baseInput, householdId: 'hh-1' });
 
+    expect(households.memberCountForUser).toHaveBeenCalledWith('hh-1', 'tenant-1');
     expect(quotaProvider.getHouseholdUploadsCap).toHaveBeenCalled();
     // The shared pool is keyed by household_id, not the uploader.
     expect(quotaRepo.increment).toHaveBeenCalledWith('hh-1', 'HOUSEHOLD_UPLOADS', expect.any(String));
+  });
+
+  it('rejects a household upload when the pool is inactive (solo member)', async () => {
+    invoiceRepo.findSameTenantByHash.mockResolvedValue(null);
+    households.memberCountForUser.mockResolvedValue(1);
+
+    await expect(sut.presign({ ...baseInput, householdId: 'hh-1' }))
+      .rejects.toBeInstanceOf(HouseholdPoolUnavailableError);
+    expect(quotaProvider.getHouseholdUploadsCap).not.toHaveBeenCalled();
+    expect(quotaRepo.increment).not.toHaveBeenCalled();
+    expect(invoiceRepo.createPending).not.toHaveBeenCalled();
+  });
+
+  it('rejects a household upload from a non-member', async () => {
+    invoiceRepo.findSameTenantByHash.mockResolvedValue(null);
+    households.memberCountForUser.mockResolvedValue(0);
+
+    await expect(sut.presign({ ...baseInput, householdId: 'hh-1' }))
+      .rejects.toBeInstanceOf(HouseholdNotFoundError);
+    expect(quotaRepo.increment).not.toHaveBeenCalled();
+    expect(invoiceRepo.createPending).not.toHaveBeenCalled();
   });
 
   it('throws QuotaExceededError when the cap is reached', async () => {

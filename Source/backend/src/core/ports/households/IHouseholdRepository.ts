@@ -22,6 +22,10 @@ export interface IHouseholdRepository {
   create(ownerUserId: string, name: string): Promise<string>;
   // The household the user belongs to (member or owner), or null when solo. RLS-scoped.
   findMembershipForUser(userId: string): Promise<HouseholdMembership | null>;
+  // Member count of the household, but only when `userId` is a member of it;
+  // returns 0 for a non-member (the caller treats that as "no access"). Backed by
+  // a SECURITY DEFINER function so it is safe to call before quota reservation.
+  memberCountForUser(householdId: string, userId: string): Promise<number>;
   // Relies on RLS: returns the household only when the caller is a member or owner.
   findForMember(householdId: string): Promise<HouseholdSummary | null>;
   listMembers(householdId: string): Promise<HouseholdMember[]>;

@@ -60,6 +60,14 @@ export class HouseholdRepositoryAdapter implements IHouseholdRepository {
     return row ? { householdId: row.household_id, ownerUserId: row.owner_user_id } : null;
   }
 
+  async memberCountForUser(householdId: string, userId: string): Promise<number> {
+    const result = await this.client.query<{ count: number }>(
+      `SELECT household_member_count_for($1, $2) AS count`,
+      [householdId, userId],
+    );
+    return result.rows[0].count;
+  }
+
   async findForMember(householdId: string): Promise<HouseholdSummary | null> {
     const result = await this.client.query<HouseholdRow>(
       `SELECT id, name, owner_user_id FROM household WHERE id = $1`,
