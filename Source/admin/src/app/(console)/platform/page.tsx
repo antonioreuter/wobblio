@@ -1,9 +1,11 @@
 import { WaitlistSection } from './waitlist-section'
 import { ConfigSection } from './config-section'
 import { ModelsSection } from './models-section'
+import { QuotasSection } from './quotas-section'
 
 const SECTION_LINKS = [
   { id: 'waitlist', label: 'Waitlist' },
+  { id: 'quotas', label: 'Quotas' },
   { id: 'config', label: 'SSM Config' },
   { id: 'models', label: 'Model Matrix' },
 ]
@@ -32,6 +34,8 @@ export default function PlatformPage() {
       </header>
 
       <WaitlistSection />
+      <div className="h-px bg-line" />
+      <QuotasSection />
       <div className="h-px bg-line" />
       <ConfigSection />
       <div className="h-px bg-line" />

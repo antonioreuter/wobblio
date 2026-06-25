@@ -331,16 +331,22 @@ export class WobblioBackendStack extends Stack {
     });
     [apiHandlerFn, cronWaitlistReleaseFn].forEach(fn => fn.addToRolePolicy(waitlistCapSsmPolicy));
 
-    // SSM: per-plan upload quotas — api-handler reads these (batched GetParameters)
+    // SSM: per-role quota caps — api-handler reads these (batched GetParameters)
     // for the scan-quota check on /me/usage and presign. Must include GetParameters
-    // (plural) since SsmUploadQuotaAdapter loads all three in one call.
+    // (plural) since SsmUploadQuotaAdapter loads every cap in one call (so a missing
+    // grant 403s the whole batch). Mirrors QUOTA_PARAMS in core/domain/quotaConfig.ts.
+    const quotaCapPaths = [
+      'household_uploads_per_week',
+      ...['standard', 'premium', 'tester', 'admin'].flatMap((r) => [
+        `${r}_uploads_per_week`,
+        `${r}_failure_refunds_per_week`,
+      ]),
+    ];
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParameters'],
-      resources: [
-        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/standard_uploads_per_week`,
-        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/premium_uploads_per_week`,
-        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/household_uploads_per_week`,
-      ],
+      resources: quotaCapPaths.map(
+        (p) => `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/${p}`,
+      ),
     }));
 
     // SSM: mock premium whitelist — api-handler reads at checkout time
@@ -373,6 +379,9 @@ export class WobblioBackendStack extends Stack {
       '/wobblio/config/models/limits/auxiliary_max_tokens',
       '/wobblio/config/models/limits/insight_max_tokens',
       '/wobblio/config/models/limits/embedder_max_tokens',
+      // Per-role quota caps — editable on the admin quotas page (mirrors
+      // QUOTA_PARAMS in core/domain/quotaConfig.ts).
+      ...quotaCapPaths.map((p) => `/wobblio/config/quotas/${p}`),
     ];
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameters', 'ssm:PutParameter'],
@@ -381,11 +390,13 @@ export class WobblioBackendStack extends Stack {
       ),
     }));
 
-    // SSM: admin model-swap matrix (admin-console 03) — read + write the four model
-    // IDs. Enumerated (no wildcard) to keep cdk-nag IAM5 clean.
+    // SSM: admin model-swap matrix (admin-console 03) — read + write the model IDs.
+    // Enumerated (no wildcard) to keep cdk-nag IAM5 clean. Mirror MODEL_ROLES in
+    // core/ports/ai/IModelRegistry.ts — getAll() reads every role in one GetParameters
+    // call, which is all-or-nothing on authorization, so a missing role 403s the matrix.
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameters', 'ssm:PutParameter'],
-      resources: ['vision_parser', 'auxiliary', 'insight', 'embedder'].map(
+      resources: ['vision_parser', 'pdf_parser', 'auxiliary', 'insight', 'embedder'].map(
         (role) => `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/models/${role}`,
       ),
     }));

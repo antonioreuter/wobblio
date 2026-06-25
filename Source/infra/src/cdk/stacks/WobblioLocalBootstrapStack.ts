@@ -85,8 +85,16 @@ export class WobblioLocalBootstrapStack extends Stack {
     };
 
     const quotaParams: Record<string, string> = {
+      // Per-role weekly upload caps. TESTER/ADMIN use -1 = unlimited.
       '/wobblio/config/quotas/standard_uploads_per_week': '3',
       '/wobblio/config/quotas/premium_uploads_per_week': '10',
+      '/wobblio/config/quotas/tester_uploads_per_week': '-1',
+      '/wobblio/config/quotas/admin_uploads_per_week': '-1',
+      // Per-role weekly failure-refund caps. TESTER/ADMIN use -1 = unlimited.
+      '/wobblio/config/quotas/standard_failure_refunds_per_week': '1',
+      '/wobblio/config/quotas/premium_failure_refunds_per_week': '3',
+      '/wobblio/config/quotas/tester_failure_refunds_per_week': '-1',
+      '/wobblio/config/quotas/admin_failure_refunds_per_week': '-1',
       '/wobblio/config/quotas/household_uploads_per_week': '20',
       '/wobblio/config/quotas/max_free_waitlist_cap': '5000',
     };

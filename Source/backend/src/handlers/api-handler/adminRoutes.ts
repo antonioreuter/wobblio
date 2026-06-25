@@ -11,11 +11,15 @@ import { handleAdminCurationRoute } from './adminCurationRoutes';
 import { handleAdminAnalyticsRoute } from './adminAnalyticsRoutes';
 import { handleAdminTroubleshootingRoute } from './adminTroubleshootingRoutes';
 import { handleAdminQuotaRoute } from './adminQuotaRoutes';
+import { handleAdminQuotaConfigRoute } from './adminQuotaConfigRoutes';
 
 // Admin-console backend entry. The FIRST line is the server-side ADMIN guard —
 // independent of the edge middleware in Source/admin, both must pass (admin-console
-// 00). role is read from the DB-resolved app_user; it is never client-writable
-// (root invariant #5) and no admin endpoint mutates it.
+// 00). role is read from the DB-resolved app_user and is never *client*-writable
+// (root invariant #5). The one exception is the operator role-change endpoint below
+// (PUT /admin/users/{id}/role): the admin console is the "operator" path invariant
+// #5 reserves, so flipping role here is the sanctioned deviation — ADMIN-gated and
+// audited (role.change).
 export async function handleAdminRoute(
   db: PoolClient,
   user: AppUser,
@@ -32,6 +36,7 @@ export async function handleAdminRoute(
   if (path.startsWith('/admin/waitlist')) return handleAdminWaitlistRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/dlq')) return handleAdminDlqRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/troubleshooting')) return handleAdminTroubleshootingRoute(db, user, path, method, event, log);
+  if (path.startsWith('/admin/quotas')) return handleAdminQuotaConfigRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/users')) return handleAdminQuotaRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/config')) return handleAdminConfigRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/models')) return handleAdminModelRoute(db, user, path, method, event, log);

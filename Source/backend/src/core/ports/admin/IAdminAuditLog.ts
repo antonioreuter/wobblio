@@ -11,7 +11,9 @@ export type AdminAuditAction =
   | 'curation.reject'
   | 'waitlist.release'
   | 'loglevel.change'
-  | 'quota.adjust';
+  | 'quota.adjust'
+  | 'quota.config'
+  | 'role.change';
 
 export interface AdminAuditEntry {
   actorUserId: string;

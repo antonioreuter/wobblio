@@ -32,7 +32,57 @@ export async function handleAdminQuotaRoute(
     return adjustQuota(db, user, idMatch[1], event, log);
   }
 
+  const roleMatch = path.match(/^\/admin\/users\/([^/]+)\/role$/);
+  if (method === 'PUT' && roleMatch) {
+    return changeRole(db, user, roleMatch[1], event, log);
+  }
+
   return json(404, { message: 'Not Found' });
+}
+
+const ROLES: readonly UserRole[] = ['STANDARD', 'PREMIUM', 'TESTER', 'ADMIN'];
+
+// Operator role change (invariant #5 deviation, see adminRoutes.ts). app_user RLS
+// blocks a cross-tenant UPDATE, so admin_set_user_role runs as owner; the action
+// is audited role.change with the old → new role.
+async function changeRole(
+  db: PoolClient,
+  adminUser: AppUser,
+  targetUserId: string,
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody(event.body);
+  const nextRole = String(body.role ?? '') as UserRole;
+  if (!ROLES.includes(nextRole)) return json(400, { message: `role must be one of ${ROLES.join(', ')}` });
+
+  const userResult = await db.query<{ email: string; role: string }>(
+    `SELECT email, role FROM admin_get_user($1)`,
+    [targetUserId],
+  );
+  if (!userResult.rows[0]) return json(404, { message: 'User not found' });
+  const targetUser = userResult.rows[0];
+
+  await db.query(`SELECT admin_set_user_role($1, $2)`, [targetUserId, nextRole]);
+
+  await new AdminAuditLogAdapter(db).record({
+    actorUserId: adminUser.id,
+    actorEmail: adminUser.email,
+    action: 'role.change',
+    target: targetUserId,
+    before: targetUser.role,
+    after: nextRole,
+  });
+
+  log.info('admin role change', {
+    adminId: adminUser.id,
+    targetUserId,
+    targetEmail: targetUser.email,
+    before: targetUser.role,
+    after: nextRole,
+  });
+
+  return json(200, { id: targetUserId, role: nextRole });
 }
 
 // Caps may be Infinity for TESTER/ADMIN; JSON.stringify turns Infinity into null,
