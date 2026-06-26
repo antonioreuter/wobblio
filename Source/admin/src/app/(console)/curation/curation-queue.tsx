@@ -63,6 +63,7 @@ export function CurationQueue({ kind }: { kind: Kind }) {
   const [groupSources, setGroupSources] = useState<string[]>([])
   const [preview, setPreview] = useState<PreviewRow[] | null>(null)
   const [committing, setCommitting] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const listEnabled = country !== ''
   const filtersKey = `${country}|${region}|${category}|${sort}|${pageSize}`
@@ -191,6 +192,16 @@ export function CurationQueue({ kind }: { kind: Kind }) {
     setGroupTarget('')
   }
 
+  // Removing the canonical must hand the role to another member, otherwise groupTarget
+  // would point at a product no longer shown and the merge would silently target it.
+  function removeSource(id: string) {
+    setGroupSources((s) => {
+      const next = s.filter((x) => x !== id)
+      if (id === groupTarget) setGroupTarget(next[0] ?? '')
+      return next
+    })
+  }
+
   // Per-source compatibility against the chosen canonical, refreshed when the target or
   // the member set changes; the target itself is never a source of the merge.
   const sourceIds = groupSources.filter((id) => id !== groupTarget)
@@ -225,7 +236,12 @@ export function CurationQueue({ kind }: { kind: Kind }) {
     const appliedSet = new Set(result.applied)
     setItems((prev) => prev.filter((it) => !appliedSet.has(it.id)))
     setSelected(new Set())
-    setError(result.skipped.length > 0 ? `Merged ${result.applied.length}; skipped ${result.skipped.length} (incompatible).` : null)
+    setError(null)
+    setNotice(
+      result.skipped.length > 0
+        ? `Merged ${result.applied.length}; skipped ${result.skipped.length} (incompatible).`
+        : `Merged ${result.applied.length}.`,
+    )
     closeMergeGroup()
   }
 
@@ -319,6 +335,7 @@ export function CurationQueue({ kind }: { kind: Kind }) {
       </div>
 
       {error && <p className="text-xs text-danger" role="alert">{error}</p>}
+      {notice && <p className="text-xs text-muted" role="status">{notice}</p>}
 
       {groupOpen && (
         <div className="flex flex-col gap-3 rounded-[12px] border border-line bg-card p-4" data-testid="curation-merge-group-panel">
@@ -359,7 +376,7 @@ export function CurationQueue({ kind }: { kind: Kind }) {
                   <button
                     type="button"
                     className="ml-auto text-xs text-muted hover:text-danger"
-                    onClick={() => setGroupSources((s) => s.filter((x) => x !== id))}
+                    onClick={() => removeSource(id)}
                     data-testid={`curation-merge-group-remove-${id}`}
                   >
                     remove

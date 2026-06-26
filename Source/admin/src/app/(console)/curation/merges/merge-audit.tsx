@@ -39,7 +39,10 @@ export function MergeAudit() {
     void (async () => {
       const res = await fetch('/api/admin/curation/merges')
       if (!res.ok) return setError('Failed to load merge history')
-      setMerges((await res.json()).merges ?? [])
+      // Alias hygiene is product-only; merchant merges share the curation.merge action
+      // but their targetId is a merchant id, so exclude them from this product view.
+      const rows: MergeRow[] = (await res.json()).merges ?? []
+      setMerges(rows.filter((m) => m.target.startsWith('product:')))
     })()
   }, [])
 

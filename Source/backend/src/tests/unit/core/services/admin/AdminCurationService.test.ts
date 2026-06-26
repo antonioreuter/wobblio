@@ -213,7 +213,7 @@ describe('AdminCurationService', () => {
     await sut.deactivateAlias(ACTOR, 'p-1', 'al-9');
     expect(repo.deactivateAlias).toHaveBeenCalledWith('al-9');
     expect(audit.record).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'curation.reject', after: { deactivatedAlias: 'al-9' } }),
+      expect.objectContaining({ action: 'curation.alias_deactivate', after: { deactivatedAlias: 'al-9' } }),
     );
   });
 

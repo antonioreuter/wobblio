@@ -65,13 +65,14 @@ async function runMergePreview(service: AdminCurationService, event: APIGatewayP
   const targetId = String(body.targetId ?? '');
   const sourceIds = Array.isArray(body.sourceIds) ? (body.sourceIds as string[]) : [];
   if (!targetId || sourceIds.length === 0) return json(400, { message: 'targetId and sourceIds are required' });
-  const rows = await Promise.all(
-    sourceIds.map(async (sourceId) => {
-      const compatibility = await service.mergeCompatibility(sourceId, targetId);
-      const blockReason = compatibility ? mergeBlockReason(compatibility) : 'not_found';
-      return { sourceId, compatibility, blockReason };
-    }),
-  );
+  // Sequential, not Promise.all: every call shares one pg connection, which cannot run
+  // queries concurrently.
+  const rows = [];
+  for (const sourceId of sourceIds) {
+    const compatibility = await service.mergeCompatibility(sourceId, targetId);
+    const blockReason = compatibility ? mergeBlockReason(compatibility) : 'not_found';
+    rows.push({ sourceId, compatibility, blockReason });
+  }
   return json(200, { target: targetId, sources: rows });
 }
 

@@ -153,7 +153,7 @@ export class AdminCurationService {
   async deactivateAlias(actor: AdminActor, productId: string, aliasId: string): Promise<void> {
     const ok = await this.repo.deactivateAlias(aliasId);
     if (!ok) throw new UnknownAdminTargetError(`alias:${aliasId}`);
-    await this.record(actor, 'curation.reject', 'product', productId, { deactivatedAlias: aliasId });
+    await this.record(actor, 'curation.alias_deactivate', 'product', productId, { deactivatedAlias: aliasId });
   }
 
   // Batch approve/reject of selected ids; returns how many were applied.
@@ -195,7 +195,7 @@ export class AdminCurationService {
 
   private record(
     actor: AdminActor,
-    action: 'curation.approve' | 'curation.reject' | 'curation.merge',
+    action: 'curation.approve' | 'curation.reject' | 'curation.merge' | 'curation.alias_deactivate',
     kind: CatalogKind,
     id: string,
     after: unknown,

@@ -9,6 +9,7 @@ export type AdminAuditAction =
   | 'curation.approve'
   | 'curation.merge'
   | 'curation.reject'
+  | 'curation.alias_deactivate'
   | 'waitlist.release'
   | 'loglevel.change'
   | 'quota.adjust'
