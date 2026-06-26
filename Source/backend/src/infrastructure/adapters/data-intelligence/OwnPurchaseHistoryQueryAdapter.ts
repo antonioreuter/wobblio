@@ -16,10 +16,13 @@ interface WeeklyRow {
 
 // The caller's OWN purchase history over the RLS-scoped invoice_line store — the db
 // MUST already carry the tenant context (see withTenantTx). No k≥3 gate: own data is
-// served regardless of public quorum, which is the whole point. Region is matched to the
-// selected picker via invoice.location_* (the same region the public store would emit to);
-// deposit/fee lines and lines without a normalized unit price are excluded. Weekly medians
-// split discounted from regular purchases, mirroring the public trend.
+// served regardless of public quorum, which is the whole point. Location match: a
+// RESOLVED receipt must match the picker country+region (same as the public store would
+// emit to); a receipt still pending location review (location_status <> 'RESOLVED', region
+// NULL) is also served when its country is unknown or matches the picker — full access to
+// your own uploads regardless of review state, without dumping a foreign receipt into an
+// unrelated country's view. Deposit/fee lines and lines without a normalized unit price are
+// excluded. Weekly medians split discounted from regular purchases, mirroring the public trend.
 export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery {
   constructor(private readonly db: Pool | PoolClient) {}
 
@@ -39,8 +42,13 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
            AND i.transaction_date >= CURRENT_DATE - ($2::int * 7)
            AND l.normalized_unit_price IS NOT NULL
            AND l.is_deposit_or_fee = false
-           AND i.location_country_code = $3
-           AND i.location_region_code = $4
+           AND (
+             (i.location_status = 'RESOLVED'
+                AND i.location_country_code = $3
+                AND i.location_region_code = $4)
+             OR (i.location_status <> 'RESOLVED'
+                AND (i.location_country_code = $3 OR i.location_country_code IS NULL))
+           )
        ),
        weekly AS (
          SELECT product_id, week_start,

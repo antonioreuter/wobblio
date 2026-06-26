@@ -23,18 +23,24 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
   let pool: Pool;
   let milkId: string; // bought several times across two weeks
   let nicheId: string; // bought once — below public quorum, must still be served
+  let pendingId: string; // bought only on receipts still pending location review
 
   const insertInvoice = async (
     tenantId: string,
     transactionDate: string,
-    regionCode: string,
+    regionCode: string | null,
+    loc: { countryCode?: string | null; status?: string } = {},
   ): Promise<string> => {
     const res = await pool.query<{ id: string }>(
       `INSERT INTO invoice
          (tenant_id, uploaded_by_user_id, status, transaction_date, image_s3_key, image_sha256,
           location_country_code, location_region_code, location_status)
-       VALUES ($1, $1, 'PARSED', $2, $3, $4, 'NL', $5, 'RESOLVED') RETURNING id`,
-      [tenantId, transactionDate, `k-${randomUUID()}`, randomUUID().replace(/-/g, ''), regionCode],
+       VALUES ($1, $1, 'PARSED', $2, $3, $4, $6, $5, $7) RETURNING id`,
+      [
+        tenantId, transactionDate, `k-${randomUUID()}`, randomUUID().replace(/-/g, ''), regionCode,
+        loc.countryCode === undefined ? 'NL' : loc.countryCode,
+        loc.status ?? 'RESOLVED',
+      ],
     );
     return res.rows[0].id;
   };
@@ -87,6 +93,10 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
       displayName: `Own Niche ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
       baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
+    pendingId = await products.createProvisionalProduct({
+      displayName: `Own Pending ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
+      baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+    });
 
     // tenantA, week W1 (today), region R: milk 1.00 + 1.40 (median 1.20), one promo at 0.80,
     // a deposit line (excluded) and an unmatched product_id=NULL line (excluded). Plus a
@@ -110,13 +120,22 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     // tenantB, same region + product — must be invisible to tenantA (RLS).
     const bInv = await insertInvoice(tenantB, isoDay(0), region);
     await insertLine(bInv, milkId, 7.77);
+
+    // tenantA, location still PENDING review (region NULL, country known NL): served regardless
+    // of the picker region — it's the user's own upload. 2.00 in week W1.
+    const pendNL = await insertInvoice(tenantA, isoDay(0), null, { status: 'PENDING' });
+    await insertLine(pendNL, pendingId, 2.0);
+
+    // tenantA, PENDING with a DIFFERENT known country (BE): excluded from an NL view.
+    const pendBE = await insertInvoice(tenantA, isoDay(0), null, { countryCode: 'BE', status: 'PENDING' });
+    await insertLine(pendBE, pendingId, 9.0);
   });
 
   afterAll(async () => {
     await pool.query(`DELETE FROM invoice_line WHERE invoice_id IN (SELECT id FROM invoice WHERE tenant_id = ANY($1))`, [[tenantA, tenantB]]);
     await pool.query(`DELETE FROM invoice WHERE tenant_id = ANY($1)`, [[tenantA, tenantB]]);
-    await pool.query(`DELETE FROM price_observation WHERE product_id = ANY($1)`, [[milkId, nicheId]]);
-    await pool.query(`DELETE FROM product WHERE id = ANY($1)`, [[milkId, nicheId]]);
+    await pool.query(`DELETE FROM price_observation WHERE product_id = ANY($1)`, [[milkId, nicheId, pendingId]]);
+    await pool.query(`DELETE FROM product WHERE id = ANY($1)`, [[milkId, nicheId, pendingId]]);
     await pool.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[tenantA, tenantB]]);
     await pool.query(`DROP OWNED BY ${RLS_ROLE}; DROP ROLE ${RLS_ROLE};`);
     await pool.end();
@@ -153,6 +172,19 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     const niche = lines.find((l) => l.productId === nicheId)!;
     expect(niche.purchaseCount).toBe(1);
     expect(niche.points[0].median).toBeCloseTo(3.0, 4);
+  });
+
+  it('serves own purchases from receipts still pending location review, country-scoped', async () => {
+    const lines = await asTenant(tenantA, (a) =>
+      a.history({ productIds: [pendingId], countryCode: 'NL', regionCode: region, weeks: 26 }),
+    );
+    // The NL-pending receipt (region NULL) is served despite the picker region; the BE-pending
+    // receipt is excluded as a different known country.
+    expect(lines).toHaveLength(1);
+    const pending = lines[0];
+    expect(pending.productId).toBe(pendingId);
+    expect(pending.purchaseCount).toBe(1);
+    expect(pending.points[0].median).toBeCloseTo(2.0, 4);
   });
 
   it('never leaks another tenant\'s purchases (RLS) and honors the region filter', async () => {

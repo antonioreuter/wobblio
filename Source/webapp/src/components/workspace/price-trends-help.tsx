@@ -39,11 +39,11 @@ const TREND_HELP_POINTS: { title: string; body: string }[] = [
   },
   {
     title: 'Filtered by region',
-    body: 'Both lines are limited to the region in the picker. Switch regions to see prices somewhere else.',
+    body: 'The local-store comparison is limited to the region in the picker. Switch regions to see prices somewhere else.',
   },
   {
     title: 'Region must be confirmed',
-    body: 'A receipt counts only once its region is confirmed. Receipts still awaiting location confirmation are not charted yet.',
+    body: 'The local-store comparison counts a receipt only once its region is confirmed. Your own purchases chart right away — including receipts still awaiting location confirmation.',
   },
 ]
 
