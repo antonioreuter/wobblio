@@ -8,7 +8,7 @@ import { seedSsmParameters } from './seeds/ssm-parameters';
 // RDS requires TLS; local Postgres does not. Verify by default — pass the RDS CA
 // bundle via DB_SSL_CA (path or PEM). DB_SSL_NO_VERIFY exists only as an explicit
 // escape hatch for throwaway debugging and must never be used against real data.
-function buildSslConfig(): false | boolean | { ca?: string; rejectUnauthorized?: boolean } {
+export function buildSslConfig(): false | boolean | { ca?: string; rejectUnauthorized?: boolean } {
   if (process.env.DB_SSL !== 'true') return false;
   const ca = process.env.DB_SSL_CA;
   if (ca) return { ca: fs.existsSync(ca) ? fs.readFileSync(ca, 'utf8') : ca };
@@ -16,7 +16,7 @@ function buildSslConfig(): false | boolean | { ca?: string; rejectUnauthorized?:
   return true;
 }
 
-function buildDbClient(): Client {
+export function buildDbClient(): Client {
   return new Client({
     connectionString:
       process.env.DATABASE_URL ??
@@ -36,7 +36,7 @@ async function tableExists(client: Client, tableName: string): Promise<boolean> 
   return result.rows[0].exists as boolean;
 }
 
-async function seedMerchants(client: Client): Promise<void> {
+export async function seedMerchants(client: Client): Promise<void> {
   if (!(await tableExists(client, 'merchant'))) {
     console.warn('  ⚠  Table "merchant" does not exist — skipping. Run migrations first.');
     return;
@@ -73,7 +73,7 @@ async function seedMerchants(client: Client): Promise<void> {
   console.log(`  ✓ ${aliasCount} merchant aliases`);
 }
 
-async function seedTaxonomy(client: Client): Promise<void> {
+export async function seedTaxonomy(client: Client): Promise<void> {
   if (!(await tableExists(client, 'product_category'))) {
     console.warn('  ⚠  Table "product_category" does not exist — skipping. Run migrations first.');
     return;
@@ -91,7 +91,7 @@ async function seedTaxonomy(client: Client): Promise<void> {
   console.log(`  ✓ ${categorySeed.length} product categories`);
 }
 
-async function seedReference(client: Client): Promise<void> {
+export async function seedReference(client: Client): Promise<void> {
   if (!(await tableExists(client, 'country'))) {
     console.warn('  ⚠  Table "country" does not exist — skipping. Run migrations first.');
     return;
@@ -114,18 +114,16 @@ async function seedReference(client: Client): Promise<void> {
   console.log(`  ✓ ${countrySeed.length} countries, ${subdivisionSeed.length} subdivisions`);
 }
 
-async function seedPostgres(): Promise<void> {
-  const client = buildDbClient();
-  await client.connect();
-  try {
-    console.log('\nSeeding PostgreSQL...');
-    await seedReference(client);
-    await seedMerchants(client);
-    await seedTaxonomy(client);
-    console.log('PostgreSQL seed complete.\n');
-  } finally {
-    await client.end();
-  }
+// Seed the global reference + catalog tables on an already-connected client (caller owns
+// connect/end so the reset script can reuse it). Order matters: taxonomy before merchants,
+// because merchant.default_category_id references product_category — seeding merchants
+// first would fail against a freshly-truncated category table. All inserts are idempotent.
+export async function seedPostgres(client: Client): Promise<void> {
+  console.log('\nSeeding PostgreSQL...');
+  await seedReference(client);
+  await seedTaxonomy(client);
+  await seedMerchants(client);
+  console.log('PostgreSQL seed complete.\n');
 }
 
 async function main(): Promise<void> {
@@ -137,11 +135,20 @@ async function main(): Promise<void> {
   } else {
     console.log(`Skipping SSM parameter seeding (STAGE=${stage} — reference data only).`);
   }
-  await seedPostgres();
+  const client = buildDbClient();
+  await client.connect();
+  try {
+    await seedPostgres(client);
+  } finally {
+    await client.end();
+  }
   console.log('All seed operations complete.');
 }
 
-main().catch((err) => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+// Only run as a CLI; importing for reuse (reset-dev.ts) must not trigger a seed.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
+}

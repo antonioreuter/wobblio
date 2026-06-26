@@ -23,7 +23,8 @@
     "migrate:up": "node-pg-migrate up -m src/migrations --ts-node",
     "migrate:down": "node-pg-migrate down -m src/migrations --ts-node",
     "migrate:create": "node-pg-migrate create -m src/migrations --ts",
-    "seed:local": "ts-node src/local/seed.ts"
+    "seed:local": "ts-node src/local/seed.ts",
+    "reset:dev": "ts-node src/local/reset-dev.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.600.0",
