@@ -9,6 +9,7 @@ import {
   Stethoscope,
   Package,
   Store,
+  GitMerge,
   Coins,
   Users,
   Menu,
@@ -32,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/users', label: 'Users', icon: Users },
   { href: '/curation/products', label: 'Product Curation', icon: Package },
   { href: '/curation/merchants', label: 'Merchant Curation', icon: Store },
+  { href: '/curation/merges', label: 'Merge Audit', icon: GitMerge },
   { href: '/ai-spend', label: 'AI Spend', icon: Coins },
 ]
 

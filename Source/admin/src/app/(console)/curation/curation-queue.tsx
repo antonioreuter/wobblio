@@ -24,6 +24,15 @@ interface CountryCount { countryCode: string; count: number }
 interface RegionCount { regionCode: string; count: number }
 interface CategoryCount { categoryId: string; categoryName: string; count: number }
 
+interface Compatibility { categoryMatch: boolean; unitMatch: boolean; similarity: number }
+interface PreviewRow { sourceId: string; compatibility: Compatibility | null; blockReason: string | null }
+const BLOCK_LABEL: Record<string, string> = {
+  category_mismatch: 'different category',
+  unit_mismatch: 'different unit',
+  low_similarity: 'too dissimilar',
+  not_found: 'not found',
+}
+
 const PAGE_SIZES = [25, 50]
 
 export function CurationQueue({ kind }: { kind: Kind }) {
@@ -46,6 +55,14 @@ export function CurationQueue({ kind }: { kind: Kind }) {
   const [mergeTarget, setMergeTarget] = useState('')
   const [showHelp, setShowHelp] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Product-only merge-group review: pick a canonical from the selection, drop faulty
+  // members, then commit (the server skips any source the guard still refuses).
+  const [groupOpen, setGroupOpen] = useState(false)
+  const [groupTarget, setGroupTarget] = useState('')
+  const [groupSources, setGroupSources] = useState<string[]>([])
+  const [preview, setPreview] = useState<PreviewRow[] | null>(null)
+  const [committing, setCommitting] = useState(false)
 
   const listEnabled = country !== ''
   const filtersKey = `${country}|${region}|${category}|${sort}|${pageSize}`
@@ -120,11 +137,19 @@ export function CurationQueue({ kind }: { kind: Kind }) {
   async function act(id: string, action: 'approve' | 'reject' | 'merge', body?: object) {
     setPending(null)
     setMergeTarget('')
-    await fetch(`/api/admin/curation/${kind}/${id}/${action}`, {
+    const res = await fetch(`/api/admin/curation/${kind}/${id}/${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     })
+    // A guarded merge can be refused (409 — different category/unit or too dissimilar);
+    // keep the row in place and surface why instead of optimistically dropping it.
+    if (!res.ok) {
+      const reason = action === 'merge' ? ((await res.json().catch(() => ({}))).reason as string | undefined) : undefined
+      setError(action === 'merge' ? `Merge refused${reason ? ` — ${BLOCK_LABEL[reason] ?? reason}` : ' (incompatible products)'}.` : 'Action failed.')
+      return
+    }
+    setError(null)
     setItems((prev) => prev.filter((it) => it.id !== id))
   }
 
@@ -146,6 +171,62 @@ export function CurationQueue({ kind }: { kind: Kind }) {
       else next.add(id)
       return next
     })
+  }
+
+  const nameOf = useCallback((id: string) => items.find((it) => it.id === id)?.name ?? id, [items])
+
+  function openMergeGroup() {
+    const ids = [...selected]
+    if (ids.length < 2) return
+    setGroupSources(ids)
+    setGroupTarget(ids[0])
+    setPreview(null)
+    setGroupOpen(true)
+  }
+
+  function closeMergeGroup() {
+    setGroupOpen(false)
+    setPreview(null)
+    setGroupSources([])
+    setGroupTarget('')
+  }
+
+  // Per-source compatibility against the chosen canonical, refreshed when the target or
+  // the member set changes; the target itself is never a source of the merge.
+  const sourceIds = groupSources.filter((id) => id !== groupTarget)
+  const sourcesKey = `${groupTarget}|${sourceIds.join(',')}`
+  useEffect(() => {
+    if (!groupOpen || !groupTarget || sourceIds.length === 0) {
+      setPreview([])
+      return
+    }
+    void (async () => {
+      const res = await fetch(`/api/admin/curation/products/merge-preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: groupTarget, sourceIds }),
+      })
+      if (!res.ok) return setError('Failed to preview merge')
+      setPreview((await res.json()).sources ?? [])
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupOpen, sourcesKey])
+
+  async function commitGroup() {
+    setCommitting(true)
+    const res = await fetch(`/api/admin/curation/products/merge-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetId: groupTarget, sourceIds }),
+    })
+    setCommitting(false)
+    if (!res.ok) return setError('Merge failed')
+    const result: { applied: string[]; skipped: { id: string; reason: string }[] } = await res.json()
+    const appliedSet = new Set(result.applied)
+    setItems((prev) => prev.filter((it) => !appliedSet.has(it.id)))
+    setSelected(new Set())
+    setError(result.skipped.length > 0 ? `Merged ${result.applied.length}; skipped ${result.skipped.length} (incompatible).` : null)
+    closeMergeGroup()
   }
 
   const allOnPageSelected = items.length > 0 && items.every((it) => selected.has(it.id))
@@ -174,6 +255,11 @@ export function CurationQueue({ kind }: { kind: Kind }) {
         </button>
         {selected.size > 0 && (
           <div className="ml-auto flex gap-2">
+            {kind === 'products' && selected.size >= 2 && (
+              <Button size="sm" variant="secondary" onClick={openMergeGroup} data-testid="curation-merge-group">
+                <GitMerge size={12} strokeWidth={1.5} /> Merge group {selected.size}
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={() => batch('approve')} data-testid="curation-batch-approve">
               Approve {selected.size}
             </Button>
@@ -186,9 +272,9 @@ export function CurationQueue({ kind }: { kind: Kind }) {
 
       {showHelp && (
         <div className="flex flex-col gap-1.5 rounded-[12px] border border-line bg-card p-4 text-xs text-muted" data-testid="curation-help">
-          <p><span className="font-semibold text-success">Approve</span> — promote the provisional entity to ACTIVE; it joins the global serving catalog.</p>
-          <p><span className="font-semibold text-fg">Merge</span> — fold this entity (aliases &amp; observations) into another canonical entity by id; the source becomes INACTIVE.</p>
-          <p><span className="font-semibold text-danger">Reject</span> — set the entity INACTIVE and drop it from the serving catalog. Reversible by an operator.</p>
+          <p><span className="font-semibold text-success">Approve</span> — promote the provisional entity to ACTIVE; its held observations are released to the global serving catalog (once its counterpart is ACTIVE too).</p>
+          <p><span className="font-semibold text-fg">Merge</span> — fold a provisional product into a canonical one (aliases &amp; observations move, source goes INACTIVE). Refused unless they share category + unit and are similar enough. Select 2+ products to build a reviewable merge group.</p>
+          <p><span className="font-semibold text-danger">Reject</span> — set the entity INACTIVE and quarantine its observations so they leave the serving catalog.</p>
         </div>
       )}
 
@@ -233,6 +319,69 @@ export function CurationQueue({ kind }: { kind: Kind }) {
       </div>
 
       {error && <p className="text-xs text-danger" role="alert">{error}</p>}
+
+      {groupOpen && (
+        <div className="flex flex-col gap-3 rounded-[12px] border border-line bg-card p-4" data-testid="curation-merge-group-panel">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-fg">Merge group review</p>
+            <span className="text-xs text-muted">pick the canonical product; the rest fold into it</span>
+            <button type="button" className="ml-auto text-muted hover:text-fg" onClick={closeMergeGroup} aria-label="Close merge group">
+              <X size={16} strokeWidth={1.5} />
+            </button>
+          </div>
+          <ul className="flex flex-col gap-1.5" data-testid="curation-merge-group-list">
+            {groupSources.map((id) => {
+              const isTarget = id === groupTarget
+              const row = preview?.find((p) => p.sourceId === id)
+              const blocked = !isTarget && row?.blockReason
+              return (
+                <li key={id} className="flex flex-wrap items-center gap-2 rounded-[8px] border border-line px-3 py-2 text-sm" data-testid={`curation-merge-group-row-${id}`}>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="merge-canonical"
+                      checked={isTarget}
+                      onChange={() => setGroupTarget(id)}
+                      aria-label={`Make ${nameOf(id)} canonical`}
+                    />
+                    <span className="font-medium text-fg">{nameOf(id)}</span>
+                  </label>
+                  {isTarget ? (
+                    <span className="rounded bg-elevated px-1.5 py-0.5 text-[10px] font-semibold text-fg">CANONICAL</span>
+                  ) : row?.compatibility ? (
+                    <span className={blocked ? 'text-danger' : 'text-success'}>
+                      {blocked ? `blocked — ${BLOCK_LABEL[row.blockReason!] ?? row.blockReason}` : 'compatible'}
+                      {' · '}sim {row.compatibility.similarity.toFixed(2)}
+                    </span>
+                  ) : (
+                    <span className="text-muted">…</span>
+                  )}
+                  <button
+                    type="button"
+                    className="ml-auto text-xs text-muted hover:text-danger"
+                    onClick={() => setGroupSources((s) => s.filter((x) => x !== id))}
+                    data-testid={`curation-merge-group-remove-${id}`}
+                  >
+                    remove
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              disabled={committing || sourceIds.length === 0 || (preview?.every((p) => p.blockReason) ?? false)}
+              onClick={commitGroup}
+              data-testid="curation-merge-group-commit"
+            >
+              {committing ? 'Merging…' : 'Commit merge'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={closeMergeGroup}>Cancel</Button>
+            <span className="text-xs text-muted">incompatible members are skipped automatically</span>
+          </div>
+        </div>
+      )}
 
       {!country ? (
         <Empty>No provisional {kind} awaiting review.</Empty>

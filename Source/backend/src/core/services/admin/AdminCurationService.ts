@@ -8,7 +8,13 @@ import type {
 } from '@core/ports/data-intelligence/ICatalogCurationRepository';
 import type { IAdminAuditLog, AdminActor } from '@core/ports/admin/IAdminAuditLog';
 import { toCurationItem, type CurationItem } from '@core/domain/catalogCuration';
-import { InvalidAdminInputError, UnknownAdminTargetError } from '@core/domain/errors';
+import { mergeBlockReason } from '@core/domain/catalogMerge';
+import { InvalidAdminInputError, UnknownAdminTargetError, MergeNotAllowedError } from '@core/domain/errors';
+
+export interface MergeBatchResult {
+  applied: string[];
+  skipped: { id: string; reason: string }[];
+}
 
 export type CatalogKind = 'merchant' | 'product';
 
@@ -86,12 +92,68 @@ export class AdminCurationService {
 
   async merge(actor: AdminActor, kind: CatalogKind, id: string, targetId: string): Promise<void> {
     if (!targetId) throw new InvalidAdminInputError('targetId is required');
-    const merged =
-      kind === 'merchant'
-        ? await this.repo.mergeMerchant(id, targetId)
-        : await this.repo.mergeProduct(id, targetId);
-    if (!merged) throw new UnknownAdminTargetError(`${kind}:${id}->${targetId}`);
-    await this.record(actor, 'curation.merge', kind, id, { targetId });
+    if (kind === 'product') return this.mergeOneProduct(actor, id, targetId);
+
+    const merged = await this.repo.mergeMerchant(id, targetId);
+    if (!merged) throw new UnknownAdminTargetError(`merchant:${id}->${targetId}`);
+    await this.record(actor, 'curation.merge', 'merchant', id, { targetId });
+  }
+
+  // Merge-group commit (B3): pick the canonical target, fold compatible sources in,
+  // skip incompatible ones (best-effort) with a reason so the operator can act on them.
+  async mergeBatch(actor: AdminActor, targetId: string, sourceIds: string[]): Promise<MergeBatchResult> {
+    if (!targetId) throw new InvalidAdminInputError('targetId is required');
+    if (!Array.isArray(sourceIds) || sourceIds.length === 0) {
+      throw new InvalidAdminInputError('sourceIds must be a non-empty array');
+    }
+    const applied: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    for (const sourceId of sourceIds) {
+      try {
+        await this.mergeOneProduct(actor, sourceId, targetId);
+        applied.push(sourceId);
+      } catch (err) {
+        if (err instanceof MergeNotAllowedError) skipped.push({ id: sourceId, reason: err.reason });
+        else if (err instanceof UnknownAdminTargetError) skipped.push({ id: sourceId, reason: 'not_found' });
+        else throw err;
+      }
+    }
+    return { applied, skipped };
+  }
+
+  // Guarded single product merge: refuse a pair that isn't the same item (category/unit
+  // mismatch or low similarity), else apply and audit the moved-id provenance.
+  private async mergeOneProduct(actor: AdminActor, sourceId: string, targetId: string): Promise<void> {
+    if (sourceId === targetId) throw new MergeNotAllowedError('same_as_target');
+    const compat = await this.repo.getMergeCompatibility(sourceId, targetId);
+    if (!compat) throw new UnknownAdminTargetError(`product:${sourceId}->${targetId}`);
+    const reason = mergeBlockReason(compat);
+    if (reason) throw new MergeNotAllowedError(reason);
+
+    const provenance = await this.repo.mergeProduct(sourceId, targetId);
+    if (!provenance) throw new UnknownAdminTargetError(`product:${sourceId}->${targetId}`);
+    await this.record(actor, 'curation.merge', 'product', sourceId, { targetId, ...provenance, similarity: compat.similarity });
+  }
+
+  // Operator preview for a candidate merge group: per-source compatibility against the
+  // chosen target, so the UI can flag/disable incompatible rows before commit.
+  mergeCompatibility(sourceId: string, targetId: string): ReturnType<ICatalogCurationRepository['getMergeCompatibility']> {
+    return this.repo.getMergeCompatibility(sourceId, targetId);
+  }
+
+  listProductAliases(productId: string): ReturnType<ICatalogCurationRepository['listProductAliases']> {
+    return this.repo.listProductAliases(productId);
+  }
+
+  // Past-merge audit history (B4): the remediation entry point for already-made merges.
+  listMerges(limit: number): ReturnType<IAdminAuditLog['list']> {
+    return this.audit.list('curation.merge', limit);
+  }
+
+  async deactivateAlias(actor: AdminActor, productId: string, aliasId: string): Promise<void> {
+    const ok = await this.repo.deactivateAlias(aliasId);
+    if (!ok) throw new UnknownAdminTargetError(`alias:${aliasId}`);
+    await this.record(actor, 'curation.reject', 'product', productId, { deactivatedAlias: aliasId });
   }
 
   // Batch approve/reject of selected ids; returns how many were applied.
@@ -117,7 +179,18 @@ export class AdminCurationService {
         ? await this.repo.setMerchantStatus(id, status)
         : await this.repo.setProductStatus(id, status);
     if (!ok) throw new UnknownAdminTargetError(`${kind}:${id}`);
+    await this.applyObservationEffect(kind, id, status);
     await this.record(actor, action, kind, id, { status });
+  }
+
+  // Status alone doesn't move the price index — it gates on `quarantined`. Promotion
+  // releases born-quarantined rows (when product+merchant are both ACTIVE); rejection
+  // quarantines them. (§6.5 / §6.8)
+  private applyObservationEffect(kind: CatalogKind, id: string, status: 'ACTIVE' | 'INACTIVE'): Promise<void> {
+    if (status === 'ACTIVE') {
+      return kind === 'merchant' ? this.repo.releaseMerchantObservations(id) : this.repo.releaseProductObservations(id);
+    }
+    return kind === 'merchant' ? this.repo.quarantineMerchantObservations(id) : this.repo.quarantineProductObservations(id);
   }
 
   private record(

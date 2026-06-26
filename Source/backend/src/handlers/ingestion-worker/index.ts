@@ -112,6 +112,16 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       if (outcome.receipt) {
         log.debug('parsed receipt', { invoiceId: message.invoiceId, receipt: outcome.receipt });
       }
+      // Emission gate (§6.5): which invoices contributed to the global price store and why
+      // a non-integral parse was held back — plain log, rolled up for tuning (no EMF).
+      if (outcome.emissionGate) {
+        log.info('emission gate', {
+          invoiceId: message.invoiceId,
+          suppressed: outcome.emissionGate.suppressed,
+          integral: outcome.emissionGate.integral,
+          reasons: outcome.emissionGate.reasons,
+        });
+      }
 
       // Fire 85%/100% budget alerts at upload time. Best-effort: a failure here must
       // never roll back or retry the (already committed) ingestion.

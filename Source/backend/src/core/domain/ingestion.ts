@@ -66,6 +66,9 @@ export const ConfidenceThresholds = {
   fuzzyMatchMargin: 0.15,
   arithmeticAbsEur: 0.05,
   arithmeticPct: 0.01,
+  // Floor for an admin product merge (source folds into target). Starts at the embedding
+  // "low" band — below this the two products are too far apart to be the same item.
+  mergeSimilarityMin: 0.85,
 } as const;
 
 // Σ line_totals reconciles with the receipt total within €0.05 or 1%.

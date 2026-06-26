@@ -7,7 +7,10 @@ import type {
   CategoryCount,
   CountryCount,
   RegionCount,
+  MergeProvenance,
+  ProductAliasInfo,
 } from '@core/ports/data-intelligence/ICatalogCurationRepository';
+import type { MergeCompatibility } from '@core/domain/catalogMerge';
 
 interface QueueRow {
   id: string;
@@ -99,13 +102,114 @@ export class CatalogCurationAdapter implements ICatalogCurationRepository {
     return this.merge('merchant', 'merchant_id', sourceId, targetId);
   }
 
-  mergeProduct(sourceId: string, targetId: string): Promise<boolean> {
-    return this.merge('product', 'product_id', sourceId, targetId);
+  // Product merge with B2 provenance: capture which alias rows and how many observations
+  // moved onto the target, so a later un-merge / audit can see what changed.
+  async mergeProduct(sourceId: string, targetId: string): Promise<MergeProvenance | null> {
+    if (sourceId === targetId) return null;
+    const target = await this.db.query('SELECT 1 FROM product WHERE id = $1', [targetId]);
+    if ((target.rowCount ?? 0) === 0) return null;
+
+    await this.db.query('BEGIN');
+    try {
+      const aliases = await this.db.query<{ id: string }>(
+        'UPDATE product_alias SET product_id = $2 WHERE product_id = $1 RETURNING id',
+        [sourceId, targetId],
+      );
+      const obs = await this.db.query(
+        'UPDATE price_observation SET product_id = $2 WHERE product_id = $1',
+        [sourceId, targetId],
+      );
+      const updated = await this.db.query("UPDATE product SET status = 'INACTIVE' WHERE id = $1", [sourceId]);
+      if ((updated.rowCount ?? 0) === 0) {
+        await this.db.query('ROLLBACK');
+        return null;
+      }
+      await this.db.query('COMMIT');
+      return { movedAliasIds: aliases.rows.map((r) => r.id), movedObservationCount: obs.rowCount ?? 0 };
+    } catch (err) {
+      await this.db.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    }
+  }
+
+  // pgvector cosine distance (<=>) → similarity = 1 - distance; 0 when an embedding is
+  // missing (treated as unverified so the guard refuses). null when either id is missing.
+  async getMergeCompatibility(sourceId: string, targetId: string): Promise<MergeCompatibility | null> {
+    const result = await this.db.query<{ category_match: boolean; unit_match: boolean; similarity: number | null }>(
+      `SELECT (s.category_id IS NOT DISTINCT FROM t.category_id) AS category_match,
+              (s.base_unit = t.base_unit) AS unit_match,
+              CASE WHEN s.embedding IS NULL OR t.embedding IS NULL THEN NULL
+                   ELSE 1 - (s.embedding <=> t.embedding) END AS similarity
+       FROM product s, product t
+       WHERE s.id = $1 AND t.id = $2`,
+      [sourceId, targetId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return { categoryMatch: row.category_match, unitMatch: row.unit_match, similarity: Number(row.similarity ?? 0) };
+  }
+
+  async listProductAliases(productId: string): Promise<ProductAliasInfo[]> {
+    const result = await this.db.query<{
+      id: string;
+      alias_normalized: string;
+      merchant_id: string | null;
+      source: string;
+      match_count: number;
+      last_seen_at: string;
+    }>(
+      `SELECT id, alias_normalized, merchant_id, source, match_count, last_seen_at
+       FROM product_alias WHERE product_id = $1 ORDER BY match_count DESC, last_seen_at DESC`,
+      [productId],
+    );
+    return result.rows.map((r) => ({
+      id: r.id,
+      aliasNormalized: r.alias_normalized,
+      merchantId: r.merchant_id,
+      source: r.source,
+      matchCount: Number(r.match_count),
+      lastSeenAt: r.last_seen_at,
+    }));
+  }
+
+  async deactivateAlias(aliasId: string): Promise<boolean> {
+    const result = await this.db.query('DELETE FROM product_alias WHERE id = $1', [aliasId]);
+    return (result.rowCount ?? 0) > 0;
   }
 
   private async updateStatus(table: 'merchant' | 'product', id: string, status: CatalogStatus): Promise<boolean> {
     const result = await this.db.query(`UPDATE ${table} SET status = $2 WHERE id = $1`, [id, status]);
     return (result.rowCount ?? 0) > 0;
+  }
+
+  releaseProductObservations(productId: string): Promise<void> {
+    return this.releaseObservations('po.product_id', productId);
+  }
+
+  releaseMerchantObservations(merchantId: string): Promise<void> {
+    return this.releaseObservations('po.merchant_id', merchantId);
+  }
+
+  // Clear quarantine only for rows whose product AND merchant are both ACTIVE now —
+  // checking both current statuses means a row still pending its counterpart stays held.
+  private async releaseObservations(keyColumn: 'po.product_id' | 'po.merchant_id', id: string): Promise<void> {
+    await this.db.query(
+      `UPDATE price_observation po SET quarantined = false
+       FROM product p, merchant m
+       WHERE po.product_id = p.id AND po.merchant_id = m.id
+         AND ${keyColumn} = $1
+         AND po.quarantined = true
+         AND p.status = 'ACTIVE' AND m.status = 'ACTIVE'`,
+      [id],
+    );
+  }
+
+  async quarantineProductObservations(productId: string): Promise<void> {
+    await this.db.query('UPDATE price_observation SET quarantined = true WHERE product_id = $1', [productId]);
+  }
+
+  async quarantineMerchantObservations(merchantId: string): Promise<void> {
+    await this.db.query('UPDATE price_observation SET quarantined = true WHERE merchant_id = $1', [merchantId]);
   }
 
   // Retarget alias + observation references from source to target (global tables),

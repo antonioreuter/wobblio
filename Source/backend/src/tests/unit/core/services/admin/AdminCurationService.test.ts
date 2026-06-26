@@ -3,7 +3,7 @@ import type { MockedObject } from 'vitest';
 import { AdminCurationService } from '@core/services/admin/AdminCurationService';
 import type { ICatalogCurationRepository } from '@core/ports/data-intelligence/ICatalogCurationRepository';
 import type { IAdminAuditLog } from '@core/ports/admin/IAdminAuditLog';
-import { InvalidAdminInputError, UnknownAdminTargetError } from '@core/domain/errors';
+import { InvalidAdminInputError, UnknownAdminTargetError, MergeNotAllowedError } from '@core/domain/errors';
 
 const ACTOR = { id: 'admin-1', email: 'admin@wobblio.nl' };
 
@@ -17,6 +17,9 @@ const entity = (id: string, observationCount: number) => ({
   observationCount,
   lastSeenOn: null,
 });
+
+const COMPATIBLE = { categoryMatch: true, unitMatch: true, similarity: 0.95 };
+const PROVENANCE = { movedAliasIds: ['al-1'], movedObservationCount: 4 };
 
 const NL = { country: 'NL' };
 const NL_CAT = { country: 'NL', category: 'cat-dairy' };
@@ -38,8 +41,15 @@ describe('AdminCurationService', () => {
       productRegions: vi.fn(),
       setMerchantStatus: vi.fn(),
       setProductStatus: vi.fn(),
+      releaseProductObservations: vi.fn(),
+      releaseMerchantObservations: vi.fn(),
+      quarantineProductObservations: vi.fn(),
+      quarantineMerchantObservations: vi.fn(),
       mergeMerchant: vi.fn(),
       mergeProduct: vi.fn(),
+      getMergeCompatibility: vi.fn(),
+      listProductAliases: vi.fn(),
+      deactivateAlias: vi.fn(),
     };
     audit = { record: vi.fn(), list: vi.fn() };
     sut = new AdminCurationService(repo, audit);
@@ -76,31 +86,34 @@ describe('AdminCurationService', () => {
     await expect(sut.regions('product', '')).rejects.toBeInstanceOf(InvalidAdminInputError);
   });
 
-  it('approve sets ACTIVE and audits curation.approve', async () => {
+  it('approve sets ACTIVE, releases observations, and audits curation.approve', async () => {
     repo.setMerchantStatus.mockResolvedValue(true);
     await sut.approve(ACTOR, 'merchant', 'm-1');
     expect(repo.setMerchantStatus).toHaveBeenCalledWith('m-1', 'ACTIVE');
+    expect(repo.releaseMerchantObservations).toHaveBeenCalledWith('m-1');
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'curation.approve', target: 'merchant:m-1' }),
     );
   });
 
-  it('reject maps to INACTIVE (no REJECTED status)', async () => {
+  it('reject maps to INACTIVE, quarantines observations, and audits curation.reject', async () => {
     repo.setProductStatus.mockResolvedValue(true);
     await sut.reject(ACTOR, 'product', 'p-1');
     expect(repo.setProductStatus).toHaveBeenCalledWith('p-1', 'INACTIVE');
+    expect(repo.quarantineProductObservations).toHaveBeenCalledWith('p-1');
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'curation.reject', target: 'product:p-1' }),
     );
   });
 
-  it('404s (UnknownAdminTargetError) when the entity is missing, no audit', async () => {
+  it('404s (UnknownAdminTargetError) when the entity is missing, no audit or side effect', async () => {
     repo.setMerchantStatus.mockResolvedValue(false);
     await expect(sut.approve(ACTOR, 'merchant', 'gone')).rejects.toBeInstanceOf(UnknownAdminTargetError);
     expect(audit.record).not.toHaveBeenCalled();
+    expect(repo.releaseMerchantObservations).not.toHaveBeenCalled();
   });
 
-  it('merge requires a targetId and audits curation.merge', async () => {
+  it('merchant merge requires a targetId and audits curation.merge', async () => {
     await expect(sut.merge(ACTOR, 'merchant', 'm-1', '')).rejects.toBeInstanceOf(InvalidAdminInputError);
     repo.mergeMerchant.mockResolvedValue(true);
     await sut.merge(ACTOR, 'merchant', 'm-1', 'm-2');
@@ -110,9 +123,103 @@ describe('AdminCurationService', () => {
     );
   });
 
-  it('merge throws when the target/source is missing', async () => {
+  it('merchant merge throws when the target/source is missing', async () => {
     repo.mergeMerchant.mockResolvedValue(false);
     await expect(sut.merge(ACTOR, 'merchant', 'm-1', 'gone')).rejects.toBeInstanceOf(UnknownAdminTargetError);
+  });
+
+  it('guarded product merge: applies and audits moved-id provenance when compatible', async () => {
+    repo.getMergeCompatibility.mockResolvedValue(COMPATIBLE);
+    repo.mergeProduct.mockResolvedValue(PROVENANCE);
+    await sut.merge(ACTOR, 'product', 'p-1', 'p-2');
+    expect(repo.mergeProduct).toHaveBeenCalledWith('p-1', 'p-2');
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'curation.merge',
+        after: { targetId: 'p-2', movedAliasIds: ['al-1'], movedObservationCount: 4, similarity: 0.95 },
+      }),
+    );
+  });
+
+  it('product merge is refused on category/unit/similarity mismatch (no move, no audit)', async () => {
+    repo.getMergeCompatibility.mockResolvedValue({ categoryMatch: false, unitMatch: true, similarity: 0.99 });
+    await expect(sut.merge(ACTOR, 'product', 'p-1', 'p-2')).rejects.toBeInstanceOf(MergeNotAllowedError);
+    expect(repo.mergeProduct).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('product merge 404s when the compatibility lookup finds no pair', async () => {
+    repo.getMergeCompatibility.mockResolvedValue(null);
+    await expect(sut.merge(ACTOR, 'product', 'p-1', 'gone')).rejects.toBeInstanceOf(UnknownAdminTargetError);
+  });
+
+  it('mergeBatch merges compatible sources and skips the rest with a reason', async () => {
+    repo.getMergeCompatibility
+      .mockResolvedValueOnce(COMPATIBLE) // s1 ok
+      .mockResolvedValueOnce({ categoryMatch: true, unitMatch: false, similarity: 0.9 }) // s2 unit mismatch
+      .mockResolvedValueOnce(null); // s3 missing
+    repo.mergeProduct.mockResolvedValue(PROVENANCE);
+    const result = await sut.mergeBatch(ACTOR, 'target', ['s1', 's2', 's3']);
+    expect(result.applied).toEqual(['s1']);
+    expect(result.skipped).toEqual([
+      { id: 's2', reason: 'unit_mismatch' },
+      { id: 's3', reason: 'not_found' },
+    ]);
+    expect(repo.mergeProduct).toHaveBeenCalledTimes(1);
+  });
+
+  it('mergeBatch skips a source equal to the target', async () => {
+    const result = await sut.mergeBatch(ACTOR, 'target', ['target']);
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual([{ id: 'target', reason: 'same_as_target' }]);
+    expect(repo.getMergeCompatibility).not.toHaveBeenCalled();
+  });
+
+  it('mergeBatch rejects empty input', async () => {
+    await expect(sut.mergeBatch(ACTOR, 'target', [])).rejects.toBeInstanceOf(InvalidAdminInputError);
+    await expect(sut.mergeBatch(ACTOR, '', ['s1'])).rejects.toBeInstanceOf(InvalidAdminInputError);
+  });
+
+  it('product approve releases the product observations', async () => {
+    repo.setProductStatus.mockResolvedValue(true);
+    await sut.approve(ACTOR, 'product', 'p-1');
+    expect(repo.releaseProductObservations).toHaveBeenCalledWith('p-1');
+  });
+
+  it('merchant reject quarantines the merchant observations', async () => {
+    repo.setMerchantStatus.mockResolvedValue(true);
+    await sut.reject(ACTOR, 'merchant', 'm-1');
+    expect(repo.quarantineMerchantObservations).toHaveBeenCalledWith('m-1');
+  });
+
+  it('mergeBatch rethrows an unexpected (non-guard) error', async () => {
+    repo.getMergeCompatibility.mockResolvedValue(COMPATIBLE);
+    repo.mergeProduct.mockRejectedValue(new Error('db down'));
+    await expect(sut.mergeBatch(ACTOR, 'target', ['s1'])).rejects.toThrow('db down');
+  });
+
+  it('exposes read pass-throughs for preview, aliases, and merge history', async () => {
+    repo.getMergeCompatibility.mockResolvedValue(COMPATIBLE);
+    expect(await sut.mergeCompatibility('s', 't')).toBe(COMPATIBLE);
+    repo.listProductAliases.mockResolvedValue([]);
+    expect(await sut.listProductAliases('p-1')).toEqual([]);
+    audit.list.mockResolvedValue([]);
+    expect(await sut.listMerges(50)).toEqual([]);
+    expect(audit.list).toHaveBeenCalledWith('curation.merge', 50);
+  });
+
+  it('deactivateAlias removes a poisoned alias and audits it', async () => {
+    repo.deactivateAlias.mockResolvedValue(true);
+    await sut.deactivateAlias(ACTOR, 'p-1', 'al-9');
+    expect(repo.deactivateAlias).toHaveBeenCalledWith('al-9');
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'curation.reject', after: { deactivatedAlias: 'al-9' } }),
+    );
+  });
+
+  it('deactivateAlias 404s when the alias is missing', async () => {
+    repo.deactivateAlias.mockResolvedValue(false);
+    await expect(sut.deactivateAlias(ACTOR, 'p-1', 'gone')).rejects.toBeInstanceOf(UnknownAdminTargetError);
   });
 
   it('batch applies to each id and counts successes', async () => {
@@ -137,7 +244,8 @@ describe('AdminCurationService', () => {
     expect(await sut.list('product', NL_CAT)).toHaveLength(1);
     expect(repo.listProvisionalProducts).toHaveBeenCalled();
 
-    repo.mergeProduct.mockResolvedValue(true);
+    repo.getMergeCompatibility.mockResolvedValue(COMPATIBLE);
+    repo.mergeProduct.mockResolvedValue(PROVENANCE);
     await sut.merge(ACTOR, 'product', 'p-1', 'p-2');
     expect(repo.mergeProduct).toHaveBeenCalledWith('p-1', 'p-2');
   });

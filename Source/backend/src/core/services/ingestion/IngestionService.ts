@@ -12,6 +12,7 @@ import type { IRegionReference } from '../../ports/data-intelligence/IRegionRefe
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
 import type { VisionParseService } from './VisionParseService';
 import { decideStatus, isArithmeticConsistent, type InvoiceStatus, type ParsedLine, type ParsedReceipt } from '../../domain/ingestion';
+import { assessInvoiceIntegrity } from '../../domain/invoiceGlobalEligibility';
 import { depositCategoryFor, discountCategoryFor } from '../../domain/categoryTaxonomy';
 import { buildPriceObservations, type ContributorContext, type ObservationLine } from '../../domain/priceObservation';
 import { resolveIngestionLocation, type LocationCandidate } from '../../domain/region';
@@ -21,6 +22,8 @@ export interface IngestionOutcome {
   handled: boolean; // false => duplicate SQS delivery, skipped
   status?: InvoiceStatus;
   receipt?: ParsedReceipt; // the vision-parse result, for debug logging at the handler
+  // Emission-gate decision (§6.5), for plain structured logging at the handler.
+  emissionGate?: { suppressed: boolean; integral: boolean; reasons: string[] };
 }
 
 // Runs the §6 pipeline for one receipt. The caller owns the DB transaction; on a
@@ -103,11 +106,21 @@ export class IngestionService {
     const alreadyContributed = await this.invoiceRepo.hasEmittedDuplicateByHash(message.invoiceId);
     // Only a live fuzzy twin (PARSED/NEEDS_REVIEW) is an actionable duplicate the user can resolve.
     const isSuspectedDuplicate = fuzzyDuplicate;
-    const suppressEmission = fuzzyDuplicate || alreadyContributed;
+    const arithmeticOk = isArithmeticConsistent(receipt);
+
+    // A non-integral parse (bad arithmetic / low vision confidence / suspected duplicate)
+    // indicts the whole receipt and contributes nothing to the global store (§6.5). A
+    // provisional product is NOT an integrity fail — it emits born-quarantined per line.
+    const integrity = assessInvoiceIntegrity({
+      parseConfidence: receipt.parseConfidence,
+      arithmeticOk,
+      isSuspectedDuplicate,
+    });
+    const suppressEmission = fuzzyDuplicate || alreadyContributed || !integrity.integral;
 
     const status = decideStatus({
       parseConfidence: receipt.parseConfidence,
-      arithmeticOk: isArithmeticConsistent(receipt),
+      arithmeticOk,
       hasLowConfidenceLine: normalized.some(line => line.lowConfidence),
       lowConfidenceMerchant: merchant.provisional,
       isSuspectedDuplicate,
@@ -145,7 +158,12 @@ export class IngestionService {
     }
 
     await this.ledger.setStatus(message.s3Key, 'DONE');
-    return { handled: true, status, receipt };
+    return {
+      handled: true,
+      status,
+      receipt,
+      emissionGate: { suppressed: suppressEmission, integral: integrity.integral, reasons: integrity.reasons },
+    };
   }
 
   // Decide the invoice's sharing location across all three tiers (§6.5). The receipt

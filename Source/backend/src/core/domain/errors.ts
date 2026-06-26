@@ -301,3 +301,13 @@ export class UnknownAdminTargetError extends Error {
     this.name = 'UnknownAdminTargetError';
   }
 }
+
+// Admin console — a product merge refused because the source and target are not the
+// same item (category/unit mismatch or too-low embedding similarity). Carries the
+// failing guard so the operator sees why.
+export class MergeNotAllowedError extends Error {
+  constructor(readonly reason: string) {
+    super(`Merge not allowed: ${reason}`);
+    this.name = 'MergeNotAllowedError';
+  }
+}

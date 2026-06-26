@@ -5,7 +5,8 @@ import type { LambdaLogger } from '@infrastructure/logging/logger';
 import { CatalogCurationAdapter } from '@infrastructure/adapters/data-intelligence/CatalogCurationAdapter';
 import { AdminAuditLogAdapter } from '@infrastructure/adapters/admin/AdminAuditLogAdapter';
 import { AdminCurationService, type CatalogKind, type RawQueueQuery } from '@core/services/admin/AdminCurationService';
-import { InvalidAdminInputError, UnknownAdminTargetError } from '@core/domain/errors';
+import { mergeBlockReason } from '@core/domain/catalogMerge';
+import { InvalidAdminInputError, UnknownAdminTargetError, MergeNotAllowedError } from '@core/domain/errors';
 import { json, parseJsonBody } from './shared';
 
 // Two provisional-catalog queues (merchants, products) with approve / merge / reject
@@ -22,12 +23,27 @@ export async function handleAdminCurationRoute(
   const service = new AdminCurationService(new CatalogCurationAdapter(db), new AdminAuditLogAdapter(db));
   const actor = { id: user.id, email: user.email };
 
+  // Global: past-merge audit history (B4 remediation entry point).
+  if (method === 'GET' && path === '/admin/curation/merges') {
+    return json(200, { merges: await service.listMerges(50) });
+  }
+
   const kind = matchKind(path);
   if (!kind) return json(404, { message: 'Not Found' });
   const base = `/admin/curation/${kind}s`;
 
   if (method === 'GET') {
+    const aliasMatch = kind === 'product' && path.match(/^\/admin\/curation\/products\/([^/]+)\/aliases$/);
+    if (aliasMatch) return json(200, { aliases: await service.listProductAliases(aliasMatch[1]) });
     return runQuery(service, kind, base, path, event);
+  }
+
+  // Product-only merge-group + alias-hygiene routes (B3 / B4).
+  if (method === 'POST' && kind === 'product') {
+    if (path === `${base}/merge-preview`) return runMergePreview(service, event);
+    if (path === `${base}/merge-batch`) return runMergeBatch(service, actor, event, log);
+    const deact = path.match(/^\/admin\/curation\/products\/([^/]+)\/aliases\/([^/]+)\/deactivate$/);
+    if (deact) return runDeactivateAlias(service, actor, deact[1], deact[2], log);
   }
 
   if (method === 'POST' && path === `${base}/batch`) {
@@ -40,6 +56,59 @@ export async function handleAdminCurationRoute(
   }
 
   return json(404, { message: 'Not Found' });
+}
+
+// Per-source compatibility against the chosen canonical target, so the UI can flag and
+// disable incompatible rows before the operator commits the group.
+async function runMergePreview(service: AdminCurationService, event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody(event.body);
+  const targetId = String(body.targetId ?? '');
+  const sourceIds = Array.isArray(body.sourceIds) ? (body.sourceIds as string[]) : [];
+  if (!targetId || sourceIds.length === 0) return json(400, { message: 'targetId and sourceIds are required' });
+  const rows = await Promise.all(
+    sourceIds.map(async (sourceId) => {
+      const compatibility = await service.mergeCompatibility(sourceId, targetId);
+      const blockReason = compatibility ? mergeBlockReason(compatibility) : 'not_found';
+      return { sourceId, compatibility, blockReason };
+    }),
+  );
+  return json(200, { target: targetId, sources: rows });
+}
+
+async function runMergeBatch(
+  service: AdminCurationService,
+  actor: { id: string; email: string },
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody(event.body);
+  const targetId = String(body.targetId ?? '');
+  const sourceIds = Array.isArray(body.sourceIds) ? (body.sourceIds as string[]) : [];
+  try {
+    const result = await service.mergeBatch(actor, targetId, sourceIds);
+    log.info('admin curation merge-batch', { actorId: actor.id, targetId, applied: result.applied.length, skipped: result.skipped.length });
+    return json(200, result);
+  } catch (err) {
+    if (err instanceof InvalidAdminInputError) return json(400, { message: err.message });
+    throw err;
+  }
+}
+
+async function runDeactivateAlias(
+  service: AdminCurationService,
+  actor: { id: string; email: string },
+  productId: string,
+  aliasId: string,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  try {
+    await service.deactivateAlias(actor, productId, aliasId);
+    log.info('admin curation alias deactivate', { actorId: actor.id, productId, aliasId });
+    return json(200, { ok: true });
+  } catch (err) {
+    if (err instanceof UnknownAdminTargetError) return json(404, { message: 'Alias not found' });
+    throw err;
+  }
 }
 
 // Read endpoints: the filtered/paginated queue + the facets that drive the country
@@ -98,6 +167,7 @@ async function runAction(
     return json(200, { ok: true });
   } catch (err) {
     if (err instanceof UnknownAdminTargetError) return json(404, { message: 'Entity not found' });
+    if (err instanceof MergeNotAllowedError) return json(409, { message: err.message, reason: err.reason });
     if (err instanceof InvalidAdminInputError) return json(400, { message: err.message });
     throw err;
   }

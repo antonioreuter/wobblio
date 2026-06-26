@@ -246,6 +246,31 @@ describe('IngestionService', () => {
     expect(rows[0]).toMatchObject({ productId: 'p1', merchantId: 'm1', regionCode: 'NL-NB', quarantined: false });
   });
 
+  it('suppresses all emission for a non-integral parse (low confidence) and reports the gate', async () => {
+    arrangeHappyPath(0.5); // below visionMin → whole receipt indicted
+    const priced: NormalizedLine = {
+      productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
+      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
+      confidence: 0.95, lowConfidence: false,
+    };
+    productNormalizer.normalize.mockResolvedValue({ lines: [priced, normalizedLine()], suggestedTags: [] });
+
+    const outcome = await sut.process(MESSAGE);
+
+    expect(priceObservationStore.emit).not.toHaveBeenCalled();
+    expect(outcome.emissionGate).toMatchObject({ suppressed: true, integral: false, reasons: ['low_parse_confidence'] });
+  });
+
+  it('reports an integral gate when a confident, arithmetic-consistent receipt emits', async () => {
+    arrangeHappyPath();
+    productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine(), normalizedLine()], suggestedTags: [] });
+
+    const outcome = await sut.process(MESSAGE);
+
+    expect(priceObservationStore.emit).toHaveBeenCalledTimes(1);
+    expect(outcome.emissionGate).toMatchObject({ suppressed: false, integral: true, reasons: [] });
+  });
+
   it('does not emit price observations for a suspected duplicate', async () => {
     arrangeHappyPath();
     invoiceRepo.findFuzzyDuplicate.mockResolvedValue(true);
