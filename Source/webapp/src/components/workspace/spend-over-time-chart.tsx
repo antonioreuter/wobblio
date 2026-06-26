@@ -9,7 +9,7 @@ const eur = (v: number) => `€${v.toFixed(2)}`
 
 interface SpendOverTimeChartProps {
   data?: Array<{ month: string; total: number }>
-  dailyData?: Array<{ day: string; total: number }>
+  dailyData?: Array<{ day: string; total: number; isWeekend?: boolean; label?: string }>
 }
 
 export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeChartProps = {}) {
@@ -130,16 +130,49 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
                 <stop offset="0%" stopColor="var(--brand)" stopOpacity="0.32" />
                 <stop offset="100%" stopColor="var(--brand)" stopOpacity="0" />
               </linearGradient>
+              <clipPath id="plotClip">
+                <rect x={padL} y={padT} width={plotW} height={plotH} />
+              </clipPath>
             </defs>
+            {/* Weekend background bands */}
+            {mode === 'month' && (
+              <g clipPath="url(#plotClip)">
+                {data.map((d, i) => {
+                  if (!('isWeekend' in d) || !d.isWeekend) return null
+                  const colW = plotW / (n - 1 || 1)
+                  return (
+                    <rect
+                      key={`weekend-${i}`}
+                      x={x(i) - colW / 2}
+                      y={padT}
+                      width={colW}
+                      height={plotH}
+                      className="chart-weekend"
+                    />
+                  )
+                })}
+              </g>
+            )}
             {gridVals.map((v, k) => (
               <g key={k}>
                 <line x1={padL} y1={y(v)} x2={W - padR} y2={y(v)} className="chart-grid" />
                 <text x={padL - 8} y={y(v) + 4} className="chart-ylabel">€{Math.round(v)}</text>
               </g>
             ))}
-            {data.map((d, i) => (
-              <text key={getLabel(d)} x={x(i)} y={H - 12} className="chart-xlabel">{getLabel(d)}</text>
-            ))}
+            {data.map((d, i) => {
+              const label = getLabel(d)
+              const isWeekend = 'isWeekend' in d && d.isWeekend
+              return (
+                <text
+                  key={label}
+                  x={x(i)}
+                  y={H - 12}
+                  className={`chart-xlabel ${isWeekend ? 'is-weekend' : ''}`}
+                >
+                  {label}
+                </text>
+              )
+            })}
             <polygon className="spend-area" points={areaPts} fill="url(#spendArea)" />
             <polyline
               className="spend-line"
@@ -180,7 +213,8 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
           {hover !== null && (
             <div className="chart-tip" style={{ left: `${(x(hover) / W) * 100}%` }}>
               <div className="chart-tip-head">
-                {getLabel(data[hover])}{hover === mtdIndex ? ' · MTD' : ''}
+                {'label' in data[hover] && data[hover].label ? data[hover].label : getLabel(data[hover])}
+                {hover === mtdIndex ? ' · MTD' : ''}
               </div>
               <div className="chart-tip-row">
                 <span className="dot" style={{ background: 'var(--brand)' }} />

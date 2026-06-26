@@ -38,8 +38,13 @@ export function computeSpendMetrics(invoices: Invoice[], now: Date): SpendMetric
   }
 }
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
 // Daily spend series for the current month (day by day up to today)
-export function computeDailySeriesForMonth(invoices: Invoice[], now: Date): { day: string; total: number }[] {
+export function computeDailySeriesForMonth(
+  invoices: Invoice[],
+  now: Date
+): { day: string; total: number; isWeekend: boolean; label: string }[] {
   const currentMonth = now.getUTCMonth()
   const currentYear = now.getUTCFullYear()
   const daysInMonth = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate()
@@ -58,6 +63,15 @@ export function computeDailySeriesForMonth(invoices: Invoice[], now: Date): { da
   const lastDay = Math.min(now.getUTCDate(), daysInMonth)
   return Array.from({ length: lastDay }, (_, i) => {
     const day = i + 1
-    return { day: String(day), total: byDay.get(day) ?? 0 }
+    const date = new Date(Date.UTC(currentYear, currentMonth, day))
+    const dayOfWeek = date.getUTCDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+    const label = `${WEEKDAYS[dayOfWeek]}, ${MONTHS[currentMonth]} ${day}`
+    return {
+      day: String(day),
+      total: byDay.get(day) ?? 0,
+      isWeekend,
+      label,
+    }
   })
 }
