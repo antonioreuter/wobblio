@@ -50,6 +50,13 @@ export const QUOTA_PARAMS: readonly QuotaParam[] = [
   },
 ];
 
+// The shared household pool follows the owner's role (§2.4): an owner whose personal
+// cap is unlimited (TESTER/ADMIN) lifts the whole household to unlimited; every other
+// owner keeps the flat household cap. Cap inputs are already mapped (-1 → Infinity).
+export function effectiveHouseholdCap(ownerPersonalCap: number, flatHouseholdCap: number): number {
+  return Number.isFinite(ownerPersonalCap) ? flatHouseholdCap : Number.POSITIVE_INFINITY;
+}
+
 export function findQuotaParam(key: string): QuotaParam {
   const param = QUOTA_PARAMS.find((p) => p.key === key);
   if (!param) throw new UnknownAdminTargetError(key);

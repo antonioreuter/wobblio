@@ -26,6 +26,8 @@ import { MockPushAdapter } from '@infrastructure/adapters/notifications/MockPush
 import { BudgetRecyclerService } from '@core/services/budgets/BudgetRecyclerService';
 import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
 import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
+import { HouseholdRepositoryAdapter } from '@infrastructure/adapters/households/HouseholdRepositoryAdapter';
+import { MIN_MEMBERS_FOR_POOL } from '@core/domain/household';
 import { weekStart } from '@core/domain/week';
 import type { UserRole } from '@core/ports/identity/IAppUserRepository';
 import type { IngestionMessage } from '@core/ports/ingestion/IIngestionQueue';
@@ -227,8 +229,10 @@ async function markInvoiceFailed(client: PoolClient, record: SQSRecord, log: Lam
   }
 }
 
-// Credit back one upload for a final-attempt failure, capped per week. Household
-// uploads refund the household pool; personal uploads refund the user's counter.
+// Credit back one upload for a final-attempt failure, capped per week. Mirror the
+// presign charge: the shared pool was only drawn when the household has 2+ members,
+// so a solo-household invoice (stamped with household_id for visibility) refunds the
+// uploader's personal counter — not the pool.
 async function refundFailedUpload(
   client: PoolClient,
   invoiceId: string,
@@ -237,8 +241,10 @@ async function refundFailedUpload(
   week: string,
   log: LambdaLogger,
 ): Promise<void> {
-  const quotaOwnerId = householdId ?? tenantId;
-  const counterType = householdId ? 'HOUSEHOLD_UPLOADS' : 'UPLOADS';
+  const usePool = householdId !== null
+    && (await new HouseholdRepositoryAdapter(client).memberCountForUser(householdId, tenantId)) >= MIN_MEMBERS_FOR_POOL;
+  const quotaOwnerId = usePool ? householdId! : tenantId;
+  const counterType = usePool ? 'HOUSEHOLD_UPLOADS' : 'UPLOADS';
 
   const userResult = await client.query<{ role: string }>(
     `SELECT role FROM app_user WHERE id = $1`,

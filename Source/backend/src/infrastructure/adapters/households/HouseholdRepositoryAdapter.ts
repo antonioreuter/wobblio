@@ -5,6 +5,7 @@ import type {
   HouseholdMember,
   HouseholdMembership,
 } from '@core/ports/households/IHouseholdRepository';
+import type { UserRole } from '@core/ports/identity/IAppUserRepository';
 
 interface HouseholdRow {
   id: string;
@@ -58,6 +59,14 @@ export class HouseholdRepositoryAdapter implements IHouseholdRepository {
     );
     const row = result.rows[0];
     return row ? { householdId: row.household_id, ownerUserId: row.owner_user_id } : null;
+  }
+
+  async getOwnerRole(householdId: string, userId: string): Promise<UserRole | null> {
+    const result = await this.client.query<{ role: UserRole | null }>(
+      `SELECT household_owner_role($1, $2) AS role`,
+      [householdId, userId],
+    );
+    return result.rows[0]?.role ?? null;
   }
 
   async memberCountForUser(householdId: string, userId: string): Promise<number> {

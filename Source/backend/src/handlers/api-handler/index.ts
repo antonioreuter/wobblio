@@ -27,6 +27,7 @@ import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQ
 import { BillingService } from '@core/services/billing/BillingService';
 import { ProfileService } from '@core/services/identity/ProfileService';
 import { QuotaService } from '@core/services/quota/QuotaService';
+import { UploadAllowanceResolver } from '@core/services/quota/UploadAllowanceResolver';
 import { PresignService } from '@core/services/ingestion/PresignService';
 import { ConfirmService } from '@core/services/ingestion/ConfirmService';
 import { DeleteInvoiceService } from '@core/services/ingestion/DeleteInvoiceService';
@@ -48,8 +49,6 @@ import {
   PremiumRequiredError,
   UnsupportedUploadTypeError,
   OversizeUploadError,
-  HouseholdNotFoundError,
-  HouseholdPoolUnavailableError,
 } from '@core/domain/errors';
 import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import { CATEGORY_TAXONOMY } from '@core/domain/categoryTaxonomy';
@@ -276,13 +275,20 @@ async function handleTopMerchant(db: PoolClient, user: AppUser): Promise<APIGate
 }
 
 async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
-  const cap = await new SsmUploadQuotaAdapter(REGION).getPersonalUploadsCap(user.role);
   const quotaService = new QuotaService(new QuotaRepositoryAdapter(db));
-  const used = await withTenantTx(db, user.id, () =>
-    quotaService.getUsed(user.id, 'UPLOADS', new Date()),
+  const resolver = new UploadAllowanceResolver(
+    new HouseholdRepositoryAdapter(db),
+    new SsmUploadQuotaAdapter(REGION),
   );
-  // TESTER/ADMIN have an infinite cap; Infinity is not representable in JSON
-  // (serializes to null), so signal it explicitly and null out the numerics.
+  // Report against whatever quota actually backs this user's uploads: the shared
+  // household pool when they're in a 2+ member household, else their personal counter.
+  const { cap, used } = await withTenantTx(db, user.id, async () => {
+    const allowance = await resolver.resolve({ userId: user.id, role: user.role });
+    const usedCount = await quotaService.getUsed(allowance.quotaOwnerId, allowance.counter, new Date());
+    return { cap: allowance.cap, used: usedCount };
+  });
+  // TESTER/ADMIN (and unlimited household pools) have an infinite cap; Infinity is not
+  // representable in JSON (serializes to null), so signal it explicitly and null the numerics.
   const unlimited = !Number.isFinite(cap);
   return json(200, {
     used,
@@ -467,18 +473,20 @@ async function handlePresign(
     return json(400, { message: 'imageSha256 must be a 64-character hex string' });
   }
   const contentType = typeof body.contentType === 'string' ? body.contentType : 'image/jpeg';
-  const householdId = typeof body.householdId === 'string' ? body.householdId : null;
   const coordinates = parseCoordinates(body);
 
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
+  const allowanceResolver = new UploadAllowanceResolver(
+    new HouseholdRepositoryAdapter(db),
+    new SsmUploadQuotaAdapter(REGION),
+  );
   const service = new PresignService(
     new InvoiceRepositoryAdapter(db),
     new QuotaService(new QuotaRepositoryAdapter(db)),
-    new SsmUploadQuotaAdapter(REGION),
+    allowanceResolver,
     new S3FileStorageAdapter(REGION, uploadsBucket),
     new AwsLocationReverseGeocoderAdapter(REGION, process.env.LOCATION_PLACE_INDEX ?? ''),
     new RegionReferenceAdapter(db),
-    new HouseholdRepositoryAdapter(db),
   );
 
   try {
@@ -487,7 +495,6 @@ async function handlePresign(
         tenantId: user.id,
         uploadedByUserId: user.id,
         role: user.role,
-        householdId,
         imageSha256,
         contentType,
         coordinates,
@@ -499,10 +506,6 @@ async function handlePresign(
     if (err instanceof UnsupportedUploadTypeError) return json(415, { message: 'Unsupported file type' });
     if (err instanceof PremiumRequiredError) return json(403, { message: 'PDF uploads require a premium plan' });
     if (err instanceof DuplicateInvoiceError) return json(409, { message: 'Receipt already scanned' });
-    if (err instanceof HouseholdNotFoundError) return json(404, { message: 'Household not found' });
-    if (err instanceof HouseholdPoolUnavailableError) {
-      return json(409, { message: 'Household pool needs at least 2 members; upload to your personal space instead' });
-    }
     if (err instanceof QuotaExceededError) {
       // Quota is the sole AI-cost/abuse control; surface blocks so repeat offenders are
       // visible in CloudWatch (no per-tenant cap to tune — see 2026-06-22 amendment).

@@ -11,8 +11,10 @@ export interface HouseholdMember {
 
 export interface HouseholdPool {
   used: number
-  cap: number
-  remaining: number
+  // null + unlimited:true when the owner's role is uncapped (TESTER/ADMIN).
+  cap: number | null
+  remaining: number | null
+  unlimited: boolean
 }
 
 export interface HouseholdDetail {
@@ -35,7 +37,9 @@ export interface GeneratedInvite {
 export const MAX_HOUSEHOLD_MEMBERS = 3
 
 export const poolPercent = (pool: HouseholdPool | undefined): number =>
-  pool && pool.cap > 0 ? Math.round((pool.used / pool.cap) * 100) : 0
+  pool && !pool.unlimited && pool.cap && pool.cap > 0
+    ? Math.round((pool.used / pool.cap) * 100)
+    : 0
 
 // Two-letter initials for the avatar, preferring the display name and falling
 // back to the email local part.

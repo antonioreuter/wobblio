@@ -1,22 +1,17 @@
 import type { IInvoiceRepository } from '../../ports/ingestion/IInvoiceRepository';
 import type { IS3FileStorage } from '../../ports/ingestion/IS3FileStorage';
-import type { IUploadQuotaProvider } from '../../ports/quota/IUploadQuotaProvider';
-import type { QuotaType } from '../../ports/quota/IQuotaRepository';
 import type { UserRole } from '../../ports/identity/IAppUserRepository';
 import type { IReverseGeocoder } from '../../ports/data-intelligence/IReverseGeocoder';
 import type { IRegionReference } from '../../ports/data-intelligence/IRegionReference';
-import type { IHouseholdRepository } from '../../ports/households/IHouseholdRepository';
 import type { QuotaService } from '../quota/QuotaService';
+import type { UploadAllowanceResolver } from '../quota/UploadAllowanceResolver';
 import {
   DuplicateInvoiceError,
-  HouseholdNotFoundError,
-  HouseholdPoolUnavailableError,
   PremiumRequiredError,
   UnsupportedUploadTypeError,
 } from '../../domain/errors';
 import { extensionFor, isAllowedUploadType, isPdf } from '../../domain/uploadFormat';
 import { hasPremiumAccess } from '../../domain/access';
-import { MIN_MEMBERS_FOR_POOL } from '../../domain/household';
 
 const PRESIGN_TTL_SECONDS = 300; // hard invariant #10
 
@@ -29,7 +24,6 @@ export interface PresignInput {
   tenantId: string;
   uploadedByUserId: string;
   role: UserRole;
-  householdId: string | null;
   imageSha256: string;
   contentType: string;
   // Browser geolocation (tier 2), when the user granted it. Reverse-geocoded to a
@@ -52,11 +46,10 @@ export class PresignService {
   constructor(
     private readonly invoiceRepo: IInvoiceRepository,
     private readonly quotaService: QuotaService,
-    private readonly quotaProvider: IUploadQuotaProvider,
+    private readonly allowanceResolver: UploadAllowanceResolver,
     private readonly fileStorage: IS3FileStorage,
     private readonly reverseGeocoder: IReverseGeocoder,
     private readonly regionReference: IRegionReference,
-    private readonly households: IHouseholdRepository,
   ) {}
 
   async presign(input: PresignInput): Promise<PresignResult> {
@@ -69,24 +62,17 @@ export class PresignService {
     const existing = await this.invoiceRepo.findSameTenantByHash(input.imageSha256);
     if (existing) throw new DuplicateInvoiceError(input.imageSha256);
 
-    const isHousehold = input.householdId !== null;
-    // The shared pool only activates once the household has more than one member.
-    // A non-member (count 0) targeting a household must not reach its pool at all.
-    if (isHousehold) {
-      const memberCount = await this.households.memberCountForUser(input.householdId!, input.uploadedByUserId);
-      if (memberCount === 0) throw new HouseholdNotFoundError(input.householdId!);
-      if (memberCount < MIN_MEMBERS_FOR_POOL) throw new HouseholdPoolUnavailableError(input.householdId!);
-    }
-
-    const counter: QuotaType = isHousehold ? 'HOUSEHOLD_UPLOADS' : 'UPLOADS';
-    const cap = isHousehold
-      ? await this.quotaProvider.getHouseholdUploadsCap()
-      : await this.quotaProvider.getPersonalUploadsCap(input.role);
-
-    // The household pool is shared, so its counter is keyed by household_id; a
-    // personal upload draws from the uploader's own counter (Epic 09 mechanics).
-    const quotaOwnerId = isHousehold ? input.householdId! : input.tenantId;
-    await this.quotaService.reserveUpload(quotaOwnerId, counter, cap, new Date());
+    // A user belongs to at most one household; every upload is stamped with it so
+    // members share each other's receipts (RLS household_member_read). The resolver
+    // owns the §2.4 matrix: pool counter at 2+ members (cap from the owner's role),
+    // else the uploader's personal counter.
+    const allowance = await this.allowanceResolver.resolve({
+      userId: input.uploadedByUserId,
+      role: input.role,
+    });
+    await this.quotaService.reserveUpload(
+      allowance.quotaOwnerId, allowance.counter, allowance.cap, new Date(),
+    );
 
     const uploadGeo = await this.resolveUploadGeo(input.coordinates);
 
@@ -94,7 +80,7 @@ export class PresignService {
     const invoiceId = await this.invoiceRepo.createPending({
       tenantId: input.tenantId,
       uploadedByUserId: input.uploadedByUserId,
-      householdId: input.householdId,
+      householdId: allowance.householdId,
       imageS3Key: s3Key,
       imageSha256: input.imageSha256,
       ...uploadGeo,

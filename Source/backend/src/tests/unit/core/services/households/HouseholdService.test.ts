@@ -26,6 +26,7 @@ describe('HouseholdService', () => {
       countOwnedByUser: vi.fn(),
       create: vi.fn(),
       findMembershipForUser: vi.fn(),
+      getOwnerRole: vi.fn(),
       findForMember: vi.fn(),
       listMembers: vi.fn(),
       removeMember: vi.fn(),

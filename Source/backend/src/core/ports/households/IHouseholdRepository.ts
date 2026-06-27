@@ -1,3 +1,5 @@
+import type { UserRole } from '../identity/IAppUserRepository';
+
 export interface HouseholdSummary {
   id: string;
   name: string;
@@ -22,6 +24,10 @@ export interface IHouseholdRepository {
   create(ownerUserId: string, name: string): Promise<string>;
   // The household the user belongs to (member or owner), or null when solo. RLS-scoped.
   findMembershipForUser(userId: string): Promise<HouseholdMembership | null>;
+  // The owner's role for a household the caller belongs to (SECURITY DEFINER — a member
+  // cannot read the owner's app_user row under RLS). Null when the caller is not a
+  // member. Drives the owner-role-aware household pool cap (§2.4).
+  getOwnerRole(householdId: string, userId: string): Promise<UserRole | null>;
   // Member count of the household, but only when `userId` is a member of it;
   // returns 0 for a non-member (the caller treats that as "no access"). Backed by
   // a SECURITY DEFINER function so it is safe to call before quota reservation.

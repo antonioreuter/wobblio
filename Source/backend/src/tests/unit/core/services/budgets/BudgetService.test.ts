@@ -49,6 +49,7 @@ describe('BudgetService', () => {
       countOwnedByUser: vi.fn(),
       create: vi.fn(),
       findMembershipForUser: vi.fn().mockResolvedValue(null),
+      getOwnerRole: vi.fn(),
       findForMember: vi.fn(),
       listMembers: vi.fn().mockResolvedValue([]),
       removeMember: vi.fn(),

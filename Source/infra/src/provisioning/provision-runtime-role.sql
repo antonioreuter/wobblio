@@ -48,6 +48,12 @@ ALTER DEFAULT PRIVILEGES FOR ROLE :"owner" IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"role";
 ALTER DEFAULT PRIVILEGES FOR ROLE :"owner" IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO :"role";
+-- Functions too: SECURITY DEFINER helpers added by later migrations are called by the
+-- runtime role (e.g. household_owner_role, household_member_count_for). Without this a
+-- new fn migration leaves the app with "permission denied for function" until a manual
+-- GRANT EXECUTE re-run. Default privileges fix it for every future owner-created fn.
+ALTER DEFAULT PRIVILEGES FOR ROLE :"owner" IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO :"role";
 
 -- Verify: must be f | f | f (not superuser, not bypassrls, not createrole = safe runtime role)
 SELECT rolname, rolsuper, rolbypassrls, rolcreaterole FROM pg_roles WHERE rolname = :'role';

@@ -9,13 +9,14 @@ import {
 
 describe('poolPercent', () => {
   it('rounds used/cap to a percentage', () => {
-    expect(poolPercent({ used: 5, cap: 20, remaining: 15 })).toBe(25)
-    expect(poolPercent({ used: 3, cap: 20, remaining: 17 })).toBe(15)
+    expect(poolPercent({ used: 5, cap: 20, remaining: 15, unlimited: false })).toBe(25)
+    expect(poolPercent({ used: 3, cap: 20, remaining: 17, unlimited: false })).toBe(15)
   })
 
-  it('returns 0 for an undefined pool or a zero cap', () => {
+  it('returns 0 for an undefined pool, a zero cap, or an unlimited pool', () => {
     expect(poolPercent(undefined)).toBe(0)
-    expect(poolPercent({ used: 1, cap: 0, remaining: 0 } as HouseholdPool)).toBe(0)
+    expect(poolPercent({ used: 1, cap: 0, remaining: 0, unlimited: false } as HouseholdPool)).toBe(0)
+    expect(poolPercent({ used: 99, cap: null, remaining: null, unlimited: true })).toBe(0)
   })
 })
 

@@ -11,6 +11,7 @@ import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQ
 import { HouseholdService } from '@core/services/households/HouseholdService';
 import { HouseholdInviteService } from '@core/services/households/HouseholdInviteService';
 import { QuotaService } from '@core/services/quota/QuotaService';
+import { effectiveHouseholdCap } from '@core/domain/quotaConfig';
 import {
   PremiumRequiredError,
   AlreadyOwnsHouseholdError,
@@ -105,11 +106,28 @@ function createHousehold(
 function getHousehold(db: PoolClient, user: AppUser, householdId: string): Promise<APIGatewayProxyResult> {
   return guard(() =>
     withTenantTx(db, user.id, async () => {
+      const households = new HouseholdRepositoryAdapter(db);
       const detail = await householdService(db).getDetail(householdId);
       const quota = new QuotaService(new QuotaRepositoryAdapter(db));
       const used = await quota.getUsed(householdId, 'HOUSEHOLD_UPLOADS', new Date());
-      const cap = await new SsmUploadQuotaAdapter(REGION).getHouseholdUploadsCap();
-      return json(200, { ...detail, pool: { used, cap, remaining: Math.max(0, cap - used) } });
+
+      // The pool cap follows the owner's role: an operator-role owner makes it unlimited.
+      const quotaProvider = new SsmUploadQuotaAdapter(REGION);
+      const ownerRole = (await households.getOwnerRole(householdId, user.id)) ?? user.role;
+      const cap = effectiveHouseholdCap(
+        await quotaProvider.getPersonalUploadsCap(ownerRole),
+        await quotaProvider.getHouseholdUploadsCap(),
+      );
+      const unlimited = !Number.isFinite(cap);
+      return json(200, {
+        ...detail,
+        pool: {
+          used,
+          cap: unlimited ? null : cap,
+          remaining: unlimited ? null : Math.max(0, cap - used),
+          unlimited,
+        },
+      });
     }),
   );
 }

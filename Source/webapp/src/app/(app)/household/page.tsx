@@ -142,7 +142,8 @@ export default function HouseholdPage() {
 
   const pct = poolPercent(household.pool)
   const used = household.pool?.used ?? 0
-  const cap = household.pool?.cap ?? 0
+  const unlimitedPool = household.pool?.unlimited ?? false
+  const cap = unlimitedPool ? '∞' : (household.pool?.cap ?? 0)
   const atCapacity = household.members.length >= MAX_HOUSEHOLD_MEMBERS
 
   return (
