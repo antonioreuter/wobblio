@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import { RDS_CA_BUNDLE } from './rdsCaBundle';
 
 interface DbSecret {
   username: string;
@@ -8,6 +9,34 @@ interface DbSecret {
 }
 
 let pool: Pool | null = null;
+
+// Fail-closed RLS guard. Tenant isolation is enforced by RLS + SET LOCAL on a
+// non-owner role; a role that bypasses RLS (table owner without FORCE, superuser,
+// or BYPASSRLS) silently returns cross-tenant rows. Refuse to serve on such a role
+// so the misconfiguration is loud instead of a silent data leak (invariant #1).
+export class RlsBypassError extends Error {
+  constructor(role: string, reason: string) {
+    super(`Runtime DB role "${role}" can bypass RLS (${reason}); refusing to serve to prevent cross-tenant leakage.`);
+    this.name = 'RlsBypassError';
+  }
+}
+
+export async function assertRuntimeRoleCannotBypassRls(runtimePool: Pick<Pool, 'query'>): Promise<void> {
+  const { rows } = await runtimePool.query<{ role: string; attr_bypass: boolean; owner_bypass: boolean }>(
+    `SELECT current_user AS role,
+            COALESCE((SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user), false) AS attr_bypass,
+            EXISTS (
+              SELECT 1 FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'public' AND c.relkind = 'r'
+                AND c.relrowsecurity AND NOT c.relforcerowsecurity
+                AND pg_get_userbyid(c.relowner) = current_user
+            ) AS owner_bypass`,
+  );
+  const r = rows[0];
+  if (r.attr_bypass) throw new RlsBypassError(r.role, 'role is SUPERUSER or has BYPASSRLS');
+  if (r.owner_bypass) throw new RlsBypassError(r.role, 'role owns RLS tables that are not FORCE ROW LEVEL SECURITY');
+}
 
 export async function buildPool(
   secretArn: string,
@@ -36,6 +65,7 @@ export async function buildPool(
       options: `--statement_timeout=${statementTimeoutMs}`,
       ssl: false,
     });
+    await assertRuntimeRoleCannotBypassRls(pool);
     return pool;
   }
 
@@ -55,8 +85,11 @@ export async function buildPool(
     idleTimeoutMillis: 0,
     connectionTimeoutMillis: 5000,
     options: `--statement_timeout=${statementTimeoutMs}`,
-    ssl: isLocal ? undefined : { rejectUnauthorized: false },
+    // Verify the RDS server cert against the AWS CA bundle — never disable verification
+    // (rejectUnauthorized:false allows MITM). Local Postgres has no TLS.
+    ssl: isLocal ? undefined : { ca: RDS_CA_BUNDLE, rejectUnauthorized: true },
   });
 
+  await assertRuntimeRoleCannotBypassRls(pool);
   return pool;
 }
