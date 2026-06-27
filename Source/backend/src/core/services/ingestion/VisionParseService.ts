@@ -1,7 +1,7 @@
 import type { BedrockConverseRequest, BedrockDocument, BedrockImage, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
 import { parseReceiptJson } from '../../domain/receiptSchema';
 import { callJsonWithRetry } from '../../domain/llmJson';
-import { dropNonItemLines } from '../../domain/receiptPostProcess';
+import { dropNonItemLines, collapseContinuationLines } from '../../domain/receiptPostProcess';
 import type { ParsedReceipt } from '../../domain/ingestion';
 
 export interface ReceiptContext {
@@ -39,8 +39,9 @@ export class VisionParseService {
       validate: parseReceiptJson,
     });
     // Deterministic safety net: strip summary/loyalty/metadata rows the model may have
-    // emitted despite the prompt's <exclusion_list>, before downstream normalization.
-    return dropNonItemLines(receipt);
+    // emitted despite the prompt's <exclusion_list>, then fold any standalone "N x price"
+    // breakdown into its product line (the model double-counts these on long receipts).
+    return collapseContinuationLines(dropNonItemLines(receipt));
   }
 
   private buildRequest(messages: BedrockMessage[]): BedrockConverseRequest {

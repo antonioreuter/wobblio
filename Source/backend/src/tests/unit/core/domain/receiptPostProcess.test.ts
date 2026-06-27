@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dropNonItemLines } from '@core/domain/receiptPostProcess';
+import { dropNonItemLines, collapseContinuationLines } from '@core/domain/receiptPostProcess';
 import type { ParsedReceipt } from '@core/domain/ingestion';
 
 const base = (lines: ParsedReceipt['lines']): ParsedReceipt => ({
@@ -59,5 +59,70 @@ describe('dropNonItemLines', () => {
   it('returns the same reference when nothing matches', () => {
     const receipt = base([{ rawText: 'MELK', quantity: 1, lineTotal: 1.29 }]);
     expect(dropNonItemLines(receipt)).toBe(receipt);
+  });
+});
+
+describe('collapseContinuationLines', () => {
+  it('folds a duplicate-total breakdown into the product above (jumbo tk regression)', () => {
+    // JUMBO ACHTERHAM FLIN 5.02 followed by "2 X 2,51" 5.02 — both 5.02, double-counted.
+    const receipt = base([
+      { rawText: 'JUMBO ACHTERHAM FLIN', quantity: 1, lineTotal: 5.02 },
+      { rawText: '2 X 2,51', quantity: 2, lineTotal: 5.02, unitPrice: 2.51 },
+    ]);
+
+    const collapsed = collapseContinuationLines(receipt);
+
+    expect(collapsed.lines).toEqual([
+      { rawText: 'JUMBO ACHTERHAM FLIN', quantity: 2, lineTotal: 5.02, unitPrice: 2.51 },
+    ]);
+  });
+
+  it('lifts the breakdown total onto a product line printed with no price', () => {
+    const receipt = base([
+      { rawText: 'JUMBO SPAGHETTI EI', quantity: 1, lineTotal: 0 },
+      { rawText: '2 X 1,39', quantity: 2, lineTotal: 2.78, unitPrice: 1.39 },
+    ]);
+
+    const collapsed = collapseContinuationLines(receipt);
+
+    expect(collapsed.lines).toEqual([
+      { rawText: 'JUMBO SPAGHETTI EI', quantity: 2, lineTotal: 2.78, unitPrice: 1.39 },
+    ]);
+  });
+
+  it('matches "N ST x price" breakdowns too', () => {
+    const receipt = base([
+      { rawText: 'BROOD', quantity: 1, lineTotal: 0 },
+      { rawText: '3 ST x 0,99', quantity: 3, lineTotal: 2.97, unitPrice: 0.99 },
+    ]);
+    expect(collapseContinuationLines(receipt).lines).toHaveLength(1);
+    expect(collapseContinuationLines(receipt).lines[0].quantity).toBe(3);
+  });
+
+  it('never matches a product name that merely contains an x', () => {
+    const receipt = base([
+      { rawText: 'WIT PUNTJE X 6', quantity: 1, lineTotal: 1.59 },
+      { rawText: 'COCA COLA ZERO 12X33', quantity: 1, lineTotal: 9.39 },
+    ]);
+    expect(collapseContinuationLines(receipt)).toBe(receipt);
+  });
+
+  it('does not fold into a discount line or guess on a conflicting total', () => {
+    const discountAbove = base([
+      { rawText: 'ACTIE KORTING', quantity: 1, lineTotal: -2.5 },
+      { rawText: '2 X 1,25', quantity: 2, lineTotal: 2.5, unitPrice: 1.25 },
+    ]);
+    // product total 4.00 conflicts with breakdown 2.50 — ambiguous, leave both untouched.
+    const conflicting = base([
+      { rawText: 'KAAS', quantity: 1, lineTotal: 4.0 },
+      { rawText: '2 X 1,25', quantity: 2, lineTotal: 2.5, unitPrice: 1.25 },
+    ]);
+    expect(collapseContinuationLines(discountAbove).lines).toHaveLength(2);
+    expect(collapseContinuationLines(conflicting).lines).toHaveLength(2);
+  });
+
+  it('returns the same reference when no continuation lines are present', () => {
+    const receipt = base([{ rawText: 'MELK', quantity: 1, lineTotal: 1.29 }]);
+    expect(collapseContinuationLines(receipt)).toBe(receipt);
   });
 });
