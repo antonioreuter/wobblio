@@ -189,10 +189,16 @@ export function WorkspaceProvider({
   const scanReceipt = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = pdfUploadEnabled ? PDF_ACCEPT : IMAGE_ACCEPT
+    // Offer PDF to everyone so non-premium users discover the feature; gate the actual
+    // upload below with a clear upsell instead of silently hiding the option.
+    input.accept = PDF_ACCEPT
     input.onchange = async () => {
       const file = input.files?.[0]
       if (!file) return
+      if (!pdfUploadEnabled && file.type === 'application/pdf') {
+        showToast('PDF uploads are a Premium feature — upgrade to scan PDF invoices.', 'danger')
+        return
+      }
       showToast('Uploading your receipt…', 'processing')
       try {
         await uploadReceipt(file)
