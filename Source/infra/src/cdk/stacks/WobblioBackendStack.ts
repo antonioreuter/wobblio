@@ -668,6 +668,17 @@ export class WobblioBackendStack extends Stack {
       });
     }
 
+    // Stuck-invoice reaper: flip invoices wedged in PROCESSING (worker timeout/crash/lost
+    // message) to terminal FAILED_PROCESSING so they surface as failed and become deletable.
+    // Hourly and enabled in every stage — unlike the daily retention sweeps, a stuck invoice
+    // blocks the user's own delete, so it must clear quickly regardless of environment.
+    new events.Rule(this, 'FailStuckInvoicesCron', {
+      schedule: events.Schedule.rate(Duration.hours(1)),
+      targets: [new targets.LambdaFunction(cronDataRetentionFn, {
+        event: events.RuleTargetInput.fromObject({ resource: 'stuck_invoice' }),
+      })],
+    });
+
     const allLambdas = [
       apiHandlerFn, ingestionWorkerFn,
       cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn,

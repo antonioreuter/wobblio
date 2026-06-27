@@ -45,4 +45,11 @@ export class DataRetentionRepositoryAdapter implements IDataRetentionRepository 
     );
     return result.rows[0].purge_stale_weekly_advisors;
   }
+
+  async failStuckInvoices(): Promise<number> {
+    const result = await this.pool.query<{ fail_stuck_invoices: number }>(
+      `SELECT fail_stuck_invoices()`,
+    );
+    return result.rows[0].fail_stuck_invoices;
+  }
 }

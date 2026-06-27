@@ -15,6 +15,7 @@ describe('DataRetentionService', () => {
       purgeOldIngestionLedger: vi.fn().mockResolvedValue(10),
       purgeOldQuotaCounters: vi.fn().mockResolvedValue(7),
       purgeStaleWeeklyAdvisors: vi.fn().mockResolvedValue(1),
+      failStuckInvoices: vi.fn().mockResolvedValue(4),
     };
     sut = new DataRetentionService(repo);
   });
@@ -59,6 +60,13 @@ describe('DataRetentionService', () => {
 
     expect(outcome).toEqual({ resource: 'weekly_advisor', deleted: 1 });
     expect(repo.purgeStaleWeeklyAdvisors).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches stuck_invoice reaper', async () => {
+    const outcome = await sut.purge('stuck_invoice');
+
+    expect(outcome).toEqual({ resource: 'stuck_invoice', deleted: 4 });
+    expect(repo.failStuckInvoices).toHaveBeenCalledTimes(1);
   });
 
   it('throws UnknownRetentionResourceError for unknown resource', async () => {

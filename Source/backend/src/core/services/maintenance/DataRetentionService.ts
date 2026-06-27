@@ -34,6 +34,8 @@ export class DataRetentionService {
         return this.repo.purgeOldQuotaCounters();
       case 'weekly_advisor':
         return this.repo.purgeStaleWeeklyAdvisors();
+      case 'stuck_invoice':
+        return this.repo.failStuckInvoices();
       default:
         throw new UnknownRetentionResourceError(resource);
     }
