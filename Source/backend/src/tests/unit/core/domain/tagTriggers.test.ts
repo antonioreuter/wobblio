@@ -47,6 +47,17 @@ describe('generateTags', () => {
     expect(tags).not.toContain('not-a-real-tag');
   });
 
+  it('rejects an LLM-suggested merchant-identity tag that the merchant does not match', () => {
+    // Aldi receipt, LLM guesses supermarket-ah — must not stick (the real bug).
+    const tags = generateTags(ctx({ merchantBrand: 'Aldi', suggestedTags: ['supermarket-ah'] }));
+    expect(tags).not.toContain('supermarket-ah');
+  });
+
+  it('still emits a merchant-identity tag from the deterministic path when the brand matches', () => {
+    const tags = generateTags(ctx({ merchantBrand: 'Albert Heijn', suggestedTags: ['supermarket-ah'] }));
+    expect(tags).toEqual(['supermarket-ah']);
+  });
+
   it('dedupes deterministic and suggested overlap', () => {
     const tags = generateTags(ctx({ categoryId: 'cat-dining-out', suggestedTags: ['dining-out'] }));
     expect(tags.filter(t => t === 'dining-out')).toHaveLength(1);

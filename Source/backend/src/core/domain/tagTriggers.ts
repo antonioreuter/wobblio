@@ -7,6 +7,15 @@ import { macroCategoryId } from './categoryTaxonomy';
 
 const MAX_TAGS = 3;
 
+// A merchant-identity tag (every trigger is a brand match) asserts WHICH store the receipt
+// is from — e.g. supermarket-ah. That is resolved deterministically upstream, so the LLM
+// must never assert it: a suggestion is either redundant (the brand matched, already added)
+// or wrong (it didn't, mislabelling e.g. an Aldi receipt as supermarket-ah). These keys are
+// accepted only from the deterministic trigger path, never from LLM suggestions.
+const BRAND_IDENTITY_TAG_KEYS: ReadonlySet<string> = new Set(
+  TAG_VOCABULARY.filter(tag => tag.triggers.every(trigger => trigger.merchantBrand !== undefined)).map(tag => tag.key),
+);
+
 export interface TagGenerationContext {
   categoryId: string | null;
   merchantBrand: string | null;
@@ -29,7 +38,7 @@ function isTriggered(tag: TagDefinition, ctx: TagGenerationContext): boolean {
 
 export function generateTags(ctx: TagGenerationContext): string[] {
   const deterministic = TAG_VOCABULARY.filter(tag => isTriggered(tag, ctx)).map(tag => tag.key);
-  const suggested = ctx.suggestedTags.filter(key => TAG_KEYS.has(key));
+  const suggested = ctx.suggestedTags.filter(key => TAG_KEYS.has(key) && !BRAND_IDENTITY_TAG_KEYS.has(key));
   const merged: string[] = [];
   for (const key of [...deterministic, ...suggested]) {
     if (!merged.includes(key)) merged.push(key);
