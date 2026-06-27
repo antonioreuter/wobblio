@@ -866,6 +866,26 @@
    Filter card — used by Invoices + Price Trends panes.
    ========================================================================== */
 .filter-card { margin-bottom: 20px; }
+
+/* Trends compare-mode segmented control — My prices | Local market */
+.trend-mode-row { display: flex; align-items: center; gap: 12px; }
+.trend-mode-toggle {
+  display: inline-flex; padding: 2px; gap: 2px;
+  border-radius: 9px; border: 1px solid var(--glass-border);
+  background: var(--glass-highlight);
+}
+.trend-mode-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 12px; border: none; border-radius: 7px;
+  background: transparent; color: var(--text-muted);
+  font-family: var(--font-body); font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: all var(--transition-fast);
+}
+.trend-mode-btn:hover:not(:disabled):not(.is-active) { color: var(--text-primary); }
+.trend-mode-btn.is-active {
+  background: var(--brand); color: #fff;
+}
+.trend-mode-btn:disabled { cursor: not-allowed; opacity: 0.55; }
 .filter-head {
   display: flex; align-items: center; gap: 8px;
   font-size: 12px; font-weight: 600; text-transform: uppercase;
@@ -1003,6 +1023,67 @@
   fill: var(--brand);
   font-weight: 600;
 }
+.chart-selection-highlight {
+  fill: rgba(99, 102, 241, 0.07);
+  stroke: rgba(99, 102, 241, 0.35);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 2;
+  pointer-events: none;
+}
+[data-theme="light"] .chart-selection-highlight {
+  fill: rgba(79, 70, 229, 0.07);
+  stroke: rgba(79, 70, 229, 0.35);
+}
+.chart-selection-badge {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--card-shadow);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  z-index: 10;
+  backdrop-filter: var(--blur-glass);
+  -webkit-backdrop-filter: var(--blur-glass);
+  border-left: 3px solid var(--brand);
+}
+.chart-selection-badge .badge-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chart-selection-badge .lbl {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.chart-selection-badge .val {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+}
+.chart-selection-badge .badge-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+.chart-selection-badge .badge-close:hover {
+  color: var(--text-primary);
+  background: var(--glass-highlight);
+}
 .chart-tip {
   position: absolute; top: 6px; transform: translateX(-50%);
   background: var(--glass-bg); border: 1px solid var(--glass-border);
@@ -1048,6 +1129,18 @@
   font-size: 11px; font-weight: 600; color: var(--amber, #d97706);
   vertical-align: middle;
 }
+.legend-unit {
+  margin-left: 8px; font-size: 11px; font-weight: 600;
+  color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.trend-unit-caveat {
+  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 14px;
+  padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--amber, #d97706); color: var(--text-secondary);
+  background: color-mix(in srgb, var(--amber, #d97706) 8%, transparent);
+  font-size: 12.5px; line-height: 1.45;
+}
+.trend-unit-caveat svg { margin-top: 2px; color: var(--amber, #d97706); flex-shrink: 0; }
 .tip-promo { color: var(--text-muted); font-weight: 600; }
 
 /* ==========================================================================

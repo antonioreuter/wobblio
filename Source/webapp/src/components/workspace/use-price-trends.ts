@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react'
 
+// null = pack size unknown, so the price is per item (€/pack) and not cross-comparable.
+export type TrendUnit = 'KG' | 'L' | 'PIECE' | null
+
 export interface TrendPoint {
   weekStart: string // ISO date (Monday)
   median: number | null
@@ -17,6 +20,7 @@ export interface TrendLine {
   lastObservedOn: string
   stale: boolean
   staleDays: number
+  unit: TrendUnit
 }
 
 // The caller's own purchase history for a product — RLS-scoped, no quorum gate, so it
@@ -26,6 +30,7 @@ export interface OwnPurchaseLine {
   points: TrendPoint[]
   purchaseCount: number
   lastPurchasedOn: string
+  unit: TrendUnit
 }
 
 export interface TrendComparison {

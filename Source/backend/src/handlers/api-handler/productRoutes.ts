@@ -15,9 +15,12 @@ export async function handleProductsRoute(
   if (method !== 'GET' || path !== '/products/search') return json(404, { message: 'Not Found' });
 
   const query = event.queryStringParameters?.q ?? '';
+  // Market merchant count is scoped to the region the trends chart serves (defaults to global).
+  const country = event.queryStringParameters?.country ?? '';
+  const region = event.queryStringParameters?.region ?? '';
   // PROVISIONAL matches are scoped to the caller's invoice lines via RLS.
   const products = await withTenantTx(db, user.id, () =>
-    new ProductSearchService(new ProductSearchAdapter(db)).search(query),
+    new ProductSearchService(new ProductSearchAdapter(db)).search(query, undefined, country, region),
   );
   return json(200, { products });
 }

@@ -14,12 +14,29 @@ interface ApiProduct {
   productId: string
   displayName: string
   brand: string | null
+  ownMerchantCount: number
+  ownMerchantName: string | null
+  marketMerchantCount: number
+  marketMerchantName: string | null
 }
 
 interface ProductSearchProps {
   onAdd: (product: TrendProduct) => void
   disabled: boolean
   exclude: string[]
+  mode: 'own' | 'market'
+  // Scope the market merchant signal to the region the trends chart serves.
+  countryCode: string
+  regionCode: string
+}
+
+// Store badge tracks the active compare mode: one store → its name; many → "N stores".
+function storeSignal(p: ApiProduct, mode: 'own' | 'market'): string | null {
+  const count = mode === 'market' ? p.marketMerchantCount : p.ownMerchantCount
+  const name = mode === 'market' ? p.marketMerchantName : p.ownMerchantName
+  if (count === 1) return name ?? p.brand
+  if (count > 1) return `${count} stores`
+  return p.brand
 }
 
 const MIN_QUERY = 2
@@ -28,7 +45,7 @@ const DEBOUNCE_MS = 250
 // §10 product autocomplete against the real catalog (/api/products/search). Results
 // are the caller's RLS-visible ACTIVE ∪ own-PROVISIONAL products; selecting one hands
 // the parent {id, name} so the chip can show the product without a second lookup.
-export function ProductSearch({ onAdd, disabled, exclude }: ProductSearchProps) {
+export function ProductSearch({ onAdd, disabled, exclude, mode, countryCode, regionCode }: ProductSearchProps) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [results, setResults] = useState<ApiProduct[]>([])
@@ -42,8 +59,11 @@ export function ProductSearch({ onAdd, disabled, exclude }: ProductSearchProps) 
     }
     const controller = new AbortController()
     setLoading(true)
+    const params = new URLSearchParams({ q: query })
+    if (countryCode) params.set('country', countryCode)
+    if (regionCode) params.set('region', regionCode)
     const timer = setTimeout(() => {
-      fetch(`/api/products/search?q=${encodeURIComponent(query)}`, {
+      fetch(`/api/products/search?${params.toString()}`, {
         cache: 'no-store',
         signal: controller.signal,
       })
@@ -56,7 +76,7 @@ export function ProductSearch({ onAdd, disabled, exclude }: ProductSearchProps) 
       controller.abort()
       clearTimeout(timer)
     }
-  }, [query])
+  }, [query, countryCode, regionCode])
 
   const matches = results.filter((p) => !exclude.includes(p.productId)).slice(0, 8)
 
@@ -105,7 +125,7 @@ export function ProductSearch({ onAdd, disabled, exclude }: ProductSearchProps) 
                 onMouseDown={(e) => { e.preventDefault(); pick(p) }}
               >
                 <span className="ta-name">{p.displayName}</span>
-                {p.brand && <span className="ta-stores">{p.brand}</span>}
+                {storeSignal(p, mode) && <span className="ta-stores">{storeSignal(p, mode)}</span>}
               </button>
             ))
           )}

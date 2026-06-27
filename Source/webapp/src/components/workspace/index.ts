@@ -13,6 +13,7 @@ export {
   type TrendComparison,
   type TrendLine,
   type TrendPoint,
+  type TrendUnit,
 } from './use-price-trends'
 export { ComingSoon } from './coming-soon'
 export { ConfirmDialog } from './confirm-dialog'

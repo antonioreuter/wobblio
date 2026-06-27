@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Calendar, Clock, Crown, Trash2, TrendingUp } from 'lucide-react'
+import { Calendar, Clock, Crown, Lock, Trash2, TrendingUp } from 'lucide-react'
 import { Card } from '@/components/ds'
 import {
   FilterSelect,
@@ -18,6 +18,7 @@ import {
   type Preset,
   type TrendComparison,
   type TrendProduct,
+  type TrendUnit,
 } from '@/components/workspace'
 
 interface ChartSeries {
@@ -31,9 +32,23 @@ interface ChartSeries {
   stale: boolean
   staleDays: number
   own: boolean // the caller's own purchases — dashed line, "Your purchases" legend
+  unit: TrendUnit // null = per item (size unknown); else €/unit and cross-comparable
 }
 
 const OWN_LABEL = 'Your purchases'
+
+// Comparison basis: the caller's own paid prices vs the crowdsourced local-market trend.
+// Market is Premium-only — STANDARD is pinned to 'own'.
+type CompareMode = 'own' | 'market'
+
+// Honest price-unit label. A known pack size makes the value a comparable €/unit; an unknown
+// size means the value is per item (per pack) and must not be compared across stores.
+function unitLabel(unit: TrendUnit): string {
+  if (unit === 'L') return '€/L'
+  if (unit === 'KG') return '€/kg'
+  if (unit === 'PIECE') return '€/pc'
+  return 'per item · size not detected'
+}
 
 export default function ReportsPage() {
   const { data: session } = useSession()
@@ -41,6 +56,7 @@ export default function ReportsPage() {
   // PREMIUM plus the elevated operator roles (ADMIN, TESTER); STANDARD sees the upsell.
   const isPremium = !!role && role !== 'STANDARD'
 
+  const [mode, setMode] = useState<CompareMode>('own')
   const [selected, setSelected] = useState<TrendProduct[]>([])
   const [country, setCountry] = useState('')
   const [region, setRegion] = useState('')
@@ -83,9 +99,9 @@ export default function ReportsPage() {
     from && to ? Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) : 0
   const rangeInvalid = preset === 'custom' && from !== '' && to !== '' && (rangeDays < 0 || rangeDays > 92)
 
-  const { series, labels } = useMemo(
-    () => buildChart(comparison, selected, preset, from, to, rangeInvalid),
-    [comparison, selected, preset, from, to, rangeInvalid],
+  const { series, labels, unitWarning } = useMemo(
+    () => buildChart(comparison, selected, mode, preset, from, to, rangeInvalid),
+    [comparison, selected, mode, preset, from, to, rangeInvalid],
   )
   const rangeLabel = PRESETS.find(([v]) => v === preset)?.[1] ?? 'Last 3 months'
 
@@ -124,7 +140,14 @@ export default function ReportsPage() {
 
         <div className="filter-grid">
           <div className="span-2">
-            <ProductSearch onAdd={add} disabled={atMax} exclude={ids} />
+            <ProductSearch
+              onAdd={add}
+              disabled={atMax}
+              exclude={ids}
+              mode={mode}
+              countryCode={country}
+              regionCode={region}
+            />
           </div>
           <FilterSelect
             label="Date range"
@@ -214,16 +237,44 @@ export default function ReportsPage() {
       <Card className="panel">
         <div className="panel-header" style={{ marginBottom: 8 }}>
           <span className="panel-title">Price per unit</span>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {rangeInvalid ? 'Last 3 months' : rangeLabel}
-          </span>
+          <div className="trend-mode-row">
+            <div className="trend-mode-toggle" role="group" aria-label="Comparison basis">
+              <button
+                type="button"
+                className={`trend-mode-btn ${mode === 'own' ? 'is-active' : ''}`}
+                aria-pressed={mode === 'own'}
+                onClick={() => setMode('own')}
+                data-testid="trends-mode-own"
+              >
+                My prices
+              </button>
+              <button
+                type="button"
+                className={`trend-mode-btn ${mode === 'market' ? 'is-active' : ''}`}
+                aria-pressed={mode === 'market'}
+                // Market is Premium-only; STANDARD stays on 'own' and the locked option
+                // points back at the always-visible upsell card above.
+                disabled={!isPremium}
+                title={isPremium ? undefined : 'Premium — compare against local stores'}
+                onClick={() => isPremium && setMode('market')}
+                data-testid="trends-mode-market"
+              >
+                {!isPremium && <Lock size={11} />} Local market
+              </button>
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {rangeInvalid ? 'Last 3 months' : rangeLabel}
+            </span>
+          </div>
         </div>
         <TrendChartBody
           loading={loading}
           hasProducts={selected.length > 0}
           comparison={comparison}
+          mode={mode}
           series={series}
           labels={labels}
+          unitWarning={unitWarning}
         />
       </Card>
     </div>
@@ -234,14 +285,18 @@ function TrendChartBody({
   loading,
   hasProducts,
   comparison,
+  mode,
   series,
   labels,
+  unitWarning,
 }: {
   loading: boolean
   hasProducts: boolean
   comparison: TrendComparison | null
+  mode: CompareMode
   series: ChartSeries[]
   labels: string[]
+  unitWarning: boolean
 }) {
   if (!hasProducts) {
     return (
@@ -257,22 +312,37 @@ function TrendChartBody({
   // No series at all (no own purchases here yet and no market cell cleared k≥3), or the
   // chosen range hides every point.
   if (series.length === 0) {
-    const noServedData =
-      !comparison || (comparison.lines.length === 0 && comparison.ownHistory.length === 0)
+    // The active mode has no source rows at all (vs. a range that hides all points).
+    const sourceEmpty =
+      !comparison ||
+      (mode === 'market' ? comparison.lines.length === 0 : comparison.ownHistory.length === 0)
+    const emptyCopy = !sourceEmpty
+      ? 'No price points in this date range — widen the range to see more.'
+      : mode === 'market'
+        ? 'No local-store prices yet — comparison needs at least 3 confirmed scans nearby. Every scan makes it smarter.'
+        : 'No prices yet — once you’ve scanned one of these items in this region it’ll chart here. Every scan makes it smarter.'
     return (
       <div className="table-empty" data-testid="trends-empty">
         <TrendingUp size={26} />
-        <span>
-          {noServedData
-            ? 'No prices yet — once you’ve scanned one of these items in this region it’ll chart here. Local-store comparison needs at least 3 confirmed scans nearby. Every scan makes it smarter.'
-            : 'No price points in this date range — widen the range to see more.'}
-        </span>
+        <span>{emptyCopy}</span>
       </div>
     )
   }
 
   return (
     <>
+      {unitWarning && (
+        <div className="trend-unit-caveat" data-testid="trends-unit-caveat" role="note">
+          <Clock size={13} />
+          <span>
+            Sizes aren’t detected for some items, so those lines show price <strong>per item</strong> —
+            not a per-unit value.{' '}
+            {mode === 'market'
+              ? 'Confirm a size on the receipt to compare across stores.'
+              : 'Confirm a size on the receipt to track the per-unit price.'}
+          </span>
+        </div>
+      )}
       <LineChart series={series} months={labels} />
       <div className="trend-legend">
         {series.map((s) => {
@@ -285,6 +355,9 @@ function TrendChartBody({
               <div className="legend-meta">
                 <span className="legend-name">
                   {s.product} · <strong>{s.merchant}</strong>
+                  <span className="legend-unit" title={s.unit ? 'comparable per-unit price' : 'size not detected — price per item'}>
+                    {unitLabel(s.unit)}
+                  </span>
                   {s.stale && (
                     <span className="legend-stale" title={`No data for ${s.staleDays} days`}>
                       <Clock size={11} /> stale · {s.staleDays}d
@@ -316,19 +389,21 @@ function TrendChartBody({
 function buildChart(
   comparison: TrendComparison | null,
   products: TrendProduct[],
+  mode: CompareMode,
   preset: Preset,
   from: string,
   to: string,
   rangeInvalid: boolean,
-): { series: ChartSeries[]; labels: string[] } {
-  if (!comparison || (comparison.lines.length === 0 && comparison.ownHistory.length === 0)) {
-    return { series: [], labels: [] }
+): { series: ChartSeries[]; labels: string[]; unitWarning: boolean } {
+  // Only the active mode's source feeds the chart — own purchases or the market trend, never both.
+  const sourceLines = mode === 'market' ? comparison?.lines ?? [] : comparison?.ownHistory ?? []
+  if (!comparison || sourceLines.length === 0) {
+    return { series: [], labels: [], unitWarning: false }
   }
 
   const nameById = new Map(products.map((p) => [p.id, p.name]))
   const weekSet = new Set<string>()
-  comparison.lines.forEach((l) => l.points.forEach((pt) => weekSet.add(pt.weekStart)))
-  comparison.ownHistory.forEach((l) => l.points.forEach((pt) => weekSet.add(pt.weekStart)))
+  sourceLines.forEach((l) => l.points.forEach((pt) => weekSet.add(pt.weekStart)))
   const weeks = [...weekSet]
     .sort()
     .filter((w) => inRange(new Date(`${w}T00:00:00Z`), preset, from, to, rangeInvalid))
@@ -338,49 +413,56 @@ function buildChart(
     return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
   })
 
-  // Market lines first (solid, one per store), then the caller's own purchases (dashed,
-  // one per product) — never blended, so own vs market stays honest (§6.5.2).
-  const marketSeries: ChartSeries[] = comparison.lines.map((l, i) => {
-    const median = new Map(l.points.map((pt) => [pt.weekStart, pt.median]))
-    const discount = new Map(l.points.map((pt) => [pt.weekStart, pt.discountMedian]))
-    const product = nameById.get(l.productId) ?? l.productId
-    return {
-      id: `${l.productId}|${l.merchantId}`,
-      product,
-      merchant: l.merchantName,
-      name: `${product} · ${l.merchantName}`,
-      color: SERIES_COLORS[i % SERIES_COLORS.length],
-      data: weeks.map((w) => median.get(w) ?? null),
-      discounts: weeks.map((w) => discount.get(w) ?? null),
-      stale: l.stale,
-      staleDays: l.staleDays,
-      own: false,
-    }
-  })
-
-  const ownSeries: ChartSeries[] = comparison.ownHistory.map((l, i) => {
-    const median = new Map(l.points.map((pt) => [pt.weekStart, pt.median]))
-    const discount = new Map(l.points.map((pt) => [pt.weekStart, pt.discountMedian]))
-    const product = nameById.get(l.productId) ?? l.productId
-    return {
-      id: `own|${l.productId}`,
-      product,
-      merchant: OWN_LABEL,
-      name: `${product} · ${OWN_LABEL}`,
-      color: SERIES_COLORS[i % SERIES_COLORS.length],
-      data: weeks.map((w) => median.get(w) ?? null),
-      discounts: weeks.map((w) => discount.get(w) ?? null),
-      stale: false,
-      staleDays: 0,
-      own: true,
-    }
-  })
+  // Own vs market are never blended, so the comparison stays honest (§6.5.2). Market emits
+  // one solid line per store; own emits one dashed line per product.
+  const modeSeries: ChartSeries[] =
+    mode === 'market'
+      ? comparison.lines.map((l, i) => {
+          const median = new Map(l.points.map((pt) => [pt.weekStart, pt.median]))
+          const discount = new Map(l.points.map((pt) => [pt.weekStart, pt.discountMedian]))
+          const product = nameById.get(l.productId) ?? l.productId
+          return {
+            id: `${l.productId}|${l.merchantId}`,
+            product,
+            merchant: l.merchantName,
+            name: `${product} · ${l.merchantName}`,
+            color: SERIES_COLORS[i % SERIES_COLORS.length],
+            data: weeks.map((w) => median.get(w) ?? null),
+            discounts: weeks.map((w) => discount.get(w) ?? null),
+            stale: l.stale,
+            staleDays: l.staleDays,
+            own: false,
+            unit: l.unit,
+          }
+        })
+      : comparison.ownHistory.map((l, i) => {
+          const median = new Map(l.points.map((pt) => [pt.weekStart, pt.median]))
+          const discount = new Map(l.points.map((pt) => [pt.weekStart, pt.discountMedian]))
+          const product = nameById.get(l.productId) ?? l.productId
+          return {
+            id: `own|${l.productId}`,
+            product,
+            merchant: OWN_LABEL,
+            name: `${product} · ${OWN_LABEL}`,
+            color: SERIES_COLORS[i % SERIES_COLORS.length],
+            data: weeks.map((w) => median.get(w) ?? null),
+            discounts: weeks.map((w) => discount.get(w) ?? null),
+            stale: false,
+            staleDays: 0,
+            own: true,
+            unit: l.unit,
+          }
+        })
 
   // A line with no points in the visible range adds only noise to the legend.
-  const visible = [...marketSeries, ...ownSeries].filter(
+  const visible = modeSeries.filter(
     (s) => s.data.some((v) => v !== null) || s.discounts.some((v) => v !== null),
   )
-  return { series: visible, labels }
+  // Honesty guard: warn when any visible line has an unknown size (per-item) or the visible
+  // lines mix units — those lines are NOT directly comparable across stores.
+  const units = new Set(visible.map((s) => s.unit))
+  const unitWarning = units.has(null) || [...units].filter((u) => u !== null).length > 1
+  return { series: visible, labels, unitWarning }
 }
 
 function daysBack(n: number): Date {
