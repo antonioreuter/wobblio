@@ -73,8 +73,14 @@ export STAGE
 # so dev migrations never touch the prod database.
 if [[ "$STAGE" == "prod" ]]; then
   DB_SECRET_PARAM="/shared/db/wobblio/secret-arn"
+  DB_NAME_EXPECTED="wobblio"
+  DB_OWNER_ROLE="wobblio_app"
+  DB_RUNTIME_ROLE="wobblio_runtime"
 else
   DB_SECRET_PARAM="/shared/db/wobblio_${STAGE}/secret-arn"
+  DB_NAME_EXPECTED="wobblio_${STAGE}"
+  DB_OWNER_ROLE="wobblio_${STAGE}_app"
+  DB_RUNTIME_ROLE="wobblio_${STAGE}_runtime"
 fi
 
 START_TIME=$(date +%s)
@@ -87,7 +93,7 @@ info "Region:  $AWS_REGION"
 
 step "Pre-flight checks"
 
-for cmd in aws node npm npx jq; do
+for cmd in aws node npm npx jq psql; do
   command -v "$cmd" >/dev/null 2>&1 || fail "'$cmd' not found on PATH"
 done
 ok "Required tools present"
@@ -178,27 +184,42 @@ ok "WobblioBackendStack-${STAGE} deployed"
 if [[ $SKIP_MIGRATIONS -eq 0 ]]; then
   step "Database migrations"
 
-  SECRET_ARN=$(aws ssm get-parameter \
-    --name "$DB_SECRET_PARAM" \
-    --profile "$AWS_PROFILE" --region "$AWS_REGION" \
-    --query Parameter.Value --output text)
-
-  SECRET_JSON=$(aws secretsmanager get-secret-value \
-    --secret-id "$SECRET_ARN" \
+  # Migrations create objects — including SECURITY DEFINER helpers — that MUST be owned
+  # by the table owner so they bypass RLS (Postgres exempts a table's owner from its
+  # policies; we never use FORCE RLS). The per-stage runtime role is a non-owner with no
+  # CREATE privilege, so we connect as the RDS master and adopt the owner role via the
+  # libpq `options` GUC (master is a member of the owner role). dbname scopes us to this
+  # stage's database; the guard below refuses to run against the wrong one.
+  MASTER_JSON=$(aws secretsmanager get-secret-value \
+    --secret-id "shared/db/master" \
     --profile "$AWS_PROFILE" --region "$AWS_REGION" \
     --query SecretString --output text)
+  DB_USER=$(echo "$MASTER_JSON" | jq -r .username)
+  DB_PASS=$(echo "$MASTER_JSON" | jq -r .password)
+  DB_HOST=$(aws ssm get-parameter --name "/shared/db/endpoint" \
+    --profile "$AWS_PROFILE" --region "$AWS_REGION" --query Parameter.Value --output text)
+  DB_PORT=$(aws ssm get-parameter --name "/shared/db/port" \
+    --profile "$AWS_PROFILE" --region "$AWS_REGION" --query Parameter.Value --output text)
+  DB_NAME="$DB_NAME_EXPECTED"
 
-  DB_USER=$(echo "$SECRET_JSON" | jq -r .username)
-  DB_PASS=$(echo "$SECRET_JSON" | jq -r .password)
-  DB_HOST=$(echo "$SECRET_JSON" | jq -r .host)
-  DB_PORT=$(echo "$SECRET_JSON" | jq -r .port)
-  DB_NAME=$(echo "$SECRET_JSON" | jq -r .dbname)
+  # Confirm the owner role exists and master can adopt it before we touch the schema.
+  ROLE_OK=$(PGPASSWORD="$DB_PASS" psql "sslmode=require host=${DB_HOST} port=${DB_PORT} dbname=${DB_NAME} user=${DB_USER}" \
+    -tAq -c "SELECT pg_has_role('${DB_USER}', '${DB_OWNER_ROLE}', 'MEMBER');" 2>/dev/null || echo "f")
+  [[ "$ROLE_OK" == "t" ]] || fail "master '${DB_USER}' cannot assume owner role '${DB_OWNER_ROLE}' on ${DB_NAME}"
 
-  export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=no-verify"
-  info "Running migrations against $DB_HOST/$DB_NAME..."
+  export DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=no-verify&options=-c%20role%3D${DB_OWNER_ROLE}"
+  info "Running migrations against ${DB_HOST}/${DB_NAME} as owner '${DB_OWNER_ROLE}'..."
 
   (cd "$INFRA_DIR" && npm run migrate:up)
-  ok "Migrations applied"
+  ok "Migrations applied (objects owned by ${DB_OWNER_ROLE})"
+
+  # Reconcile function EXECUTE grants: a new SECURITY DEFINER helper is called by the
+  # runtime role, but EXECUTE is only auto-granted once provisioning's default privileges
+  # are in place. This idempotent re-grant keeps the app able to call every helper.
+  PGPASSWORD="$DB_PASS" psql "sslmode=require host=${DB_HOST} port=${DB_PORT} dbname=${DB_NAME} user=${DB_USER}" \
+    -v ON_ERROR_STOP=1 -q \
+    -c "SET ROLE ${DB_OWNER_ROLE}; GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO ${DB_RUNTIME_ROLE};"
+  ok "Function EXECUTE grants reconciled for ${DB_RUNTIME_ROLE}"
 else
   warn "Skipping database migrations (--skip-migrations)"
 fi
