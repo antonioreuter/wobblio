@@ -44,7 +44,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 export function computeDailySeriesForMonth(
   invoices: Invoice[],
   now: Date
-): { day: string; total: number; isWeekend: boolean; label: string }[] {
+): { day: string; total: number; isWeekend: boolean; weekday: string; dateLabel: string }[] {
   const currentMonth = now.getUTCMonth()
   const currentYear = now.getUTCFullYear()
   const daysInMonth = new Date(Date.UTC(currentYear, currentMonth + 1, 0)).getUTCDate()
@@ -66,12 +66,14 @@ export function computeDailySeriesForMonth(
     const date = new Date(Date.UTC(currentYear, currentMonth, day))
     const dayOfWeek = date.getUTCDay()
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
-    const label = `${WEEKDAYS[dayOfWeek]}, ${MONTHS[currentMonth]} ${day}`
+    const weekday = WEEKDAYS[dayOfWeek]
+    const dateLabel = `${weekday}, ${MONTHS[currentMonth]} ${day}`
     return {
       day: String(day),
       total: byDay.get(day) ?? 0,
       isWeekend,
-      label,
+      weekday,
+      dateLabel,
     }
   })
 }

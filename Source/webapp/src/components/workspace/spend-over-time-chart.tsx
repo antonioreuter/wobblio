@@ -1,35 +1,108 @@
 'use client'
 
-import { useState, type MouseEvent } from 'react'
-import { Table2, Calendar, BarChart3 } from 'lucide-react'
+import { useState, useMemo, type MouseEvent } from 'react'
+import { Table2, Calendar, BarChart3, X } from 'lucide-react'
 import { Card } from '@/components/ds'
 import { SPEND_OVER_TIME } from './invoice-data'
 
 const eur = (v: number) => `€${v.toFixed(2)}`
 
+const W = 760
+const H = 300
+const padL = 52
+const padR = 18
+const padT = 20
+const padB = 34
+const plotW = W - padL - padR
+const plotH = H - padT - padB
+
+const getX = (i: number, n: number) => padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW)
+
 interface SpendOverTimeChartProps {
   data?: Array<{ month: string; total: number }>
-  dailyData?: Array<{ day: string; total: number; isWeekend?: boolean; label?: string }>
+  dailyData?: Array<{ day: string; total: number; isWeekend?: boolean; weekday?: string; dateLabel?: string }>
 }
 
 export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeChartProps = {}) {
   const [hover, setHover] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
   const [mode, setMode] = useState<'month' | 'quarter'>('month')
+  
+  const [selection, setSelection] = useState<{ start: number; end: number } | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+
   const monthlyData = dataProp ?? SPEND_OVER_TIME
   // Quarter view shows the trailing 3 months; month view shows the daily series.
   const data = mode === 'month' ? (dailyData ?? monthlyData) : monthlyData.slice(-3)
 
-  const W = 760, H = 300, padL = 52, padR = 18, padT = 20, padB = 34
-  const plotW = W - padL - padR
-  const plotH = H - padT - padB
   const n = data.length
+
+  const selectionInfo = useMemo(() => {
+    if (!selection || mode !== 'month') return null
+    const minIdx = Math.min(selection.start, selection.end)
+    const maxIdx = Math.max(selection.start, selection.end)
+    
+    let sum = 0
+    for (let i = minIdx; i <= maxIdx; i++) {
+      sum += data[i].total
+    }
+
+    const startItem = data[minIdx]
+    const endItem = data[maxIdx]
+    
+    const getDetailedLabel = (item: typeof startItem) => {
+      return 'dateLabel' in item && item.dateLabel ? item.dateLabel : ('month' in item ? item.month : ('day' in item ? item.day : ''))
+    }
+
+    const labelStart = getDetailedLabel(startItem)
+    const labelEnd = getDetailedLabel(endItem)
+    
+    const dateRangeLabel = minIdx === maxIdx ? labelStart : `${labelStart} – ${labelEnd}`
+    
+    return {
+      minIdx,
+      maxIdx,
+      totalSpent: sum,
+      dateRangeLabel,
+      xStart: getX(minIdx, n),
+      xEnd: getX(maxIdx, n),
+    }
+  }, [selection, data, mode, n])
+
+  const getIndexFromX = (clientX: number, currentTarget: SVGRectElement) => {
+    const rect = currentTarget.getBoundingClientRect()
+    const px = ((clientX - rect.left) / rect.width) * W
+    let i = Math.round(((px - padL) / plotW) * (n - 1))
+    i = Math.max(0, Math.min(n - 1, i))
+    return i
+  }
+
+  const handleMouseDown = (e: MouseEvent<SVGRectElement>) => {
+    if (mode !== 'month') return
+    const idx = getIndexFromX(e.clientX, e.currentTarget)
+    setSelection({ start: idx, end: idx })
+    setIsDragging(true)
+  }
+
+  const handleMouseMove = (e: MouseEvent<SVGRectElement>) => {
+    const i = getIndexFromX(e.clientX, e.currentTarget)
+    setHover(i)
+
+    if (isDragging && selection) {
+      setSelection((prev) => prev ? { ...prev, end: i } : null)
+    }
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+  }
+
   const totals = data.map((d) => d.total)
   const lo = Math.min(...totals)
   const hi = Math.max(...totals)
   const yMin = Math.max(0, lo - (hi - lo) * 0.4)
   const yMax = hi + (hi - lo) * 0.2
-  const x = (i: number) => padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW)
+  const x = (i: number) => getX(i, n)
   const y = (v: number) => padT + (1 - (v - yMin) / (yMax - yMin || 1)) * plotH
 
   const ticks = 4
@@ -38,16 +111,7 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
   const areaPts = `${padL},${y(yMin)} ${linePts} ${x(n - 1)},${y(yMin)}`
   const mtdIndex = n - 1
   const totalShown = totals.reduce((a, b) => a + b, 0)
-
   const getLabel = (d: { month?: string; day?: string; total: number }) => ('month' in d ? d.month : d.day) ?? 'Unknown'
-
-  const onMove = (e: MouseEvent<SVGRectElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    const px = ((e.clientX - rect.left) / rect.width) * W
-    let i = Math.round(((px - padL) / plotW) * (n - 1))
-    i = Math.max(0, Math.min(n - 1, i))
-    setHover(i)
-  }
 
   return (
     <Card className="panel">
@@ -134,6 +198,18 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
                 <rect x={padL} y={padT} width={plotW} height={plotH} />
               </clipPath>
             </defs>
+            {/* Selection range highlight */}
+            {selectionInfo && (
+              <g clipPath="url(#plotClip)">
+                <rect
+                  x={selectionInfo.xStart - (plotW / (n - 1 || 1)) / 2}
+                  y={padT}
+                  width={selectionInfo.xEnd - selectionInfo.xStart + (plotW / (n - 1 || 1))}
+                  height={plotH}
+                  className="chart-selection-highlight"
+                />
+              </g>
+            )}
             {/* Weekend background bands */}
             {mode === 'month' && (
               <g clipPath="url(#plotClip)">
@@ -160,16 +236,25 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
               </g>
             ))}
             {data.map((d, i) => {
-              const label = getLabel(d)
+              const isDaily = 'weekday' in d
               const isWeekend = 'isWeekend' in d && d.isWeekend
+              const weekday = ('weekday' in d && d.weekday) ? d.weekday : ''
+              const day = ('day' in d && d.day) ? d.day : ''
+              
+              const shouldShow = !isDaily || n <= 10 || weekday === 'Mon' || weekday === 'Sat'
+
+              const displayLabel = isDaily 
+                ? (isWeekend ? `${weekday.toUpperCase()} ${day}` : `${weekday} ${day}`)
+                : getLabel(d)
+
               return (
                 <text
-                  key={label}
+                  key={getLabel(d)}
                   x={x(i)}
                   y={H - 12}
                   className={`chart-xlabel ${isWeekend ? 'is-weekend' : ''}`}
                 >
-                  {label}
+                  {shouldShow ? displayLabel : ''}
                 </text>
               )
             })}
@@ -201,19 +286,26 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
               />
             )}
             <rect
+              data-testid="chart-overlay"
               x={padL}
               y={padT}
               width={plotW}
               height={plotH}
               fill="transparent"
-              onMouseMove={onMove}
-              onMouseLeave={() => setHover(null)}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={() => {
+                setHover(null)
+                setIsDragging(false)
+              }}
+              style={{ cursor: mode === 'month' ? 'ew-resize' : 'default' }}
             />
           </svg>
           {hover !== null && (
             <div className="chart-tip" style={{ left: `${(x(hover) / W) * 100}%` }}>
               <div className="chart-tip-head">
-                {'label' in data[hover] && data[hover].label ? data[hover].label : getLabel(data[hover])}
+                {'dateLabel' in data[hover] && data[hover].dateLabel ? data[hover].dateLabel : getLabel(data[hover])}
                 {hover === mtdIndex ? ' · MTD' : ''}
               </div>
               <div className="chart-tip-row">
@@ -221,6 +313,23 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
                 <span className="nm">Total spend</span>
                 <span className="vl">{eur(data[hover].total)}</span>
               </div>
+            </div>
+          )}
+          {/* Summary Badge for selection */}
+          {selectionInfo && (
+            <div className="chart-selection-badge">
+              <div className="badge-meta">
+                <span className="lbl">Selected Period: {selectionInfo.dateRangeLabel}</span>
+                <span className="val">Total Spent: {eur(selectionInfo.totalSpent)}</span>
+              </div>
+              <button
+                type="button"
+                className="badge-close"
+                onClick={() => setSelection(null)}
+                aria-label="Clear selection"
+              >
+                <X size={14} />
+              </button>
             </div>
           )}
         </div>

@@ -43,7 +43,8 @@ describe('invoice-metrics Unit Tests', () => {
         day: '13',
         total: 35.50,
         isWeekend: true,
-        label: 'Sat, Jun 13',
+        weekday: 'Sat',
+        dateLabel: 'Sat, Jun 13',
       })
 
       // Verify June 14 (Day 14) - Sunday
@@ -51,7 +52,8 @@ describe('invoice-metrics Unit Tests', () => {
         day: '14',
         total: 15.00,
         isWeekend: true,
-        label: 'Sun, Jun 14',
+        weekday: 'Sun',
+        dateLabel: 'Sun, Jun 14',
       })
 
       // Verify June 15 (Day 15) - Monday
@@ -59,7 +61,8 @@ describe('invoice-metrics Unit Tests', () => {
         day: '15',
         total: 5.00,
         isWeekend: false,
-        label: 'Mon, Jun 15',
+        weekday: 'Mon',
+        dateLabel: 'Mon, Jun 15',
       })
 
       // Verify June 1 (Day 1) - Monday (June 1st, 2026 was a Monday)
@@ -67,7 +70,8 @@ describe('invoice-metrics Unit Tests', () => {
         day: '1',
         total: 0.00,
         isWeekend: false,
-        label: 'Mon, Jun 1',
+        weekday: 'Mon',
+        dateLabel: 'Mon, Jun 1',
       })
     })
   })
