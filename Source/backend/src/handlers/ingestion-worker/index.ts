@@ -39,6 +39,16 @@ const COUNTS_TOWARD_BUDGET = new Set(['PARSED', 'NEEDS_REVIEW']);
 // invoice out of PROCESSING.
 const MAX_RECEIVE_COUNT = 3;
 
+// PostgreSQL SQLSTATE class 23 = integrity_constraint_violation (not-null, FK, unique,
+// check). These are deterministic: the same parsed row fails every redelivery, so
+// retrying only burns the redrive budget and DLQs a message no replay can fix.
+const PG_CONSTRAINT_VIOLATION_CLASS = '23';
+
+function isNonRetryable(err: unknown): boolean {
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' && code.startsWith(PG_CONSTRAINT_VIOLATION_CLASS);
+}
+
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 
 export const handler = async (event: SQSEvent, context: Context): Promise<SQSBatchResponse> => {
@@ -150,6 +160,17 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         err: err instanceof Error ? err : new Error(String(err)),
         cause: cause instanceof Error ? cause : cause ? new Error(String(cause)) : undefined,
       });
+      // Deterministic constraint violations can't be fixed by replay. Fail the invoice
+      // now and drop the message (omit it from batchItemFailures so SQS deletes it) —
+      // no wasted retries, no DLQ noise. The structured error log above is the record.
+      if (isNonRetryable(err)) {
+        log.error('non-retryable constraint violation, failing fast', {
+          messageId: record.messageId,
+          code: (err as { code?: string }).code,
+        });
+        await markInvoiceFailed(client, record, log);
+        continue;
+      }
       // Final delivery before the DLQ: move the invoice out of the non-terminal
       // PROCESSING state so it surfaces as failed and becomes deletable (the
       // rolled-back run persisted no status). Best-effort and isolated — never throws.
