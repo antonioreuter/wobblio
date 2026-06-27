@@ -280,12 +280,19 @@ async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayPro
     new HouseholdRepositoryAdapter(db),
     new SsmUploadQuotaAdapter(REGION),
   );
-  // Report against whatever quota actually backs this user's uploads: the shared
-  // household pool when they're in a 2+ member household, else their personal counter.
+  // Cap/remaining follow whatever quota backs new uploads: the shared household pool
+  // for a 2+ member household, else the personal counter. "Used" counts this week's
+  // scans across BOTH buckets — a member's new uploads draw the pool, but personal-space
+  // uploads (incl. pre-pooling history this week) still count as scans they made.
+  // Outside a pool poolUsed is 0, so this collapses to the plain personal count.
   const { cap, used } = await withTenantTx(db, user.id, async () => {
     const allowance = await resolver.resolve({ userId: user.id, role: user.role });
-    const usedCount = await quotaService.getUsed(allowance.quotaOwnerId, allowance.counter, new Date());
-    return { cap: allowance.cap, used: usedCount };
+    const now = new Date();
+    const personalUsed = await quotaService.getUsed(user.id, 'UPLOADS', now);
+    const poolUsed = allowance.isPool
+      ? await quotaService.getUsed(allowance.quotaOwnerId, 'HOUSEHOLD_UPLOADS', now)
+      : 0;
+    return { cap: allowance.cap, used: personalUsed + poolUsed };
   });
   // TESTER/ADMIN (and unlimited household pools) have an infinite cap; Infinity is not
   // representable in JSON (serializes to null), so signal it explicitly and null the numerics.
