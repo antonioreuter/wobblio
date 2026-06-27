@@ -5,6 +5,8 @@ import type {
   OwnPurchaseQueryInput,
 } from '@core/ports/data-intelligence/IOwnPurchaseHistoryQuery';
 
+import type { BaseUnit } from '@core/domain/unitSize';
+
 interface WeeklyRow {
   product_id: string;
   week_start: string;
@@ -12,6 +14,7 @@ interface WeeklyRow {
   discount_median: string | null;
   purchase_count: string;
   last_purchased_on: string;
+  unit: BaseUnit | null;
 }
 
 // The caller's OWN purchase history over the RLS-scoped invoice_line store — the db
@@ -31,7 +34,9 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
       `WITH lines AS (
          SELECT l.product_id,
                 date_trunc('week', i.transaction_date)::date AS week_start,
-                l.normalized_unit_price AS price,
+                (l.line_total / NULLIF(l.quantity, 0)) AS pack_price,
+                l.normalized_unit_price,
+                l.base_unit,
                 l.is_discount,
                 i.transaction_date
          FROM invoice_line l
@@ -40,7 +45,8 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
            AND i.status IN ('PARSED', 'NEEDS_REVIEW')
            AND i.transaction_date IS NOT NULL
            AND i.transaction_date >= CURRENT_DATE - ($2::int * 7)
-           AND l.normalized_unit_price IS NOT NULL
+           AND l.line_total > 0
+           AND l.quantity > 0
            AND l.is_deposit_or_fee = false
            AND (
              (i.location_status = 'RESOLVED'
@@ -50,28 +56,37 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
                 AND (i.location_country_code = $3 OR i.location_country_code IS NULL))
            )
        ),
-       weekly AS (
-         SELECT product_id, week_start,
-                percentile_cont(0.5) WITHIN GROUP (ORDER BY price)
-                  FILTER (WHERE NOT is_discount) AS median,
-                percentile_cont(0.5) WITHIN GROUP (ORDER BY price)
-                  FILTER (WHERE is_discount) AS discount_median
-         FROM lines
-         GROUP BY product_id, week_start
-       ),
        totals AS (
          SELECT product_id,
                 COUNT(*) AS purchase_count,
-                MAX(transaction_date) AS last_purchased_on
+                MAX(transaction_date) AS last_purchased_on,
+                -- per-unit only when every own line has a per-unit price and one base unit;
+                -- otherwise the product's own history is served as €/item (pack price).
+                (COUNT(*) FILTER (WHERE normalized_unit_price IS NULL) = 0
+                   AND COUNT(DISTINCT base_unit) = 1) AS unit_known,
+                MIN(base_unit) AS base_unit
          FROM lines
          GROUP BY product_id
+       ),
+       weekly AS (
+         SELECT l.product_id, l.week_start,
+                percentile_cont(0.5) WITHIN GROUP (
+                  ORDER BY CASE WHEN t.unit_known THEN l.normalized_unit_price ELSE l.pack_price END)
+                  FILTER (WHERE NOT l.is_discount) AS median,
+                percentile_cont(0.5) WITHIN GROUP (
+                  ORDER BY CASE WHEN t.unit_known THEN l.normalized_unit_price ELSE l.pack_price END)
+                  FILTER (WHERE l.is_discount) AS discount_median
+         FROM lines l
+         JOIN totals t ON t.product_id = l.product_id
+         GROUP BY l.product_id, l.week_start
        )
        SELECT w.product_id,
               w.week_start::text AS week_start,
               w.median::text AS median,
               w.discount_median::text AS discount_median,
               t.purchase_count::text AS purchase_count,
-              t.last_purchased_on::text AS last_purchased_on
+              t.last_purchased_on::text AS last_purchased_on,
+              CASE WHEN t.unit_known THEN t.base_unit ELSE NULL END AS unit
        FROM weekly w
        JOIN totals t ON t.product_id = w.product_id
        ORDER BY w.product_id, w.week_start`,
@@ -94,6 +109,7 @@ function groupIntoLines(rows: WeeklyRow[]): OwnPurchaseLine[] {
         points: [],
         purchaseCount: parseInt(row.purchase_count, 10),
         lastPurchasedOn: row.last_purchased_on,
+        unit: row.unit,
       };
       lines.set(row.product_id, line);
     }

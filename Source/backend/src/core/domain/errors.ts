@@ -133,6 +133,7 @@ export class SchemaValidationError extends Error {
   }
 }
 
+
 export class StaleUploadError extends Error {
   constructor(readonly invoiceId: string) {
     super(`Upload object missing or expired for invoice ${invoiceId}`);

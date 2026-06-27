@@ -5,6 +5,8 @@ import type {
   PriceTrendQueryInput,
 } from '@core/ports/data-intelligence/IPriceTrendQuery';
 
+import type { BaseUnit } from '@core/domain/unitSize';
+
 interface WeeklyRow {
   product_id: string;
   merchant_id: string;
@@ -14,6 +16,7 @@ interface WeeklyRow {
   discount_median: string | null;
   observation_count: string;
   last_observed_on: string;
+  unit: BaseUnit | null;
 }
 
 // §6.5.1 comparison over the global, RLS-exempt price_observation store (no tenant
@@ -21,6 +24,11 @@ interface WeeklyRow {
 // below the threshold is dropped here and never reaches the service. Weekly medians
 // split discounted from regular observations — promo prices are a distinct signal,
 // not blended into the median (§6.5.1).
+//
+// Price unit follows the cell: when every observation shares one known pack size the median
+// is the comparable €/unit (normalized_unit_price); otherwise it falls back to €/item
+// (pack_price), which is honest within a SKU over time but NOT cross-comparable. The chosen
+// unit is surfaced so the UI can gate cross-store comparisons.
 export class PriceTrendQueryAdapter implements IPriceTrendQuery {
   constructor(private readonly db: Pool | PoolClient) {}
 
@@ -29,7 +37,9 @@ export class PriceTrendQueryAdapter implements IPriceTrendQuery {
       `WITH obs AS (
          SELECT po.product_id, po.merchant_id,
                 date_trunc('week', po.observed_on)::date AS week_start,
-                po.normalized_unit_price AS price,
+                po.pack_price,
+                po.normalized_unit_price,
+                po.base_unit,
                 po.was_discounted,
                 po.observed_on
          FROM price_observation po
@@ -42,16 +52,23 @@ export class PriceTrendQueryAdapter implements IPriceTrendQuery {
        cell AS (
          SELECT product_id, merchant_id,
                 COUNT(*) AS observation_count,
-                MAX(observed_on) AS last_observed_on
+                MAX(observed_on) AS last_observed_on,
+                -- unit is "known" only when every observation has a per-unit price and they
+                -- all share a single base unit; otherwise the cell serves pack price.
+                (COUNT(*) FILTER (WHERE normalized_unit_price IS NULL) = 0
+                   AND COUNT(DISTINCT base_unit) = 1) AS unit_known,
+                MIN(base_unit) AS base_unit
          FROM obs
          GROUP BY product_id, merchant_id
          HAVING COUNT(*) >= $5::int
        ),
        weekly AS (
          SELECT o.product_id, o.merchant_id, o.week_start,
-                percentile_cont(0.5) WITHIN GROUP (ORDER BY o.price)
+                percentile_cont(0.5) WITHIN GROUP (
+                  ORDER BY CASE WHEN c.unit_known THEN o.normalized_unit_price ELSE o.pack_price END)
                   FILTER (WHERE NOT o.was_discounted) AS median,
-                percentile_cont(0.5) WITHIN GROUP (ORDER BY o.price)
+                percentile_cont(0.5) WITHIN GROUP (
+                  ORDER BY CASE WHEN c.unit_known THEN o.normalized_unit_price ELSE o.pack_price END)
                   FILTER (WHERE o.was_discounted) AS discount_median
          FROM obs o
          JOIN cell c ON c.product_id = o.product_id AND c.merchant_id = o.merchant_id
@@ -62,7 +79,8 @@ export class PriceTrendQueryAdapter implements IPriceTrendQuery {
               w.median::text AS median,
               w.discount_median::text AS discount_median,
               c.observation_count::text AS observation_count,
-              c.last_observed_on::text AS last_observed_on
+              c.last_observed_on::text AS last_observed_on,
+              CASE WHEN c.unit_known THEN c.base_unit ELSE NULL END AS unit
        FROM weekly w
        JOIN cell c ON c.product_id = w.product_id AND c.merchant_id = w.merchant_id
        JOIN merchant m ON m.id = w.merchant_id
@@ -89,6 +107,7 @@ function groupIntoLines(rows: WeeklyRow[]): PriceTrendLine[] {
         points: [],
         observationCount: parseInt(row.observation_count, 10),
         lastObservedOn: row.last_observed_on,
+        unit: row.unit,
       };
       lines.set(key, line);
     }

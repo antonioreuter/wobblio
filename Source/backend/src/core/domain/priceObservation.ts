@@ -40,8 +40,10 @@ export interface PriceObservationInput {
   regionCode: string;
   observedOn: string;
   packPrice: number;
-  normalizedUnitPrice: number;
-  baseUnit: BaseUnit;
+  // Per-unit fields are optional enrichment: present only when a real pack size was
+  // resolved. pack_price is the always-available primary signal (§6.5).
+  normalizedUnitPrice: number | null;
+  baseUnit: BaseUnit | null;
   currency: string;
   wasDiscounted: boolean;
   quarantined: boolean;
@@ -56,13 +58,13 @@ function isDiscounted(line: ObservationLine, packPrice: number): boolean {
   return line.listUnitPrice !== null && packPrice < line.listUnitPrice - DISCOUNT_EPSILON_EUR;
 }
 
+// A line is emittable on its pack price alone: line_total/quantity is always available
+// from the receipt. The per-unit price is no longer a gate — receipts routinely omit pack
+// size, and blocking on it starved the index (§6.5). Size, when known, only enriches.
 function isEmittable(line: ObservationLine): boolean {
   return (
     !line.isDepositOrFee &&
     line.productId !== null &&
-    line.baseUnit !== null &&
-    line.normalizedUnitPrice !== null &&
-    line.normalizedUnitPrice > 0 &&
     line.quantity > 0 &&
     line.lineTotal > 0
   );
@@ -86,8 +88,8 @@ export function buildPriceObservations(input: ObservationBuildInput): PriceObser
       regionCode,
       observedOn: input.transactionDate,
       packPrice,
-      normalizedUnitPrice: line.normalizedUnitPrice as number,
-      baseUnit: line.baseUnit as BaseUnit,
+      normalizedUnitPrice: line.normalizedUnitPrice,
+      baseUnit: line.baseUnit,
       currency,
       wasDiscounted: isDiscounted(line, packPrice),
       quarantined: input.merchantProvisional || line.productProvisional,

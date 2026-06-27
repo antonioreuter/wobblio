@@ -1,4 +1,5 @@
 import type { WeeklyMedianPoint } from './IPriceTrendQuery';
+import type { BaseUnit } from '../../domain/unitSize';
 
 // The caller's OWN purchase history for the comparison chart — read from the RLS-scoped
 // invoice_line store, NOT the de-identified price_observation store. No quorum gate: a
@@ -22,6 +23,9 @@ export interface OwnPurchaseLine {
   points: WeeklyMedianPoint[];
   purchaseCount: number; // total own purchase lines in the window
   lastPurchasedOn: string; // ISO date of the most recent own purchase
+  // Comparable unit when every own line for this product shares a known pack size (median is
+  // €/unit); null when size is unknown (median is €/item).
+  unit: BaseUnit | null;
 }
 
 export interface IOwnPurchaseHistoryQuery {

@@ -94,20 +94,25 @@ describe('buildPriceObservations', () => {
     expect(row.wasDiscounted).toBe(false);
   });
 
-  it('skips deposit/fee, unmatched, unpriced, and non-positive lines', () => {
+  it('skips deposit/fee, unmatched, and non-positive lines', () => {
     const result = buildPriceObservations(
       input({
         lines: [
           line({ isDepositOrFee: true }),
           line({ productId: null }),
-          line({ baseUnit: null }),
-          line({ normalizedUnitPrice: null }),
-          line({ normalizedUnitPrice: 0 }),
           line({ quantity: 0 }),
           line({ lineTotal: -1 }),
         ],
       }),
     );
     expect(result).toEqual([]);
+  });
+
+  it('emits on pack price when the pack size is unknown, with null per-unit fields', () => {
+    const result = buildPriceObservations(
+      input({ lines: [line({ baseUnit: null, normalizedUnitPrice: null, quantity: 2, lineTotal: 3 })] }),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ packPrice: 1.5, normalizedUnitPrice: null, baseUnit: null });
   });
 });
