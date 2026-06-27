@@ -13,6 +13,12 @@ import { PRODUCT_EXPANSION_PROMPT, PRODUCT_EXPANSION_PROMPT_VERSION } from '../.
 
 const PROVISIONAL_CONFIDENCE = 0.5;
 
+// Large receipts produce expansion JSON that overran the model's output ceiling and
+// truncated mid-JSON (invalid JSON → DLQ). Chunk the unmatched lines so each call's
+// output stays well under the cap; positional alignment is preserved by processing
+// chunks in order.
+const EXPANSION_BATCH = 20;
+
 interface ResolvedProduct {
   productId: string | null;
   categoryId: string | null;
@@ -45,9 +51,7 @@ export class ProductNormalizer implements IProductNormalizer {
     }
 
     const unmatched = exact.flatMap((match, index) => (match ? [] : [index]));
-    const expansion = unmatched.length > 0
-      ? await this.expand(unmatched.map(index => lines[index].rawText))
-      : { items: [], suggestedTags: [] };
+    const expansion = await this.expandBatched(unmatched.map(index => lines[index].rawText));
 
     const resolved = new Array<ResolvedProduct>(lines.length);
     exact.forEach((match, index) => {
@@ -98,6 +102,20 @@ export class ProductNormalizer implements IProductNormalizer {
     });
     await this.catalog.writeAlias({ productId, aliasNormalized: normalizedText, merchantId, source: 'AUTO_LLM' });
     return { productId, categoryId: item.categoryId, baseUnit: item.baseUnit, packSizeBaseUnits: item.packSizeBaseUnits, isDepositOrFee: false, provisional: true, confidence: PROVISIONAL_CONFIDENCE, lowConfidence: false };
+  }
+
+  // Chunk so each expansion call's JSON output stays under the model's token cap; items
+  // concatenate in order (positional), tags union across batches.
+  private async expandBatched(rawTexts: string[]): Promise<ProductExpansion> {
+    if (rawTexts.length === 0) return { items: [], suggestedTags: [] };
+    const items: ExpandedItem[] = [];
+    const tags = new Set<string>();
+    for (let start = 0; start < rawTexts.length; start += EXPANSION_BATCH) {
+      const batch = await this.expand(rawTexts.slice(start, start + EXPANSION_BATCH));
+      items.push(...batch.items);
+      batch.suggestedTags.forEach(tag => tags.add(tag));
+    }
+    return { items, suggestedTags: [...tags] };
   }
 
   private async expand(rawTexts: string[]): Promise<ProductExpansion> {

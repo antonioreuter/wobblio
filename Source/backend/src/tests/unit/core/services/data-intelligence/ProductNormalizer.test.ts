@@ -130,6 +130,18 @@ describe('ProductNormalizer', () => {
     expect(converse).toHaveBeenCalledTimes(1);
   });
 
+  it('chunks expansion for large receipts so output never truncates (one call per ≤20-line batch)', async () => {
+    const many = Array.from({ length: 21 }, (_, i) => line(`Item ${i}`));
+    converse
+      .mockResolvedValueOnce(expansion(Array.from({ length: 20 }, () => item())))
+      .mockResolvedValueOnce(expansion([item()]));
+
+    const result = await sut.normalize('m1', many, COUNTRY);
+
+    expect(converse).toHaveBeenCalledTimes(2);
+    expect(result.lines).toHaveLength(21);
+  });
+
   it('prefers the printed unit size over the LLM/catalog pack size', async () => {
     converse.mockResolvedValue(expansion([item({ pack_size_base_units: 1 })])); // LLM says 1 L
     const withSize: ParsedLine = { rawText: 'Melk 500ML', quantity: 1, lineTotal: 2, unitSizeRaw: '500ML' };
