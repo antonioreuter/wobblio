@@ -7,7 +7,7 @@ the detail.
 | Sub-spec | Status | Landed |
 |---|---|---|
 | 01 Ingestion Telemetry | ✅ Done | 2026-06-29 |
-| 02 Agentic Pipeline Stack | ⬜ Not started | |
+| 02 Agentic Pipeline Stack | ✅ Done | 2026-06-29 |
 | 03 Strands Agent Worker | ⬜ Not started | |
 | 04 Dynamic Queue Routing | ⬜ Not started | |
 | 05 Admin Pipeline Toggle | ⬜ Not started | |
@@ -81,6 +81,47 @@ list in `specs/mvp/14-gdpr-data-lifecycle.md`.
 - No integration test exercising the live INSERT under RLS (cross-tenant read denial). The
   mocked-port unit test covers the contract; add an integration test when the agentic stack lands.
 
-### Next: 02 — Agentic Pipeline Stack
-New `WobblioAgenticPipelineStack` (SQS+DLQ, worker Lambda, IAM, cross-stack wiring). Independent of
-01. Then 03 reuses this telemetry write path with `pipeline_type='STRANDS'`.
+---
+
+## 02 — Agentic Pipeline Stack ✅ (2026-06-29)
+
+Standalone `WobblioAgenticPipelineStack` isolating the agentic worker's compute + queue from
+`WobblioBackendStack`. Deployable alone; the queue gets no traffic until routing (04) flips the flag.
+
+### What shipped
+- **Stack** `Source/infra/src/cdk/stacks/WobblioAgenticPipelineStack.ts`:
+  - `WobblioAgenticQueue` (visibility 300s, KMS via `dbStack.kmsKey`, enforceSSL, redrive
+    `maxReceiveCount:3`) + `WobblioAgenticDLQ` (14-day, KMS).
+  - `WobblioAgenticDLQNotEmptyAlarm` — CloudWatch alarm on `ApproximateNumberOfMessagesVisible > 0`
+    (Maximum, 5-min period, 1 eval). No SNS action wired (spec specifies none).
+  - `WobblioAgenticWorkerLambda` — Node 24, ARM64, 512MB, 300s, reserved concurrency 5; SQS event
+    source `batchSize:1`, `maxConcurrency:5`, `reportBatchItemFailures`.
+  - IAM (mirrors ingestion worker, no wildcards beyond suppressed bedrock/SSM/grant patterns):
+    queue consume, uploads bucket read, KMS, DB secret read, SSM `/shared/db/*` +
+    stage-scoped `models/*`,`tags/*`,`features/*`, bedrock invoke (foundation-model + inference-profile).
+  - Cross-stack export: queue URL → SSM `/wobblio/config/<stage>/queues/agentic_url` (routing 04 reads it).
+- **Skeleton worker** `Source/backend/src/handlers/agentic-worker/index.ts` — no-op SQS handler
+  (empty `batchItemFailures`); agent logic lands in 03. Exists so the stack bundles + deploys now.
+- **Wiring** `bin/wobblio.ts` — instantiated after db/storage (deps on db, storage, config); non-local only.
+- **Test** `Source/infra/test/WobblioAgenticPipelineStack.test.ts` — queue/DLQ/alarm/worker/event-source
+  props, IAM grant assertions, SSM export, **and a cdk-nag `AwsSolutionsChecks` no-error assertion**.
+
+### Validation (2026-06-29)
+- infra vitest: 32 pass (incl. 7 new + the cdk-nag no-un-suppressed-error gate).
+- `tsc --noEmit` infra + backend → clean.
+- Note: a full `cdk synth` of the whole app needs AWS creds/context (backend's `HostedZone.fromLookup`),
+  so cdk-nag is gated locally via the per-stack `AwsSolutionsChecks` aspect in the vitest, not `cdk synth`.
+
+### Decisions / notes
+- Export param is **stage-scoped** (`configParamName`) rather than the spec's flat
+  `/wobblio/config/queues/agentic_url`, to match the rest of the config namespace + backend `stageConfig`.
+- SSM grant is exactly `models/tags/features` per spec §3. **If 03's agent charges credits**, it will
+  also need the `quotas/*` grant (as the ingestion worker has) — add then, not now (YAGNI).
+- `grantBedrockInference` / `configParamArn` / `commonLambdaEnv` are replicated inline (now in 2 stacks;
+  extract to a shared helper on the 3rd per Rule-of-Three).
+
+### Next: 03 — Strands Agent Worker
+Replace the skeleton handler with the coordinator agent + 5 tools wrapping the domain services
+(Zod schemas; reuse idempotency/RLS + the 01 telemetry write path with `pipeline_type='STRANDS'`).
+First task per locked decision #3: verify `@strands-agents/sdk` is Node-24/Lambda-ready, else use the
+documented in-house tool-loop fallback.
