@@ -46,9 +46,9 @@ Confirm-time validation (invoice exists, S3 object present, PDF ≤4.5MB) is unc
 
 ## Checklist
 
-- [ ] `IInvoiceIngestionQueuePort` port created (parallel to `IIngestionQueue`)
-- [ ] `SqsInvoiceIngestionQueueAdapter` with TTL-cached SSM flag read + dual-queue routing
-- [ ] Fail-safe to legacy on SSM miss/error
-- [ ] `handleConfirm`/`ConfirmService` rewired; both queue URLs in env
-- [ ] Unit tests: flag on → agentic, flag off → legacy, SSM error → legacy (mocked SSM port)
-- [ ] `npm run skill:hexagonal-architecture-validator` exit 0
+- [x] `IInvoiceIngestionQueuePort` port created (parallel to `IIngestionQueue`)
+- [x] `SqsInvoiceIngestionQueueAdapter` with TTL-cached SSM flag read + dual-queue routing
+- [x] Fail-safe to legacy on SSM miss/error
+- [x] `handleConfirm`/`ConfirmService` rewired; legacy URL in env + agentic URL from SSM (see handoff note)
+- [x] Unit tests: flag on → agentic, flag off → legacy, SSM error → legacy (spy on SSM/SQS clients)
+- [x] `npm run skill:hexagonal-architecture-validator` exit 0

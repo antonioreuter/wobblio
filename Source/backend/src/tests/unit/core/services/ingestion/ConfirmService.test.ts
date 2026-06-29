@@ -3,7 +3,7 @@ import type { MockedObject } from 'vitest';
 import { ConfirmService } from '@core/services/ingestion/ConfirmService';
 import type { IInvoiceRepository, InvoiceRecord } from '@core/ports/ingestion/IInvoiceRepository';
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
-import type { IIngestionQueue } from '@core/ports/ingestion/IIngestionQueue';
+import type { IInvoiceIngestionQueuePort } from '@core/ports/ingestion/IInvoiceIngestionQueuePort';
 import { InvoiceNotFoundError, StaleUploadError } from '@core/domain/errors';
 
 const record: InvoiceRecord = {
@@ -21,7 +21,7 @@ const pdfRecord: InvoiceRecord = { ...record, imageS3Key: 'receipts/tenant-1/abc
 describe('ConfirmService', () => {
   let invoiceRepo: MockedObject<IInvoiceRepository>;
   let storage: MockedObject<IS3FileStorage>;
-  let queue: MockedObject<IIngestionQueue>;
+  let queue: MockedObject<IInvoiceIngestionQueuePort>;
   let sut: ConfirmService;
 
   beforeEach(() => {
@@ -62,11 +62,7 @@ describe('ConfirmService', () => {
 
     await sut.confirm('inv-1', 'tenant-1');
 
-    expect(queue.enqueue).toHaveBeenCalledWith({
-      invoiceId: 'inv-1',
-      tenantId: 'tenant-1',
-      s3Key: 'receipts/tenant-1/abc.jpg',
-    });
+    expect(queue.enqueue).toHaveBeenCalledWith('inv-1', 'tenant-1', 'receipts/tenant-1/abc.jpg');
   });
 
   // Size is now enforced at presign (S3 content-length-range) + worker start (§06), so
@@ -77,10 +73,6 @@ describe('ConfirmService', () => {
 
     await sut.confirm('inv-1', 'tenant-1');
 
-    expect(queue.enqueue).toHaveBeenCalledWith({
-      invoiceId: 'inv-1',
-      tenantId: 'tenant-1',
-      s3Key: 'receipts/tenant-1/abc.pdf',
-    });
+    expect(queue.enqueue).toHaveBeenCalledWith('inv-1', 'tenant-1', 'receipts/tenant-1/abc.pdf');
   });
 });

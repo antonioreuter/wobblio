@@ -21,7 +21,7 @@ import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-inte
 import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
 import { WeeklyAdvisorRepositoryAdapter } from '@infrastructure/adapters/ai/WeeklyAdvisorRepositoryAdapter';
 import { S3FileStorageAdapter } from '@infrastructure/adapters/ingestion/S3FileStorageAdapter';
-import { SqsIngestionQueueAdapter } from '@infrastructure/adapters/ingestion/SqsIngestionQueueAdapter';
+import { SqsInvoiceIngestionQueueAdapter } from '@infrastructure/adapters/ingestion/SqsInvoiceIngestionQueueAdapter';
 import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
 import { BillingService } from '@core/services/billing/BillingService';
 import { ProfileService } from '@core/services/identity/ProfileService';
@@ -574,7 +574,7 @@ async function handleConfirm(
   const service = new ConfirmService(
     new InvoiceRepositoryAdapter(db),
     new S3FileStorageAdapter(REGION, uploadsBucket),
-    new SqsIngestionQueueAdapter(REGION, queueUrl),
+    new SqsInvoiceIngestionQueueAdapter(REGION, queueUrl),
   );
 
   try {

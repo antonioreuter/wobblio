@@ -9,7 +9,7 @@ the detail.
 | 01 Ingestion Telemetry | ✅ Done | 2026-06-29 |
 | 02 Agentic Pipeline Stack | ✅ Done | 2026-06-29 |
 | 03 Strands Agent Worker | ✅ Done | 2026-06-29 |
-| 04 Dynamic Queue Routing | ⬜ Not started | |
+| 04 Dynamic Queue Routing | ✅ Done | 2026-06-29 |
 | 05 Admin Pipeline Toggle | ⬜ Not started | |
 | 06 KPI Pipeline Comparison | ⬜ Not started | |
 | 07 Pipeline Evaluation Harness | ⬜ Not started | |
@@ -172,6 +172,52 @@ Real `@strands-agents/sdk` agent (documented future swap). No new migration/infr
 adapter shipped in 01). Local end-to-end A/B smoke against the agentic queue not yet run (needs a
 LocalStack message on the agentic queue) — recommended before 04 routing flips real traffic.
 
-### Next: 04 — Dynamic Queue Routing
-`IInvoiceIngestionQueuePort` + dual-queue adapter + SSM feature flag (cached; defaults false → legacy).
-Reads the agentic queue URL from `/wobblio/config/<stage>/queues/agentic_url` (exported by 02).
+---
+
+## 04 — Dynamic Queue Routing ✅ (2026-06-29)
+
+Confirm-time pipeline selection: a confirmed invoice routes to the legacy **or** agentic queue
+behind a new domain port. Ships dark — the flag defaults `false` → legacy, so no traffic reaches
+the agentic queue until 05's admin toggle flips it.
+
+### What shipped
+- **Port** `core/ports/ingestion/IInvoiceIngestionQueuePort.ts` — `enqueue(invoiceId, tenantId,
+  s3Key)`, verbatim from spec. Created **alongside** `IIngestionQueue` (locked decision #1, not
+  merged) — the latter still carries the operator `reprocess` flag.
+- **Adapter** `infrastructure/adapters/ingestion/SqsInvoiceIngestionQueueAdapter.ts` — holds an
+  `SSMClient` + `SQSClient`. One TTL-cached (`5 min`, `SsmUploadQuotaAdapter` pattern)
+  `GetParameters` batch over `features/agentic_pipeline_enabled` + `queues/agentic_url`
+  (stage-scoped). Flag `'true'`/`'1'` AND URL present → agentic; else legacy. Same
+  `{invoiceId,tenantId,s3Key}` body + `SendMessage` as the legacy adapter.
+- **Fail-safe (inverse of the quota adapter's fail-closed):** any SSM error / missing flag /
+  missing URL → legacy. `fetchRouting` try/catch returns legacy routing; a confirm never throws
+  on SSM and never drops the message.
+- **Rewire** `ConfirmService` ctor dep `IIngestionQueue → IInvoiceIngestionQueuePort` + positional
+  enqueue; `handleConfirm` (api-handler) instantiates the new adapter. `INGEST_QUEUE_URL` env
+  unchanged (legacy URL); agentic URL resolved in-adapter from SSM.
+- **IAM** `WobblioBackendStack` — one enumerated (no-wildcard) `ssm:GetParameter(s)` grant on
+  `apiHandlerFn` for `features/agentic_pipeline_enabled` + `queues/agentic_url`. No new env, **no
+  cross-stack CDK dependency** on the agentic stack.
+- **Config** seeded `features/agentic_pipeline_enabled: "false"` in `config/config.{local,dev,prod}.json`.
+  `queues/agentic_url` is written by the agentic stack at deploy (not seeded here).
+
+### Decisions / notes
+- **Agentic URL via SSM, not env** (spec §3 said env): stack 02 deliberately exported it to SSM to
+  avoid coupling `WobblioBackendStack` to the agentic stack. Reading both params in-adapter honours
+  that and keeps the stacks independently deployable. User-confirmed.
+- **Confirm path only.** The admin reprocess-on-behalf path (`adminFaultRoutes.ts`) still uses the
+  legacy queue + `IIngestionQueue` (it needs `reprocess:true`, which the 3-arg port can't carry).
+  Follow-up if reprocess should ever honour the flag.
+- Local has no agentic stack → `queues/agentic_url` absent locally → adapter routes to legacy (the
+  intended dark default).
+
+### Validation (2026-06-29)
+- hexagonal-architecture-validator → exit 0.
+- `test:unit` → 98 files / 730 pass (6-case new adapter suite + updated ConfirmService positional asserts).
+- infra vitest → 32 pass (IAM grant enumerated → cdk-nag aspect still no-error).
+- `tsc --noEmit` backend + infra → clean. `validate:security` → pass.
+
+### Next: 05 — Admin Pipeline Toggle
+`POST /admin/features/toggle` (writes the flag via SSM PutParameter) + audit log +
+`/admin/pipeline-toggles` UI. The flag key + stage-scoping already exist; admin SSM grant pattern
+mirrors the existing admin-tunable grant in `WobblioBackendStack`.

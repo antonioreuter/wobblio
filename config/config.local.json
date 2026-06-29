@@ -23,6 +23,8 @@
   "tags/dedicated_call_enabled": "false",
   "tags/vocabulary": "[]",
 
+  "features/agentic_pipeline_enabled": "false",
+
   "billing/mock_premium_whitelist": "antonioreuter@gmail.com",
 
   "ai/daily_spend_cap": "0.10",
