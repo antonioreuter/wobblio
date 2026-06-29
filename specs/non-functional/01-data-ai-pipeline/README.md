@@ -57,7 +57,7 @@ Recommended sequence: **01 → 02 → 03 → 04 → 05 → 06 → 07**. 01 and 0
 | 02 | Agentic Pipeline Stack | **Done (2026-06-29)** | Stack + skeleton worker shipped (synth/nag green). See [00-handoff.md](./00-handoff.md) |
 | 03 | Strands Agent Worker | **Done (2026-06-29)** | Deterministic workflow + tool seam (SDK deferred). See [00-handoff.md](./00-handoff.md) |
 | 04 | Dynamic Queue Routing | **Done (2026-06-29)** | New port + dual-queue adapter (flag+url from SSM, TTL-cached, fail-safe→legacy). Flag defaults false. See [00-handoff.md](./00-handoff.md) |
-| 05 | Admin Pipeline Toggle | Not started | |
+| 05 | Admin Pipeline Toggle | **Done (2026-06-29)** | `POST /admin/features/toggle` + audit + `/admin/pipeline-toggles` UI (ADMIN-only; no OPERATOR role). See [00-handoff.md](./00-handoff.md) |
 | 06 | KPI Pipeline Comparison | Not started | |
 | 07 | Pipeline Evaluation Harness | Not started | Needs reusable dry-run processor from 03 |
 

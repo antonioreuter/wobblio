@@ -43,7 +43,7 @@ middleware).
 
 ## Checklist
 
-- [ ] `POST /admin/features/toggle` with ADMIN/OPERATOR guard + feature allowlist
-- [ ] SSM write + `admin_audit_log` row (before/after)
-- [ ] `/admin/pipeline-toggles`: toggle + audit history + canary alert (`data-testid`)
-- [ ] Unit tests: role-denied path, audit row written; `npm run skill:hexagonal-architecture-validator` exit 0
+- [x] `POST /admin/features/toggle` with ADMIN guard + feature allowlist (no OPERATOR role exists — see handoff)
+- [x] SSM write + `admin_audit_log` row (before/after, `action='feature.toggle'`)
+- [x] `/admin/pipeline-toggles`: toggle + audit history + canary alert (`data-testid`)
+- [x] Unit tests: role-denied path (admin-gate guard), audit row written; `npm run skill:hexagonal-architecture-validator` exit 0

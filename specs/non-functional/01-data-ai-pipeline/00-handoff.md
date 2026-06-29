@@ -10,7 +10,7 @@ the detail.
 | 02 Agentic Pipeline Stack | ✅ Done | 2026-06-29 |
 | 03 Strands Agent Worker | ✅ Done | 2026-06-29 |
 | 04 Dynamic Queue Routing | ✅ Done | 2026-06-29 |
-| 05 Admin Pipeline Toggle | ⬜ Not started | |
+| 05 Admin Pipeline Toggle | ✅ Done | 2026-06-29 |
 | 06 KPI Pipeline Comparison | ⬜ Not started | |
 | 07 Pipeline Evaluation Harness | ⬜ Not started | |
 
@@ -217,7 +217,51 @@ the agentic queue until 05's admin toggle flips it.
 - infra vitest → 32 pass (IAM grant enumerated → cdk-nag aspect still no-error).
 - `tsc --noEmit` backend + infra → clean. `validate:security` → pass.
 
-### Next: 05 — Admin Pipeline Toggle
-`POST /admin/features/toggle` (writes the flag via SSM PutParameter) + audit log +
-`/admin/pipeline-toggles` UI. The flag key + stage-scoping already exist; admin SSM grant pattern
-mirrors the existing admin-tunable grant in `WobblioBackendStack`.
+---
+
+## 05 — Admin Pipeline Toggle ✅ (2026-06-29)
+
+Operator runtime control of the `agentic_pipeline_enabled` flag (the one 04 routes on), with an
+audit trail and canary guidance — switch pipelines and roll back without a deploy.
+
+### What shipped (backend)
+- **Domain allowlist** `core/domain/featureFlags.ts` — `FEATURE_FLAGS` (single entry:
+  `agentic_pipeline_enabled` → `/wobblio/config/features/agentic_pipeline_enabled`), `findFeatureFlag`
+  (throws `UnknownAdminTargetError`), `isFlagEnabled` (`'true'`/`'1'` → on, matches the 04 routing read).
+- **Service** `core/services/admin/AdminFeatureToggleService.ts` — `list()` (current enabled state),
+  `toggle(actor, feature, value)` (validate allowlist + boolean → write `'true'`/`'false'` via the
+  existing `ITunableParameterStore` → audit `feature.toggle` with before/after enabled), `history(limit)`
+  (delegates to `IAdminAuditLog.list('feature.toggle', …)`). **Reuses** the SSM tunable store +
+  audit log adapters unchanged (parallel to `AdminConfigService`, not merged — distinct contract).
+- **Audit action** `'feature.toggle'` added to the `AdminAuditAction` union.
+- **Route** `handlers/api-handler/adminFeatureRoutes.ts` — `GET /admin/features`,
+  `GET /admin/features/audit`, `POST /admin/features/toggle` (`{feature, value}`); wired into
+  `adminRoutes.ts` (`/admin/features` prefix). ADMIN-gated by the existing `handleAdminRoute` guard.
+- **IAM** `WobblioBackendStack` — enumerated `ssm:PutParameter` on `features/agentic_pipeline_enabled`
+  (read was already granted in 04). No wildcard → cdk-nag IAM5 clean.
+
+### What shipped (admin app)
+- `Source/admin/src/app/(console)/pipeline-toggles/` — `page.tsx` + `pipeline-toggles-section.tsx`:
+  per-flag switch (Legacy/Agentic), `ConfirmDialog` before flipping live traffic, **canary alert**
+  (watch DOWN-ratio + latency ~30 min; flip takes effect within the ~5-min routing cache TTL), and
+  a toggle-history list. `data-testid`: `canary-alert`, `feature-toggle-<feature>`, `feature-row`,
+  `feature-audit-log`, `feature-audit-row`, `toggle-notice`. Nav link registered in `(console)/layout.tsx`
+  (`Workflow` icon → `nav-pipeline-toggles`). BFF proxy `/api/admin/features* → /admin/features*`.
+
+### Decisions / notes
+- **ADMIN only, no OPERATOR.** Spec §1 says "ADMIN or OPERATOR", but this system has no OPERATOR role
+  (roles = STANDARD/PREMIUM/TESTER/ADMIN). The whole admin surface is ADMIN-gated; kept that.
+- **Separate service**, not folded into `AdminConfigService` — boolean-only, feature allowlist,
+  distinct `feature.toggle` action + endpoint contract per spec (2nd occurrence → no shared abstraction).
+- SSM writes `'true'`/`'false'`; the 04 adapter already treats `'true'`/`'1'` as on, so they interoperate.
+
+### Validation (2026-06-29)
+- hex validator → exit 0. `test:unit` → 100 files / 738 pass (7-case service suite + 1 admin-gate
+  guard test — the gate had no prior coverage). `validate:security` → pass.
+- `tsc --noEmit` backend + infra → clean. infra vitest → 32 pass (IAM addition enumerated, nag clean).
+- admin app `npm run lint` (next lint + tsc) → clean.
+
+### Next: 06 — KPI Pipeline Comparison
+`pipeline_type` rollup dimension + admin comparison dashboard tab. Wires the
+`admin_pipeline_cost_deficit` SECURITY DEFINER fn (shipped unused in 01) and compares LEGACY vs
+STRANDS telemetry. The canary alert in 05 references this dashboard.

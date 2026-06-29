@@ -15,6 +15,7 @@ export type AdminAuditAction =
   | 'quota.adjust'
   | 'quota.config'
   | 'role.change'
+  | 'feature.toggle'
   | 'fault.reprocess'
   | 'fault.wont_process'
   | 'fault.debug_sample';

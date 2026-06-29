@@ -383,6 +383,14 @@ export class WobblioBackendStack extends Stack {
       ],
     }));
 
+    // SSM: admin pipeline toggle (Non-Functional 01/05) — the admin console writes the
+    // agentic feature flag at runtime. Enumerated single-param PutParameter (the read is
+    // already granted above) so cdk-nag IAM5 stays clean.
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:PutParameter'],
+      resources: [configParamArn('features/agentic_pipeline_enabled')],
+    }));
+
     // SSM: mock premium whitelist — api-handler reads at checkout time
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter'],
