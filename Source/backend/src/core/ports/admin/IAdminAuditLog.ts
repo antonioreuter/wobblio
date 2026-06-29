@@ -14,7 +14,10 @@ export type AdminAuditAction =
   | 'loglevel.change'
   | 'quota.adjust'
   | 'quota.config'
-  | 'role.change';
+  | 'role.change'
+  | 'fault.reprocess'
+  | 'fault.wont_process'
+  | 'fault.debug_sample';
 
 export interface AdminAuditEntry {
   actorUserId: string;

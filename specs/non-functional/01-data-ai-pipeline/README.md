@@ -55,7 +55,7 @@ Recommended sequence: **01 → 02 → 03 → 04 → 05 → 06 → 07**. 01 and 0
 |---|----------|--------|-------|
 | 01 | Ingestion Telemetry | **Done (2026-06-29)** | Legacy producer shipped. See [00-handoff.md](./00-handoff.md) |
 | 02 | Agentic Pipeline Stack | **Done (2026-06-29)** | Stack + skeleton worker shipped (synth/nag green). See [00-handoff.md](./00-handoff.md) |
-| 03 | Strands Agent Worker | Not started | Confirm `@strands-agents/sdk` Node-24 readiness first |
+| 03 | Strands Agent Worker | **Done (2026-06-29)** | Deterministic workflow + tool seam (SDK deferred). See [00-handoff.md](./00-handoff.md) |
 | 04 | Dynamic Queue Routing | Not started | Flag defaults false → legacy |
 | 05 | Admin Pipeline Toggle | Not started | |
 | 06 | KPI Pipeline Comparison | Not started | |

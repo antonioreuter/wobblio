@@ -50,6 +50,7 @@ These variables are configured in the SSM Parameter Store:
 - `/wobblio/config/quotas/household_invoices_limit` (Default: `15` -> `150,000` credits)
 - `/wobblio/config/quotas/tester_invoices_limit` (Default: `-1` / Infinity)
 - `/wobblio/config/quotas/admin_invoices_limit` (Default: `-1` / Infinity)
+- `/wobblio/config/quotas/max_household_transitions_per_week` (Default: `3` — anti-exploitation churn cap, see §6.4)
 
 ---
 
@@ -267,6 +268,73 @@ The household system enforces strict boundaries on sharing to avoid premium subs
    - This value is managed in the SSM parameter `/wobblio/config/quotas/household_invoices_limit` which will be updated from `20` to `15`.
    - The additive pooling rule applies: personal uploads use the personal credit quota (e.g., 100,000 credits/week for Premium), while household-space uploads draw from the pooled household credit quota (150,000 credits/week).
 
+3. **Mid-Week Membership Transitions (Pool Carry-Over Rules)**:
+
+   A household can be created, joined, left, or dissolved at any point within a week, while
+   personal and household credit counters already hold usage. Because the household cap
+   (150,000) is larger than the personal caps, and an invited member gains PREMIUM
+   *indirectly* through the household, membership changes must move credits between counters
+   deterministically — otherwise a user can reset or inflate their effective allowance mid-week.
+
+   The pool is **anchored on the household owner**: the `HOUSEHOLD_CREDITS` counter is the
+   owner's weekly usage relabeled and expanded. Invited members operate on the shared pool
+   while their personal `CREDITS` counter is set aside (not migrated).
+
+   The following rules assume the example state below (1 invoice ≈ 10,000 credits):
+   - **Owner** (Premium): `50,000 / 100,000` used (≈ 5/10).
+   - **Invited member** (Standard): `20,000 / 30,000` used (≈ 2/3).
+
+   | Event | Effect on counters | Resulting standing |
+   |---|---|---|
+   | **Household created + member added** | Owner's personal usage carries into the pool: `HOUSEHOLD_CREDITS := 50,000`, cap `150,000`. Owner's personal `CREDITS` counter is frozen for the week (the pool now represents the owner). The member's personal `CREDITS` (`20,000`) is **set aside, not moved**; the member now uploads against the shared pool. | Owner & member both see the pool: `50,000 / 150,000` (≈ 5/15). Member has PREMIUM via the household. |
+   | **Uploads while in household** | All household-space ingests debit `HOUSEHOLD_CREDITS`, regardless of which member uploaded. | Pool reflects combined household usage. |
+   | **Member leaves (same week)** | The member's set-aside personal `CREDITS` resumes (`20,000 / 30,000`, ≈ 2/3). PREMIUM is revoked immediately (cap reverts to the Standard personal cap). Credits the member spent while in the household **stay in `HOUSEHOLD_CREDITS`** (they roll up to the owner, not back to the leaver). | Member back to `20,000 / 30,000`; pool unchanged for remaining members. |
+   | **Household dissolves (owner alone / last member leaves)** | `HOUSEHOLD_CREDITS` rolls back into the owner's personal `CREDITS` (`CREDITS := GREATEST(CREDITS, HOUSEHOLD_CREDITS)`); cap reverts to the owner's personal tier (`100,000`, ≈ 10). | If **no** household uploads occurred beyond the carried-over owner usage, the owner is `50,000 / 100,000` (≈ 5/10). If uploads occurred, they are retained on the owner's counter (the owner may now be over the personal cap and is blocked from further personal uploads until the week resets — normal Soft-Cap behavior). |
+
+   Net invariant: **credits consumed are never destroyed by a membership transition, and a
+   transition never grants a user more remaining credits than they legitimately held.** A
+   member's pre-household personal usage is preserved across join/leave; household-consumed
+   credits always settle on the owner.
+
+4. **Anti-Exploitation: Membership Churn Detection**:
+
+   The transition rules above are exploitable by *cycling* membership within a week — e.g. a
+   member near their personal cap repeatedly joining households to operate on pooled headroom
+   and leaving to keep their personal counter intact, or an owner repeatedly adding/removing
+   members to game the effective cap. We need a mechanism to detect and deter this.
+
+   - **Audit log on every transition** — emit a structured event for create / invite-accept /
+     leave / dissolve so abusive patterns are detectable:
+     ```typescript
+     log.info('household_membership_event', {
+       action,            // 'create' | 'invite_accept' | 'leave' | 'dissolve'
+       householdId,
+       ownerId,
+       userId,            // the user whose membership changed
+       week,              // week_start
+       personalUsedAtTransition,
+       householdUsedAtTransition,
+     });
+     ```
+   - **Per-week churn threshold** — count quota-affecting membership transitions per user per
+     week. Beyond `/wobblio/config/quotas/max_household_transitions_per_week` (default `3`),
+     flag the user. A daily/rollup check (or an inline counter on transition) raises the flag.
+   - **Escalation path**:
+     1. **Notify** the flagged user (in-app + push) to stop the behavior — surface it as a
+        warning, not a silent block.
+     2. On continued churn, the account is subject to **suspension or revocation** by an
+        operator. The flag and the underlying `household_membership_event` trail are surfaced
+        in the Admin console for review before any account action.
+   - **Hard guard (defense-in-depth)** — reject a household *create* or *invite-accept* once a
+     user has exceeded the weekly transition threshold, so detection is not purely
+     after-the-fact:
+     ```typescript
+     const transitions = await householdRepo.countMembershipTransitions(userId, week);
+     if (transitions >= maxTransitionsPerWeek) {
+       throw new HouseholdChurnLimitError('Too many household changes this week.');
+     }
+     ```
+
 ---
 
 ## 7. User Interface and Copy Updates
@@ -333,6 +401,12 @@ To unify the terminology, all references to "invoices" or "scans" in quota views
   - Verify that RLS bypass is correctly set session-wide and allows cross-tenant updates inside TypeScript.
   - Test parallel upload requests: Ensure concurrent requests verify limits independently and succeed if initiated below the threshold, but subsequently block out the tenant.
   - Test household membership limits: Verifying that inviting a 4th member is blocked.
+- **Household Transition Tests (`HouseholdQuotaTransitions.test.ts`)** (§6.3 / §6.4):
+  - Create household + add member: owner usage carries into the pool (`50,000 / 150,000`); member's personal counter is set aside, not migrated.
+  - Member leaves same week: personal counter resumes (`20,000 / 30,000`), PREMIUM revoked; credits spent in-household stay on the pool.
+  - Household dissolves: `HOUSEHOLD_CREDITS` rolls into the owner (`GREATEST`); with no extra uploads the owner is `50,000 / 100,000`.
+  - Invariant: total credits consumed is conserved across any join/leave/dissolve sequence.
+  - Churn guard: a user exceeding `max_household_transitions_per_week` is flagged, notified, and blocked from further create/invite-accept (`HouseholdChurnLimitError`); a `household_membership_event` is logged for each transition.
 
 ### Manual Verification Checklist
 

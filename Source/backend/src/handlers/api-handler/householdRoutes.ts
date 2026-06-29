@@ -7,11 +7,11 @@ import { HouseholdInviteRepositoryAdapter } from '@infrastructure/adapters/house
 import { SecureTokenAdapter } from '@infrastructure/adapters/security/SecureTokenAdapter';
 import { buildKmsEncryption } from '@infrastructure/adapters/security/encryptionFactory';
 import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
-import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
 import { HouseholdService } from '@core/services/households/HouseholdService';
 import { HouseholdInviteService } from '@core/services/households/HouseholdInviteService';
+import { HouseholdCarryOverService } from '@core/services/households/HouseholdCarryOverService';
 import { QuotaService } from '@core/services/quota/QuotaService';
-import { effectiveHouseholdCap } from '@core/domain/quotaConfig';
+import { UploadAllowanceResolver } from '@core/services/quota/UploadAllowanceResolver';
 import {
   PremiumRequiredError,
   AlreadyOwnsHouseholdError,
@@ -22,7 +22,7 @@ import {
   HouseholdFullError,
   InvalidInviteError,
 } from '@core/domain/errors';
-import { REGION, json, parseJsonBody, withTenantTx } from './shared';
+import { REGION, json, parseJsonBody, withTenantTx, uploadQuotaAdapter } from './shared';
 
 export async function handleHouseholdsRoute(
   db: PoolClient,
@@ -58,15 +58,18 @@ export async function handleHouseholdsRoute(
 }
 
 function householdService(db: PoolClient): HouseholdService {
-  return new HouseholdService(new HouseholdRepositoryAdapter(db));
+  const households = new HouseholdRepositoryAdapter(db);
+  return new HouseholdService(households, new HouseholdCarryOverService(households));
 }
 
 function inviteService(db: PoolClient): HouseholdInviteService {
+  const households = new HouseholdRepositoryAdapter(db);
   return new HouseholdInviteService(
-    new HouseholdRepositoryAdapter(db),
+    households,
     new HouseholdInviteRepositoryAdapter(db),
     new SecureTokenAdapter(),
     buildKmsEncryption(REGION),
+    new HouseholdCarryOverService(households),
   );
 }
 
@@ -109,15 +112,12 @@ function getHousehold(db: PoolClient, user: AppUser, householdId: string): Promi
       const households = new HouseholdRepositoryAdapter(db);
       const detail = await householdService(db).getDetail(householdId);
       const quota = new QuotaService(new QuotaRepositoryAdapter(db));
-      const used = await quota.getUsed(householdId, 'HOUSEHOLD_UPLOADS', new Date());
+      const used = await quota.getUsed(householdId, 'HOUSEHOLD_CREDITS', new Date());
 
-      // The pool cap follows the owner's role: an operator-role owner makes it unlimited.
-      const quotaProvider = new SsmUploadQuotaAdapter(REGION);
-      const ownerRole = (await households.getOwnerRole(householdId, user.id)) ?? user.role;
-      const cap = effectiveHouseholdCap(
-        await quotaProvider.getPersonalUploadsCap(ownerRole),
-        await quotaProvider.getHouseholdUploadsCap(),
-      );
+      // Pool cap via the single §2.4 resolver so detail, /me/usage, and enforcement
+      // share one owner-role matrix and can never drift apart.
+      const resolver = new UploadAllowanceResolver(households, uploadQuotaAdapter());
+      const cap = await resolver.householdPoolCap(householdId, user.id, user.role);
       const unlimited = !Number.isFinite(cap);
       return json(200, {
         ...detail,

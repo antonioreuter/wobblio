@@ -46,7 +46,7 @@ describe('ProductNormalizer', () => {
       createProvisionalProduct: vi.fn().mockResolvedValue('p-new'),
       writeAlias: vi.fn(),
     };
-    embedder = { embed: vi.fn().mockResolvedValue([0.1, 0.2]) };
+    embedder = { embed: vi.fn().mockResolvedValue({ embedding: [0.1, 0.2], inputTokens: 4 }) };
     converse = vi.fn();
     sut = new ProductNormalizer(catalog, embedder, { converse } as unknown as IBedrockConverse, 'model');
   });

@@ -9,8 +9,9 @@ import {
   type ModelRole,
   MODEL_ROLES,
 } from '@core/ports/ai/IModelRegistry';
+import { stageScopeConfig } from '@infrastructure/config/stageConfig';
 
-const paramFor = (role: ModelRole): string => `/wobblio/config/models/${role}`;
+const paramFor = (role: ModelRole): string => stageScopeConfig(`/wobblio/config/models/${role}`);
 
 // Reads cache per warm container (model IDs change rarely; a swap is picked up on
 // the next cold start, matching the existing worker behaviour). Writes update the

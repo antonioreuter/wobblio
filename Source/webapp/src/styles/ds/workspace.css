@@ -735,7 +735,7 @@
 .footer-links a { color: var(--text-secondary); font-size: 13px; }
 .footer-links a:hover { color: var(--brand); }
 
-/* ---- Topbar usage chip (invoices this week) ---- */
+/* ---- Topbar usage chip (credits this week) ---- */
 .usage-chip {
   display: flex;
   align-items: center;

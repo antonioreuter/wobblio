@@ -3,14 +3,31 @@ import { findQuotaParam, normalizeQuotaValue, QUOTA_PARAMS } from '@core/domain/
 import { InvalidAdminInputError, UnknownAdminTargetError } from '@core/domain/errors';
 
 describe('quotaConfig', () => {
-  it('exposes per-role upload + refund caps plus the household pool', () => {
+  it('exposes per-role upload caps, the household pool, and the §06 upload limits', () => {
     const keys = QUOTA_PARAMS.map((p) => p.key);
     expect(keys).toContain('standard_uploads_per_week');
     expect(keys).toContain('admin_uploads_per_week');
-    expect(keys).toContain('premium_failure_refunds_per_week');
     expect(keys).toContain('household_uploads_per_week');
-    // 4 roles × (uploads + refunds) + household
-    expect(QUOTA_PARAMS).toHaveLength(9);
+    expect(keys).toContain('max_image_bytes');
+    expect(keys).toContain('max_pdf_bytes');
+    expect(keys).toContain('max_pdf_pages');
+    expect(keys.some((k) => k.includes('failure_refunds'))).toBe(false);
+    // 4 roles × uploads + household + 3 upload limits
+    expect(QUOTA_PARAMS).toHaveLength(8);
+  });
+
+  it('coerces the upload-limit params as non-negative integers (never unlimited)', () => {
+    const maxImage = findQuotaParam('max_image_bytes');
+    expect(maxImage.kind).toBe('upload_limit');
+    expect(normalizeQuotaValue(maxImage, 5_000_000)).toBe('5000000');
+    expect(() => normalizeQuotaValue(maxImage, -1)).toThrow(InvalidAdminInputError);
+  });
+
+  it('rejects a max_pdf_bytes above the Bedrock document ceiling', () => {
+    const maxPdf = findQuotaParam('max_pdf_bytes');
+    expect(normalizeQuotaValue(maxPdf, 4_500_000)).toBe('4500000');
+    // Raising it past the ceiling would re-introduce the Bedrock-crash → quarantine bug.
+    expect(() => normalizeQuotaValue(maxPdf, 10_000_000)).toThrow(InvalidAdminInputError);
   });
 
   it('throws UnknownAdminTargetError for a key outside the allowlist', () => {

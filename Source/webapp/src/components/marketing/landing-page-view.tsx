@@ -467,7 +467,7 @@ export function LandingPageView() {
             </div>
             <ul className="pricing-features">
               <li>
-                <Check size={16} /> 3 scans per week
+                <Check size={16} /> 30,000 weekly credits (~3 receipt scans)
               </li>
               <li>
                 <Check size={16} /> Up to 3 shopping lists
@@ -493,7 +493,10 @@ export function LandingPageView() {
             </div>
             <ul className="pricing-features">
               <li>
-                <Check size={16} /> Households — up to 5 members, pooled scans
+                <Check size={16} /> 100,000 weekly credits (~10 scans)
+              </li>
+              <li>
+                <Check size={16} /> Households — up to 3 members, 150,000 weekly credits pooled (~15 scans)
               </li>
               <li>
                 <Check size={16} /> Budgets with 85% &amp; 100% alerts

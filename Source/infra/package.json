@@ -15,6 +15,7 @@
     "cdk:deploy:local": "AWS_ENDPOINT_URL=http://localhost:4566 cdklocal deploy --require-approval never",
     "cdk:deploy:dev": "STAGE=dev cdk deploy --all --require-approval never",
     "cdk:deploy:prod": "STAGE=prod cdk deploy --all --require-approval broadening",
+    "cdk:deploy:config": "cdk deploy WobblioConfigStack-${STAGE:-dev}",
     "cdk:deploy:storage": "cdk deploy WobblioStorageStack-${STAGE:-dev}",
     "cdk:deploy:observability": "cdk deploy WobblioObservabilityStack-${STAGE:-dev}",
     "cdk:deploy:backend": "cdk deploy WobblioBackendStack-${STAGE:-dev}",

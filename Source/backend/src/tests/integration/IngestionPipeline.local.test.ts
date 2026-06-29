@@ -52,7 +52,7 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
     const found = await withTenant(tenantId, async (db) => {
       const repo = new InvoiceRepositoryAdapter(db);
       const id = await repo.createPending({
-        tenantId, uploadedByUserId: tenantId, householdId: null,
+        tenantId, uploadedByUserId: tenantId, householdId: null, quotaPooled: false,
         imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
       });
       expect(id).toBeTruthy();
@@ -75,7 +75,7 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
     const found = await withTenant(tenantId, async (db) => {
       const repo = new InvoiceRepositoryAdapter(db);
       await repo.createPending({
-        tenantId, uploadedByUserId: tenantId, householdId: null,
+        tenantId, uploadedByUserId: tenantId, householdId: null, quotaPooled: false,
         imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
       });
       return repo.findSameTenantByHash(sha);
@@ -106,7 +106,7 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
     const status = await withTenant(tenantId, async (db) => {
       const repo = new InvoiceRepositoryAdapter(db);
       const invoiceId = await repo.createPending({
-        tenantId, uploadedByUserId: tenantId, householdId: null,
+        tenantId, uploadedByUserId: tenantId, householdId: null, quotaPooled: false,
         imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
       });
       await repo.persistParsed({
@@ -136,7 +136,7 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
     const { list, detail } = await withTenant(tenantId, async (db) => {
       const repo = new InvoiceRepositoryAdapter(db);
       const invoiceId = await repo.createPending({
-        tenantId, uploadedByUserId: tenantId, householdId: null,
+        tenantId, uploadedByUserId: tenantId, householdId: null, quotaPooled: false,
         imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
       });
       await repo.persistParsed({

@@ -15,7 +15,7 @@ import type { InvoiceStatus } from '@core/domain/ingestion';
 
 const pendingInvoice = (status: InvoiceStatus = 'PARSED'): InvoiceRecord => ({
   id: 'inv-1', tenantId: 'tenant-1', status,
-  imageS3Key: 'k', imageSha256: 'h', householdId: null,
+  imageS3Key: 'k', imageSha256: 'h', householdId: null, systemFaultReason: null,
   locationStatus: 'PENDING', locationConfirmedAt: null,
 });
 

@@ -2,6 +2,10 @@
 
 **Mobile epic | Post-MVP | Depends on the backend ingestion pipeline (07)**
 
+> **This is the epic overview.** The epic is split into independently shippable slices —
+> see **[16-00 — Mobile Epic Handoff](./16-mobile/16-00-handoff.md)** (`16a`–`16h`) for the build order,
+> dependency DAG, status tracker, and deferred-gap list. Implement one slice at a time.
+
 ## Overview
 
 The Flutter iOS/Android client: capture-first receipt scanning, the on-device review screen, push notifications, and the mobile dashboard. The backend ingestion pipeline (`07-core-ingestion-pipeline.md`) and data-intelligence layer (`08-data-intelligence-layer.md`) are reused unchanged — this epic is the mobile front-end plus the push-delivery backend that only makes sense once a mobile client exists.

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { MockedObject } from 'vitest';
 import { HouseholdService } from '@core/services/households/HouseholdService';
+import { HouseholdCarryOverService } from '@core/services/households/HouseholdCarryOverService';
 import type {
   IHouseholdRepository,
   HouseholdSummary,
@@ -19,6 +20,7 @@ const summary: HouseholdSummary = { id: 'hh-1', name: 'The Smiths', ownerUserId:
 
 describe('HouseholdService', () => {
   let repo: MockedObject<IHouseholdRepository>;
+  let carryOver: MockedObject<HouseholdCarryOverService>;
   let sut: HouseholdService;
 
   beforeEach(() => {
@@ -27,13 +29,21 @@ describe('HouseholdService', () => {
       create: vi.fn(),
       findMembershipForUser: vi.fn(),
       getOwnerRole: vi.fn(),
+      memberCountForUser: vi.fn().mockResolvedValue(0),
       findForMember: vi.fn(),
       listMembers: vi.fn(),
       removeMember: vi.fn(),
       disband: vi.fn(),
       leave: vi.fn(),
+      carryOverPoolOnActivate: vi.fn(),
+      settlePoolToOwner: vi.fn(),
     };
-    sut = new HouseholdService(repo);
+    carryOver = {
+      onMemberJoined: vi.fn(),
+      onMemberRemoved: vi.fn(),
+      onDisband: vi.fn(),
+    } as unknown as MockedObject<HouseholdCarryOverService>;
+    sut = new HouseholdService(repo, carryOver);
   });
 
   describe('create', () => {
@@ -109,20 +119,51 @@ describe('HouseholdService', () => {
   });
 
   describe('disband / removeMember', () => {
-    it('throws NotHouseholdOwnerError when disband is rejected by the repo', async () => {
-      repo.disband.mockResolvedValue(false);
+    it('throws NotHouseholdOwnerError when a non-owner member disbands', async () => {
+      repo.findForMember.mockResolvedValue(summary);
       await expect(sut.disband('intruder', 'hh-1')).rejects.toBeInstanceOf(NotHouseholdOwnerError);
+      expect(repo.disband).not.toHaveBeenCalled();
+      expect(carryOver.onDisband).not.toHaveBeenCalled();
     });
 
-    it('disbands when the repo confirms ownership', async () => {
+    it('throws HouseholdNotFoundError when a non-member disbands', async () => {
+      repo.findForMember.mockResolvedValue(null);
+      await expect(sut.disband('outsider', 'hh-1')).rejects.toBeInstanceOf(HouseholdNotFoundError);
+    });
+
+    it('settles the pool then disbands when the owner confirms', async () => {
+      repo.findForMember.mockResolvedValue(summary);
+      repo.memberCountForUser.mockResolvedValue(2);
       repo.disband.mockResolvedValue(true);
+
       await sut.disband('owner-1', 'hh-1');
+
+      expect(carryOver.onDisband).toHaveBeenCalledWith('hh-1', 2);
       expect(repo.disband).toHaveBeenCalledWith('hh-1', 'owner-1');
     });
 
-    it('throws NotHouseholdOwnerError when removeMember is rejected', async () => {
+    it('throws HouseholdNotFoundError when a non-member removes a member', async () => {
+      repo.findForMember.mockResolvedValue(null);
+      await expect(sut.removeMember('outsider', 'hh-1', 'm2')).rejects.toBeInstanceOf(HouseholdNotFoundError);
+      expect(repo.removeMember).not.toHaveBeenCalled();
+    });
+
+    it('throws NotHouseholdOwnerError when a member-but-non-owner removes a member', async () => {
+      repo.findForMember.mockResolvedValue(summary);
       repo.removeMember.mockResolvedValue(false);
-      await expect(sut.removeMember('intruder', 'hh-1', 'm2')).rejects.toBeInstanceOf(NotHouseholdOwnerError);
+      await expect(sut.removeMember('member-2', 'hh-1', 'm3')).rejects.toBeInstanceOf(NotHouseholdOwnerError);
+      expect(carryOver.onMemberRemoved).not.toHaveBeenCalled();
+    });
+
+    it('settles the pool after a successful removal that empties it', async () => {
+      repo.findForMember.mockResolvedValue(summary);
+      repo.memberCountForUser.mockResolvedValue(2);
+      repo.removeMember.mockResolvedValue(true);
+
+      await sut.removeMember('owner-1', 'hh-1', 'm2');
+
+      expect(repo.removeMember).toHaveBeenCalledWith('hh-1', 'm2', 'owner-1');
+      expect(carryOver.onMemberRemoved).toHaveBeenCalledWith('hh-1', 2);
     });
   });
 
@@ -138,10 +179,14 @@ describe('HouseholdService', () => {
       expect(repo.leave).not.toHaveBeenCalled();
     });
 
-    it('lets a non-owner leave', async () => {
+    it('lets a non-owner leave and settles the pool on the count it had before', async () => {
       repo.findForMember.mockResolvedValue(summary);
+      repo.memberCountForUser.mockResolvedValue(2);
+
       await sut.leave('member-2', 'hh-1');
+
       expect(repo.leave).toHaveBeenCalledWith('hh-1', 'member-2');
+      expect(carryOver.onMemberRemoved).toHaveBeenCalledWith('hh-1', 2);
     });
   });
 });

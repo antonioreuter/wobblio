@@ -6,6 +6,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import { NagSuppressions } from 'cdk-nag';
 import { EnvironmentConfig } from '../config/environment';
+import { loadAppConfig, configParamName } from '../config/appConfig';
 
 interface WobblioLocalBootstrapStackProps extends StackProps {
   config: EnvironmentConfig;
@@ -29,7 +30,8 @@ export class WobblioLocalBootstrapStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
       cors: [
         {
-          allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.POST],
+          // Uploads are presigned multipart POST (§06); presigned PUT was removed.
+          allowedMethods: [s3.HttpMethods.POST],
           allowedOrigins: ['http://localhost:3000', 'http://localhost:3001'],
           allowedHeaders: ['*'],
           maxAge: 300,
@@ -71,56 +73,15 @@ export class WobblioLocalBootstrapStack extends Stack {
     });
 
     // ── SSM Parameters ────────────────────────────────────────────────────────
-    // Real Bedrock IDs (same as the dev account): local AI calls hit real Bedrock,
-    // so the worker must resolve invokable model IDs, not mock placeholders.
-    // Vision = Qwen3-VL (on-demand by foundation-model ID, no profile). Claude
-    // models use eu.* cross-region inference profiles — not invokable on-demand
-    // by bare foundation-model ID in eu-west-1.
-    const modelParams: Record<string, string> = {
-      '/wobblio/config/models/vision_parser': 'qwen.qwen3-vl-235b-a22b',
-      '/wobblio/config/models/pdf_parser': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
-      '/wobblio/config/models/auxiliary': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
-      '/wobblio/config/models/embedder': 'amazon.titan-embed-text-v2:0',
-      '/wobblio/config/models/insight': 'eu.anthropic.claude-haiku-4-5-20251001-v1:0',
-    };
+    // Runtime app-config comes from the committed config/config.local.json — the same
+    // source the dev/prod WobblioConfigStack uses. Local is flat (/wobblio/config/*,
+    // isolated LocalStack), matching the backend's CONFIG_STAGE-unset reads. Real Bedrock
+    // IDs live in the JSON: local AI hits real Bedrock, so the worker resolves invokable
+    // model IDs (Qwen vision on-demand; Claude via eu.* inference profiles).
+    const appConfig = loadAppConfig('local');
 
-    const quotaParams: Record<string, string> = {
-      // Per-role weekly upload caps. TESTER/ADMIN use -1 = unlimited.
-      '/wobblio/config/quotas/standard_uploads_per_week': '3',
-      '/wobblio/config/quotas/premium_uploads_per_week': '10',
-      '/wobblio/config/quotas/tester_uploads_per_week': '-1',
-      '/wobblio/config/quotas/admin_uploads_per_week': '-1',
-      // Per-role weekly failure-refund caps. TESTER/ADMIN use -1 = unlimited.
-      '/wobblio/config/quotas/standard_failure_refunds_per_week': '1',
-      '/wobblio/config/quotas/premium_failure_refunds_per_week': '3',
-      '/wobblio/config/quotas/tester_failure_refunds_per_week': '-1',
-      '/wobblio/config/quotas/admin_failure_refunds_per_week': '-1',
-      '/wobblio/config/quotas/household_uploads_per_week': '20',
-      '/wobblio/config/quotas/max_free_waitlist_cap': '5000',
-    };
-
-    const routingParams: Record<string, string> = {
-      '/wobblio/config/routing/max_stores': '3',
-      '/wobblio/config/routing/min_split_saving_eur': '5.00',
-    };
-
-    const tagParams: Record<string, string> = {
-      '/wobblio/config/tags/dedicated_call_enabled': 'false',
-      '/wobblio/config/tags/vocabulary': '[]',
-    };
-
-    const observabilityParams: Record<string, string> = {
-      '/wobblio/config/ops/email': 'antonioreuter@gmail.com',
-    };
-
-    const billingParams: Record<string, string> = {
-      '/wobblio/config/web_app_url': 'http://localhost:3000',
-      '/wobblio/config/billing/mock_premium_whitelist': 'antonioreuter@gmail.com',
-    };
-
-    const allParams = { ...modelParams, ...quotaParams, ...routingParams, ...tagParams, ...observabilityParams, ...billingParams };
-
-    for (const [name, value] of Object.entries(allParams)) {
+    for (const [relativeKey, value] of Object.entries(appConfig)) {
+      const name = configParamName('local', relativeKey);
       new ssm.StringParameter(this, `Param${name.replace(/\//g, '-').replace(/^-/, '')}`, {
         parameterName: name,
         stringValue: value,

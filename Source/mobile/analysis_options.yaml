@@ -1,0 +1,22 @@
+include: package:flutter_lints/flutter.yaml
+
+# --- Hexagonal import boundary (.claude/rules/flutter-architecture-guard.md) ---
+# Dart's analyzer has no built-in path-based import ban, so the boundary —
+# "no file under lib/core/ may import lib/infrastructure/ or a concrete package
+# (dio, get_it, flutter_bloc widgets, flutter_appauth, flutter_secure_storage, …)"
+# — is enforced by the grep check documented in README.md and wired into CI.
+# Note: the pure-Dart `bloc` package IS allowed in core (BLoCs live there); only
+# the Flutter-coupled `flutter_bloc` widgets are UI-layer. Composition of
+# adapters -> ports happens only in lib/main.dart.
+
+linter:
+  rules:
+    # Reinforce intentful, framework-agnostic core code.
+    avoid_print: true
+    prefer_final_locals: true
+    require_trailing_commas: true
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true

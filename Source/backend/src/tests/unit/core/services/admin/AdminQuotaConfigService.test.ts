@@ -23,7 +23,8 @@ describe('AdminQuotaConfigService', () => {
   it('lists every quota cap with its current value and role', async () => {
     store.getValues.mockResolvedValue({ [STANDARD_PATH]: '3', [TESTER_PATH]: '-1' });
     const list = await sut.list();
-    expect(list).toHaveLength(9);
+    // 4 per-role upload caps + household pool + 3 §06 upload-size/page limits.
+    expect(list).toHaveLength(8);
     expect(list.find((q) => q.key === 'standard_uploads_per_week')).toMatchObject({
       value: '3',
       role: 'STANDARD',

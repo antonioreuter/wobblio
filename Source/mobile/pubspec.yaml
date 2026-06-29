@@ -1,0 +1,30 @@
+name: wobblio
+description: Wobblio mobile capture & review client (Flutter).
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+
+# Kept deliberately lean (YAGNI). Capture/codegen packages land in their own
+# slices: camera + image pipeline in 16c, freezed/json_serializable alongside
+# the first real models in 16c.
+dependencies:
+  flutter:
+    sdk: flutter
+  bloc: ^8.1.4           # pure-Dart BLoC core — core/ blocs (flutter_bloc widgets stay in ui/)
+  flutter_bloc: ^8.1.6   # BLoC widgets (BlocProvider/BlocBuilder) — ui/ only
+  equatable: ^2.0.5      # value equality for states/events
+  get_it: ^7.7.0         # service locator — composition root only (main.dart)
+  dio: ^5.7.0            # HTTP client behind the IApiClient port
+  flutter_appauth: ^7.0.0          # Cognito Hosted-UI auth-code + PKCE (16b)
+  flutter_secure_storage: ^9.2.2   # Keychain / Keystore token store (16b)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  bloc_test: ^9.1.7
+
+flutter:
+  uses-material-design: true

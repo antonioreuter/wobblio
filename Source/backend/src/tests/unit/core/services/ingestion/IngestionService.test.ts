@@ -13,7 +13,9 @@ import type { IInvoiceRepository } from '@core/ports/ingestion/IInvoiceRepositor
 import type { IPriceObservationStore } from '@core/ports/data-intelligence/IPriceObservationStore';
 import type { IContributorContextRepository } from '@core/ports/data-intelligence/IContributorContextRepository';
 import type { IRegionReference } from '@core/ports/data-intelligence/IRegionReference';
+import type { IUploadLimitsProvider } from '@core/ports/quota/IUploadLimitsProvider';
 import type { ParsedReceipt } from '@core/domain/ingestion';
+import { OversizeUploadError, TooManyPagesError, UnsupportedUploadTypeError } from '@core/domain/errors';
 
 const MESSAGE = { invoiceId: 'inv-1', tenantId: 'tenant-1', s3Key: 'receipts/tenant-1/abc.jpg' };
 
@@ -57,12 +59,13 @@ describe('IngestionService', () => {
   let priceObservationStore: MockedObject<IPriceObservationStore>;
   let contributorContext: MockedObject<IContributorContextRepository>;
   let regionReference: MockedObject<IRegionReference>;
+  let uploadLimits: MockedObject<IUploadLimitsProvider>;
   let sut: IngestionService;
 
   beforeEach(() => {
     tenantContext = { setTenantId: vi.fn() };
     ledger = { claim: vi.fn(), setStatus: vi.fn(), release: vi.fn() };
-    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
+    storage = { presignPost: vi.fn(), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     visionParser = { parse: vi.fn() };
     documentParser = { parse: vi.fn() };
     merchantResolver = { resolve: vi.fn() };
@@ -76,6 +79,9 @@ describe('IngestionService', () => {
       findFuzzyDuplicate: vi.fn(),
       hasEmittedDuplicateByHash: vi.fn(),
       persistParsed: vi.fn(),
+      markUnreadable: vi.fn(),
+      markFailed: vi.fn(),
+      quarantine: vi.fn(),
       confirmLocation: vi.fn(),
       getForReEmission: vi.fn(),
       markLocationResolved: vi.fn(),
@@ -95,12 +101,17 @@ describe('IngestionService', () => {
       isMappedLocation: vi.fn().mockResolvedValue(true),
       resolveReceiptLocation: vi.fn(),
     };
+    uploadLimits = {
+      getMaxImageBytes: vi.fn().mockResolvedValue(5_000_000),
+      getMaxPdfBytes: vi.fn().mockResolvedValue(4_500_000),
+      getMaxPdfPages: vi.fn().mockResolvedValue(10),
+    };
     sut = new IngestionService(
       tenantContext, ledger, storage,
       visionParser as unknown as VisionParseService,
       documentParser as unknown as VisionParseService,
       merchantResolver, productNormalizer, classifier, tagGenerator, invoiceRepo,
-      priceObservationStore, contributorContext, regionReference,
+      priceObservationStore, contributorContext, regionReference, uploadLimits,
     );
   });
 
@@ -128,6 +139,23 @@ describe('IngestionService', () => {
     expect(outcome).toEqual({ handled: false });
     expect(tenantContext.setTenantId).toHaveBeenCalledWith('tenant-1');
     expect(storage.getObjectBytes).not.toHaveBeenCalled();
+  });
+
+  it('fails an unreadable verdict as user-fault FAILED_PROCESSING and skips the pipeline', async () => {
+    ledger.claim.mockResolvedValue(true);
+    storage.getObjectBytes.mockResolvedValue(new Uint8Array([1]));
+    visionParser.parse.mockResolvedValue({ unreadable: true, reason: 'BLURRY' });
+
+    const outcome = await sut.process(MESSAGE);
+
+    expect(outcome).toEqual({ handled: true, status: 'FAILED_PROCESSING', failureReasonCode: 'BLURRY' });
+    expect(invoiceRepo.markUnreadable).toHaveBeenCalledWith('inv-1', 'BLURRY');
+    // Nothing downstream ran — no canonicalization, no persist, no emission — but the
+    // ledger is marked DONE so a redelivery short-circuits (and the run is still charged).
+    expect(merchantResolver.resolve).not.toHaveBeenCalled();
+    expect(invoiceRepo.persistParsed).not.toHaveBeenCalled();
+    expect(priceObservationStore.emit).not.toHaveBeenCalled();
+    expect(ledger.setStatus).toHaveBeenCalledWith(MESSAGE.s3Key, 'DONE');
   });
 
   it('persists a PARSED invoice and maps lines (discount + unit price) on the happy path', async () => {
@@ -393,5 +421,51 @@ describe('IngestionService', () => {
     const persisted = invoiceRepo.persistParsed.mock.calls[0][0];
     expect(persisted.merchantProvisional).toBe(true);
     expect(persisted.lines[0].productProvisional).toBe(true);
+  });
+
+  // §06 pre-AI validation: every breach throws a user-fault error BEFORE any model call.
+  it('routes a PDF through the document parser (not the vision parser)', async () => {
+    arrangeHappyPath();
+
+    const outcome = await sut.process({ ...MESSAGE, s3Key: 'receipts/tenant-1/abc.pdf' });
+
+    expect(documentParser.parse).toHaveBeenCalled();
+    expect(visionParser.parse).not.toHaveBeenCalled();
+    expect(outcome.status).toBe('PARSED');
+  });
+
+  describe('pre-AI upload validation (§06)', () => {
+    const arrangeBytes = (bytes: Uint8Array) => {
+      ledger.claim.mockResolvedValue(true);
+      storage.getObjectBytes.mockResolvedValue(bytes);
+    };
+
+    it('rejects an oversize image with OversizeUploadError before parsing', async () => {
+      arrangeBytes(new Uint8Array(6_000_000));
+      uploadLimits.getMaxImageBytes.mockResolvedValue(5_000_000);
+
+      await expect(sut.process(MESSAGE)).rejects.toBeInstanceOf(OversizeUploadError);
+      expect(visionParser.parse).not.toHaveBeenCalled();
+    });
+
+    it('rejects a HEIC that reached the worker with UnsupportedUploadTypeError', async () => {
+      arrangeBytes(new Uint8Array([1, 2, 3]));
+
+      await expect(
+        sut.process({ ...MESSAGE, s3Key: 'receipts/tenant-1/abc.heic' }),
+      ).rejects.toBeInstanceOf(UnsupportedUploadTypeError);
+      expect(visionParser.parse).not.toHaveBeenCalled();
+    });
+
+    it('rejects a PDF over the page cap with TooManyPagesError before parsing', async () => {
+      const threePages = new TextEncoder().encode('/Type /Page /Type/Page /Type /Page');
+      arrangeBytes(threePages);
+      uploadLimits.getMaxPdfPages.mockResolvedValue(2);
+
+      await expect(
+        sut.process({ ...MESSAGE, s3Key: 'receipts/tenant-1/abc.pdf' }),
+      ).rejects.toBeInstanceOf(TooManyPagesError);
+      expect(documentParser.parse).not.toHaveBeenCalled();
+    });
   });
 });

@@ -62,15 +62,15 @@ export function TopBar({
       </div>
       <TopBarSearch />
       <div className="topbar-right">
-        <div className="usage-chip" data-testid="topbar-usage" title="Invoices processed this week">
+        <div className="usage-chip" data-testid="topbar-usage" title="Usage credits consumed this week">
           <span className="usage-icon">
             <ReceiptText size={16} />
           </span>
           <div className="usage-meta">
             <div className="usage-top">
-              <span className="usage-label">Invoices this week</span>
+              <span className="usage-label">Credits this week</span>
               <span className="usage-count">
-                {usage ? <><strong>{usageUsed}</strong> / {unlimited ? '∞' : usageLimit}</> : '—'}
+                {usage ? <><strong>{usageUsed.toLocaleString()}</strong> / {unlimited ? '∞' : usageLimit.toLocaleString()}</> : '—'}
               </span>
             </div>
             <div className="usage-bar">

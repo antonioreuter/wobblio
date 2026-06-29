@@ -176,58 +176,13 @@ fi
 
 
 # ── Phase 2: SSM Parameters ───────────────────────────────────────────────────
+# All runtime application config — including ops/email and the auth/* + ai/* keys — is
+# owned by WobblioConfigStack-<stage>, seeded from the committed config/config.<stage>.json
+# on `cdk deploy` under /wobblio/config/<stage>/*. There is no CLI parameter seeding here.
+# Edit that JSON (or use the admin console at runtime) — never `aws ssm put-parameter` by hand.
 if [[ $SKIP_SSM -eq 0 ]]; then
-  step "Phase 2: SSM Parameters Setup"
-
-  set_ssm_param() {
-    local name="$1"
-    local value="$2"
-
-    if [[ $FORCE_SSM -eq 0 ]]; then
-      # Check if parameter already exists
-      if aws ssm get-parameter --name "$name" >/dev/null 2>&1; then
-        info "SSM parameter $name already exists. Skipping (use --force-ssm to overwrite)."
-        return
-      fi
-    fi
-
-    info "Setting SSM parameter $name..."
-    aws ssm put-parameter \
-      --name "$name" \
-      --value "$value" \
-      --type String \
-      --overwrite \
-      || fail "Failed to set SSM parameter $name"
-  }
-
-  # ── Bedrock model IDs ──────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/models/vision_parser"   "${MODEL_VISION_PARSER}"
-  set_ssm_param "/wobblio/config/models/auxiliary"       "${MODEL_AUXILIARY}"
-  set_ssm_param "/wobblio/config/models/insight"         "${MODEL_INSIGHT}"
-  set_ssm_param "/wobblio/config/models/embedder"        "${MODEL_EMBEDDER}"
-
-  # ── Quotas ────────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/quotas/standard_uploads_per_week"   "${QUOTA_STANDARD_UPLOADS_PER_WEEK}"
-  set_ssm_param "/wobblio/config/quotas/premium_uploads_per_week"    "${QUOTA_PREMIUM_UPLOADS_PER_WEEK}"
-  set_ssm_param "/wobblio/config/quotas/household_uploads_per_week"  "${QUOTA_HOUSEHOLD_UPLOADS_PER_WEEK}"
-  set_ssm_param "/wobblio/config/quotas/max_free_waitlist_cap"       "${QUOTA_MAX_FREE_WAITLIST_CAP}"
-
-  # ── Routing ───────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/routing/max_stores"            "${ROUTING_MAX_STORES}"
-  set_ssm_param "/wobblio/config/routing/min_split_saving_eur"  "${ROUTING_MIN_SPLIT_SAVING_EUR}"
-
-  # ── Tags / AI ─────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/tags/dedicated_call_enabled"  "${TAGS_DEDICATED_CALL_ENABLED}"
-  set_ssm_param "/wobblio/config/tags/vocabulary"              "${TAGS_VOCABULARY}"
-
-  # ── Operations ────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/ops/email"      "${OPS_EMAIL}"
-  set_ssm_param "/wobblio/config/web_app_url"    "${WEB_APP_URL}"
-
-  # ── Billing ───────────────────────────────────────────────────────────────────
-  set_ssm_param "/wobblio/config/billing/mock_premium_whitelist"  "${BILLING_MOCK_PREMIUM_WHITELIST}"
-
-  ok "SSM parameters verified/set."
+  step "Phase 2: SSM Parameters (owned by WobblioConfigStack — nothing to seed)"
+  info "Runtime config lives in config/config.<stage>.json, deployed by WobblioConfigStack-<stage>."
 else
   info "Skipping Phase 2: SSM Parameters Setup"
 fi

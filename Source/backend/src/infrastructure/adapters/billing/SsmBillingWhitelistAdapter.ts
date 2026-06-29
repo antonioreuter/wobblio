@@ -1,7 +1,8 @@
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import type { IBillingWhitelist } from '@core/ports/billing/IBillingWhitelist';
+import { stageScopeConfig } from '@infrastructure/config/stageConfig';
 
-const WHITELIST_PARAM = '/wobblio/config/billing/mock_premium_whitelist';
+const WHITELIST_PARAM = stageScopeConfig('/wobblio/config/billing/mock_premium_whitelist');
 const CACHE_TTL_MS = 60_000;
 
 export class SsmBillingWhitelistAdapter implements IBillingWhitelist {

@@ -150,6 +150,14 @@ info "CDK synth (cdk-nag gate)..."
 (cd "$INFRA_DIR" && STAGE="$STAGE" npm run cdk:synth -- --quiet)
 ok "CDK synth: passed"
 
+# ── CDK deploy: WobblioConfigStack ─────────────────────────────────────────────
+# Owns /wobblio/config/<stage>/* from config/config.<stage>.json. Deployed first so the
+# backend can resolve the params at deploy (waitlist cap env) and read them at runtime.
+step "Deploy WobblioConfigStack-${STAGE} (SSM app config)"
+(cd "$INFRA_DIR" && npx cdk deploy "WobblioConfigStack-${STAGE}" \
+  --profile "$AWS_PROFILE" --require-approval never)
+ok "WobblioConfigStack-${STAGE} deployed"
+
 # ── CDK deploy: WobblioDbStack ─────────────────────────────────────────────────
 step "Deploy WobblioDbStack-${STAGE} (KMS key)"
 (cd "$INFRA_DIR" && npx cdk deploy "WobblioDbStack-${STAGE}" \

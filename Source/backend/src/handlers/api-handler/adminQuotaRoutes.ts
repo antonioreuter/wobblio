@@ -2,10 +2,9 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import type { PoolClient } from 'pg';
 import type { AppUser, UserRole } from '@core/ports/identity/IAppUserRepository';
 import type { LambdaLogger } from '@infrastructure/logging/logger';
-import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
 import { AdminAuditLogAdapter } from '@infrastructure/adapters/admin/AdminAuditLogAdapter';
 import { weekStart } from '@core/domain/week';
-import { REGION, json, parseJsonBody } from './shared';
+import { json, parseJsonBody, uploadQuotaAdapter } from './shared';
 
 interface UserSearchResult {
   id: string;
@@ -113,7 +112,7 @@ async function searchUsers(db: PoolClient, event: APIGatewayProxyEvent): Promise
   );
   const usedById = new Map(usedResult.rows.map((r) => [r.user_id, r.used]));
 
-  const quotaProvider = new SsmUploadQuotaAdapter(REGION);
+  const quotaProvider = uploadQuotaAdapter();
   const results: UserSearchResult[] = [];
   for (const row of userResult.rows) {
     const cap = await quotaProvider.getPersonalUploadsCap(row.role as UserRole);
@@ -164,7 +163,7 @@ async function adjustQuota(
   );
   const quotaUsed = adjustResult.rows[0].used;
 
-  const quotaCap = toJsonCap(await new SsmUploadQuotaAdapter(REGION).getPersonalUploadsCap(targetUser.role as UserRole));
+  const quotaCap = toJsonCap(await uploadQuotaAdapter().getPersonalUploadsCap(targetUser.role as UserRole));
 
   await new AdminAuditLogAdapter(db).record({
     actorUserId: adminUser.id,

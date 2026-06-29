@@ -26,7 +26,7 @@ async function fetchInvoices(): Promise<Invoice[]> {
   return data.invoices.map(mapInvoice)
 }
 
-/** Weekly scan quota for the current tenant (§2.4). */
+/** Weekly credit quota for the current tenant (§2.4). */
 export interface Usage {
   used: number
   /** null when unlimited (TESTER/ADMIN). */

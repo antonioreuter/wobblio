@@ -40,4 +40,11 @@ export interface IHouseholdRepository {
   // Returns false when the caller is not the owner.
   disband(householdId: string, ownerId: string): Promise<boolean>;
   leave(householdId: string, userId: string): Promise<void>;
+  // Pool activates (2nd member joins): seed the household HOUSEHOLD_CREDITS counter
+  // from the owner's personal CREDITS for the week (§6.3 carry-over). SECURITY DEFINER
+  // — the joining member cannot read the owner's counter under RLS. Idempotent overwrite.
+  carryOverPoolOnActivate(householdId: string, weekStart: string): Promise<void>;
+  // Pool deactivates (last member leaves / removed / disband): the owner re-absorbs the
+  // pool's spend via GREATEST, so dissolving never wipes consumption. SECURITY DEFINER.
+  settlePoolToOwner(householdId: string, weekStart: string): Promise<void>;
 }

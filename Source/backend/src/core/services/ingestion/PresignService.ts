@@ -3,11 +3,14 @@ import type { IS3FileStorage } from '../../ports/ingestion/IS3FileStorage';
 import type { UserRole } from '../../ports/identity/IAppUserRepository';
 import type { IReverseGeocoder } from '../../ports/data-intelligence/IReverseGeocoder';
 import type { IRegionReference } from '../../ports/data-intelligence/IRegionReference';
+import type { IUploadQuotaProvider } from '../../ports/quota/IUploadQuotaProvider';
+import type { IUploadLimitsProvider } from '../../ports/quota/IUploadLimitsProvider';
 import type { QuotaService } from '../quota/QuotaService';
-import type { UploadAllowanceResolver } from '../quota/UploadAllowanceResolver';
+import type { UploadAllowance, UploadAllowanceResolver } from '../quota/UploadAllowanceResolver';
 import {
   DuplicateInvoiceError,
   PremiumRequiredError,
+  QuotaExceededError,
   UnsupportedUploadTypeError,
 } from '../../domain/errors';
 import { extensionFor, isAllowedUploadType, isPdf } from '../../domain/uploadFormat';
@@ -38,7 +41,9 @@ interface UploadGeo {
 
 export interface PresignResult {
   invoiceId: string;
-  uploadUrl: string;
+  // Presigned multipart POST target + the form fields the client submits with the file.
+  url: string;
+  fields: Record<string, string>;
   s3Key: string;
 }
 
@@ -47,6 +52,8 @@ export class PresignService {
     private readonly invoiceRepo: IInvoiceRepository,
     private readonly quotaService: QuotaService,
     private readonly allowanceResolver: UploadAllowanceResolver,
+    private readonly quotaProvider: IUploadQuotaProvider,
+    private readonly limitsProvider: IUploadLimitsProvider,
     private readonly fileStorage: IS3FileStorage,
     private readonly reverseGeocoder: IReverseGeocoder,
     private readonly regionReference: IRegionReference,
@@ -70,9 +77,7 @@ export class PresignService {
       userId: input.uploadedByUserId,
       role: input.role,
     });
-    await this.quotaService.reserveUpload(
-      allowance.quotaOwnerId, allowance.counter, allowance.cap, new Date(),
-    );
+    await this.assertCreditsAvailable(allowance);
 
     const uploadGeo = await this.resolveUploadGeo(input.coordinates);
 
@@ -81,13 +86,42 @@ export class PresignService {
       tenantId: input.tenantId,
       uploadedByUserId: input.uploadedByUserId,
       householdId: allowance.householdId,
+      // Persist the pool-vs-personal decision so the worker charges the same counter.
+      quotaPooled: allowance.isPool,
       imageS3Key: s3Key,
       imageSha256: input.imageSha256,
       ...uploadGeo,
     });
 
-    const uploadUrl = await this.fileStorage.presignPut(s3Key, input.contentType, PRESIGN_TTL_SECONDS);
-    return { invoiceId, uploadUrl, s3Key };
+    // Per-format size ceiling enforced by S3 at upload time (content-length-range), so an
+    // oversize file is rejected before the bytes land — truly free (§06 primary guard).
+    const maxBytes = isPdf(input.contentType)
+      ? await this.limitsProvider.getMaxPdfBytes()
+      : await this.limitsProvider.getMaxImageBytes();
+    const { url, fields } = await this.fileStorage.presignPost(
+      s3Key, input.contentType, maxBytes, PRESIGN_TTL_SECONDS,
+    );
+    return { invoiceId, url, fields, s3Key };
+  }
+
+  // Soft-Cap check only — no counter write (the worker charges actual tokens on
+  // success). A pessimistic projection (in-flight PROCESSING uploads × avg tokens)
+  // is added to current usage so a burst of concurrent presigns can't all clear the
+  // cap before any of them is charged.
+  private async assertCreditsAvailable(allowance: UploadAllowance): Promise<void> {
+    const now = new Date();
+    const avgTokens = await this.quotaProvider.getAverageTokensPerInvoice();
+    const inFlightCredits = (await this.invoiceRepo.countInFlightUploads(
+      allowance.quotaOwnerId, allowance.isPool, this.quotaService.getWeekStart(now),
+    )) * avgTokens;
+    const available = await this.quotaService.checkAvailability(
+      allowance.quotaOwnerId, allowance.counter, allowance.cap, now, inFlightCredits,
+    );
+    if (available) return;
+    // Report the real projected usage that tripped the cap (stored used + in-flight
+    // projection), not the cap itself — so the CloudWatch quota-block log is informative.
+    const used = await this.quotaService.getUsed(allowance.quotaOwnerId, allowance.counter, now);
+    throw new QuotaExceededError(allowance.counter, used + inFlightCredits, allowance.cap);
   }
 
   // Reverse-geocode the upload coordinates to a coarse country/region for tier 2.

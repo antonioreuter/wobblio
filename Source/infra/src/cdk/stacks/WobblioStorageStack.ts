@@ -31,7 +31,9 @@ export class WobblioStorageStack extends Stack {
       removalPolicy: config.stage === 'prod' ? RemovalPolicy.RETAIN : RemovalPolicy.DESTROY,
       cors: [
         {
-          allowedMethods: [s3.HttpMethods.PUT],
+          // Uploads are presigned multipart POST with content-length-range (§06). The
+          // presigned-PUT path was removed, so POST is the only method clients use.
+          allowedMethods: [s3.HttpMethods.POST],
           allowedOrigins: config.isLocal
             ? ['http://localhost:3000', 'http://localhost:3001']
             : [`https://${config.appDomain}`],

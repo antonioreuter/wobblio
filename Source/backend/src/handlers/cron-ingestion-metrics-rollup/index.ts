@@ -4,11 +4,13 @@ import { createLambdaLogger, type LambdaLogger } from '@infrastructure/logging/l
 import { buildPool } from '@infrastructure/config/db';
 import { CloudWatchLogsTimingSourceAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsTimingSourceAdapter';
 import { CloudWatchLogsAiUsageAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsAiUsageAdapter';
+import { CloudWatchLogsReprocessAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsReprocessAdapter';
 import { BusinessKpiDbAdapter } from '@infrastructure/adapters/observability/BusinessKpiDbAdapter';
 import { KpiDailyRepositoryAdapter } from '@infrastructure/adapters/observability/KpiDailyRepositoryAdapter';
 import { IngestionMetricsRollupService } from '@core/services/observability/IngestionMetricsRollupService';
 import { BusinessKpiRollupService } from '@core/services/observability/BusinessKpiRollupService';
 import { AiSpendRollupService } from '@core/services/observability/AiSpendRollupService';
+import { ReprocessCrossWeekRollupService } from '@core/services/observability/ReprocessCrossWeekRollupService';
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -48,6 +50,9 @@ async function runForDate(pool: Pool, metricDate: string, log: LambdaLogger): Pr
     ['business', new BusinessKpiRollupService(new BusinessKpiDbAdapter(pool), kpiWriter).run(metricDate)],
     ['ai_spend', new AiSpendRollupService(
       new CloudWatchLogsAiUsageAdapter(REGION, ingestionLogGroup), kpiWriter,
+    ).run(metricDate)],
+    ['reprocess_cross_week', new ReprocessCrossWeekRollupService(
+      new CloudWatchLogsReprocessAdapter(REGION, ingestionLogGroup), kpiWriter,
     ).run(metricDate)],
   ];
 

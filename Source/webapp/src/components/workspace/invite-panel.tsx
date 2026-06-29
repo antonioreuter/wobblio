@@ -9,7 +9,7 @@ import type { GeneratedInvite } from './household-data'
 
 interface InvitePanelProps {
   householdId: string
-  // True when the roster is already full (5 members) — minting is disabled.
+  // True when the roster is already full (3 members) — minting is disabled.
   atCapacity: boolean
 }
 
@@ -76,7 +76,7 @@ export function InvitePanel({ householdId, atCapacity }: InvitePanelProps) {
         <div className="hh-invite-id">
           <span className="hh-invite-title">Invite a member</span>
           <span className="hh-invite-sub">
-            Anyone with the link can join, up to 5 members. Links expire.
+            Anyone with the link can join, up to 3 members. Links expire.
           </span>
         </div>
         {!invite && (

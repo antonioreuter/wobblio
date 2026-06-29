@@ -1,11 +1,23 @@
-import type { ParsedReceipt, ParsedLine, ParsedLocation } from './ingestion';
+import type { ParsedReceipt, ParsedLine, ParsedLocation, UnreadableVerdict } from './ingestion';
+import type { UnreadableReason } from './failureReasons';
 import { extractJsonObject } from './jsonExtract';
 
+// A valid model output is either a receipt or the `unreadable` verdict (§03.2). Both are
+// "ok" (no retry): the verdict is a legitimate answer for a blurry/non-receipt image.
 export type ReceiptParseResult =
-  | { ok: true; value: ParsedReceipt }
+  | { ok: true; value: ParsedReceipt | UnreadableVerdict }
   | { ok: false; issues: string };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UNREADABLE_REASONS: readonly UnreadableReason[] = ['BLURRY', 'NOT_A_RECEIPT'];
+
+function parseUnreadableVerdict(raw: Record<string, unknown>): ReceiptParseResult {
+  const reason = raw.reason;
+  if (typeof reason !== 'string' || !UNREADABLE_REASONS.includes(reason as UnreadableReason)) {
+    return { ok: false, issues: 'unreadable.reason must be one of BLURRY, NOT_A_RECEIPT' };
+  }
+  return { ok: true, value: { unreadable: true, reason: reason as UnreadableReason } };
+}
 
 function isNum(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
@@ -72,6 +84,8 @@ export function parseReceiptJson(content: string): ReceiptParseResult {
   if (typeof raw !== 'object' || raw === null) return { ok: false, issues: 'output must be a JSON object' };
 
   const r = raw as Record<string, unknown>;
+  if (r.unreadable === true) return parseUnreadableVerdict(r);
+
   const issues: string[] = [];
   if (typeof r.merchant_raw !== 'string' || r.merchant_raw.length === 0) issues.push('merchant_raw must be a non-empty string');
   if (typeof r.transaction_date !== 'string' || !DATE_RE.test(r.transaction_date)) issues.push('transaction_date must be YYYY-MM-DD');

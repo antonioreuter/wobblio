@@ -1,8 +1,19 @@
 import type { APIGatewayProxyResult } from 'aws-lambda';
 import type { PoolClient } from 'pg';
 import { TenantContextAdapter } from '@infrastructure/adapters/identity/TenantContextAdapter';
+import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
 
 export const REGION = process.env.AWS_REGION ?? 'eu-west-1';
+
+// One SsmUploadQuotaAdapter per warm container — its TTL'd SSM cache is then reused across
+// requests instead of re-fetching the quota batch on every /me/usage, /presign, and
+// household-detail call (the hot quota-reading paths). Stateless (region + cache only), so
+// sharing is safe across the request-scoped PoolClients.
+let quotaAdapterSingleton: SsmUploadQuotaAdapter | null = null;
+export function uploadQuotaAdapter(): SsmUploadQuotaAdapter {
+  if (!quotaAdapterSingleton) quotaAdapterSingleton = new SsmUploadQuotaAdapter(REGION);
+  return quotaAdapterSingleton;
+}
 
 // 204/205/304 must carry no body per HTTP; everything else serializes JSON.
 const NO_BODY_STATUSES = new Set([204, 205, 304]);

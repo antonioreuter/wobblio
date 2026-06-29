@@ -3,6 +3,7 @@ import type {
   IInvoiceRepository,
   CreatePendingInvoice,
   InvoiceRecord,
+  InvoiceChargeTarget,
   FuzzyFingerprint,
   PersistParsedInvoice,
   ConfirmLocationInput,
@@ -13,6 +14,7 @@ import type {
   TopMerchant,
 } from '@core/ports/ingestion/IInvoiceRepository';
 import type { InvoiceStatus, InvoiceVerdict } from '@core/domain/ingestion';
+import type { FailureReasonCode, UnreadableReason } from '@core/domain/failureReasons';
 import type { InvoiceLocationStatus } from '@core/domain/region';
 import type { ObservationLine } from '@core/domain/priceObservation';
 import { categoryNameFor } from '@core/domain/categoryTaxonomy';
@@ -67,6 +69,7 @@ interface InvoiceRow {
   image_s3_key: string;
   image_sha256: string;
   household_id: string | null;
+  system_fault_reason: string | null;
   location_status: InvoiceLocationStatus;
   location_confirmed_at: string | null;
   upload_country_code: string | null;
@@ -74,7 +77,7 @@ interface InvoiceRow {
 }
 
 const RECORD_COLUMNS = `id, tenant_id, status, image_s3_key, image_sha256, household_id,
-  location_status, location_confirmed_at::text AS location_confirmed_at,
+  system_fault_reason, location_status, location_confirmed_at::text AS location_confirmed_at,
   upload_country_code, upload_region_code`;
 
 // All methods rely on RLS (app.current_tenant_id) set on this client's transaction.
@@ -85,12 +88,12 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     const result = await this.client.query<{ id: string }>(
       `INSERT INTO invoice
          (tenant_id, household_id, uploaded_by_user_id, image_s3_key, image_sha256, status,
-          upload_country_code, upload_region_code)
-       VALUES ($1, $2, $3, $4, $5, 'PROCESSING', $6, $7)
+          upload_country_code, upload_region_code, quota_pooled)
+       VALUES ($1, $2, $3, $4, $5, 'PROCESSING', $6, $7, $8)
        RETURNING id`,
       [
         input.tenantId, input.householdId, input.uploadedByUserId, input.imageS3Key,
-        input.imageSha256, input.uploadCountryCode, input.uploadRegionCode,
+        input.imageSha256, input.uploadCountryCode, input.uploadRegionCode, input.quotaPooled,
       ],
     );
     return result.rows[0].id;
@@ -102,6 +105,29 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       [invoiceId],
     );
     return result.rows[0] ? toRecord(result.rows[0]) : null;
+  }
+
+  async findChargeTarget(invoiceId: string): Promise<InvoiceChargeTarget | null> {
+    const result = await this.client.query<{ quota_pooled: boolean; household_id: string | null; created_at: string }>(
+      `SELECT quota_pooled, household_id, created_at::text AS created_at FROM invoice WHERE id = $1`,
+      [invoiceId],
+    );
+    const row = result.rows[0];
+    return row
+      ? { quotaPooled: row.quota_pooled, householdId: row.household_id, createdAt: row.created_at }
+      : null;
+  }
+
+  // Pool counter is keyed by household_id; the personal counter by the uploader. Both
+  // run inside the presign tenant transaction, so RLS scopes the count to the caller.
+  async countInFlightUploads(ownerId: string, isPool: boolean, weekStart: string): Promise<number> {
+    const ownerColumn = isPool ? 'household_id' : 'uploaded_by_user_id';
+    const result = await this.client.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM invoice
+       WHERE ${ownerColumn} = $1 AND status = 'PROCESSING' AND created_at >= $2::date`,
+      [ownerId, weekStart],
+    );
+    return parseInt(result.rows[0]?.count ?? '0', 10);
   }
 
   async findSameTenantByHash(imageSha256: string): Promise<InvoiceRecord | null> {
@@ -144,12 +170,15 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
 
   async persistParsed(input: PersistParsedInvoice): Promise<void> {
     await this.client.query(
+      // Clear any prior failure/quarantine state: this is the success write, so a
+      // reprocessed invoice (§03.7 reprocess-on-behalf) must not stay blocked from deletion.
       `UPDATE invoice
          SET merchant_id = $2, merchant_provisional = $3,
              transaction_date = $4, currency = $5, total = $6, category_id = $7,
              search_tags = $8, status = $9, location_country_code = $10,
              location_region_code = $11, location_status = $12, location_source = $13,
-             price_emission_blocked = $14, search_city = $15
+             price_emission_blocked = $14, search_city = $15,
+             failure_reason_code = NULL, system_fault_reason = NULL, blocked_at = NULL
        WHERE id = $1`,
       [
         input.invoiceId, input.merchantId, input.merchantProvisional,
@@ -243,6 +272,44 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     };
   }
 
+  // §03.2 — user-fault failure: the model ran but judged the image unreadable. Sets the
+  // user-fault reason and clears any prior quarantine (a reprocess that comes back
+  // unreadable must end deletable), so system_fault_reason is null → the invoice is deletable.
+  async markUnreadable(invoiceId: string, reason: UnreadableReason): Promise<void> {
+    await this.client.query(
+      `UPDATE invoice
+         SET status = 'FAILED_PROCESSING', failure_reason_code = $2,
+             system_fault_reason = NULL, blocked_at = NULL
+       WHERE id = $1`,
+      [invoiceId, reason],
+    );
+  }
+
+  // §03.6 — quarantine after an our-stack crash. Charges nothing (the run rolled back).
+  // The status guard makes redelivery a no-op (0 rows) so blocked_at/root cause aren't
+  // overwritten; the rowCount tells the caller whether this was the transition into
+  // quarantine, so the owner is notified exactly once.
+  async markFailed(invoiceId: string, reasonCode: FailureReasonCode): Promise<void> {
+    await this.client.query(
+      `UPDATE invoice
+         SET status = 'FAILED_PROCESSING', failure_reason_code = $2,
+             system_fault_reason = NULL, blocked_at = NULL
+       WHERE id = $1`,
+      [invoiceId, reasonCode],
+    );
+  }
+
+  async quarantine(invoiceId: string, systemFaultReason: string): Promise<boolean> {
+    const result = await this.client.query(
+      `UPDATE invoice
+         SET status = 'FAILED_PROCESSING', failure_reason_code = 'SYSTEM_FAULT',
+             system_fault_reason = $2, blocked_at = now()
+       WHERE id = $1 AND status <> 'FAILED_PROCESSING'`,
+      [invoiceId, systemFaultReason],
+    );
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
   async markLocationResolved(invoiceId: string): Promise<void> {
     await this.client.query(
       `UPDATE invoice SET location_status = 'RESOLVED'
@@ -288,8 +355,8 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
   }
 
   async getDetail(invoiceId: string): Promise<InvoiceDetail | null> {
-    const head = await this.client.query<InvoiceListRow & { image_s3_key: string; feedback_verdict: InvoiceVerdict | null }>(
-      `SELECT ${LIST_COLUMNS}, i.image_s3_key, f.verdict AS feedback_verdict
+    const head = await this.client.query<InvoiceListRow & { image_s3_key: string; feedback_verdict: InvoiceVerdict | null; failure_reason_code: FailureReasonCode | null }>(
+      `SELECT ${LIST_COLUMNS}, i.image_s3_key, i.failure_reason_code, f.verdict AS feedback_verdict
        FROM invoice i
        LEFT JOIN merchant m ON m.id = i.merchant_id
        LEFT JOIN invoice_feedback f ON f.invoice_id = i.id
@@ -317,6 +384,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       ...toListItem(head.rows[0]),
       imageS3Key: head.rows[0].image_s3_key,
       feedbackVerdict: head.rows[0].feedback_verdict,
+      failureReasonCode: head.rows[0].failure_reason_code,
       lines: detailLines,
     };
   }
@@ -330,6 +398,7 @@ function toRecord(row: InvoiceRow): InvoiceRecord {
     imageS3Key: row.image_s3_key,
     imageSha256: row.image_sha256,
     householdId: row.household_id,
+    systemFaultReason: row.system_fault_reason,
     locationStatus: row.location_status,
     locationConfirmedAt: row.location_confirmed_at,
     uploadCountryCode: row.upload_country_code,

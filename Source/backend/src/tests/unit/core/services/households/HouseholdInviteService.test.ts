@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { MockedObject } from 'vitest';
 import { HouseholdInviteService } from '@core/services/households/HouseholdInviteService';
+import { HouseholdCarryOverService } from '@core/services/households/HouseholdCarryOverService';
 import type { IHouseholdRepository, HouseholdSummary } from '@core/ports/households/IHouseholdRepository';
 import type { IHouseholdInviteRepository } from '@core/ports/households/IHouseholdInviteRepository';
 import type { ISecureToken } from '@core/ports/security/ISecureToken';
@@ -19,6 +20,7 @@ describe('HouseholdInviteService', () => {
   let invites: MockedObject<IHouseholdInviteRepository>;
   let token: MockedObject<ISecureToken>;
   let encryption: MockedObject<IKmsEncryption>;
+  let carryOver: MockedObject<HouseholdCarryOverService>;
   let sut: HouseholdInviteService;
 
   beforeEach(() => {
@@ -27,16 +29,24 @@ describe('HouseholdInviteService', () => {
       create: vi.fn(),
       findMembershipForUser: vi.fn(),
       getOwnerRole: vi.fn(),
+      memberCountForUser: vi.fn().mockResolvedValue(2),
       findForMember: vi.fn(),
       listMembers: vi.fn(),
       removeMember: vi.fn(),
       disband: vi.fn(),
       leave: vi.fn(),
+      carryOverPoolOnActivate: vi.fn(),
+      settlePoolToOwner: vi.fn(),
     };
     invites = { create: vi.fn(), revoke: vi.fn(), accept: vi.fn() };
     token = { generate: vi.fn().mockReturnValue('raw-token'), hash: vi.fn().mockReturnValue('hashed') };
     encryption = { encrypt: vi.fn().mockResolvedValue('enc'), decrypt: vi.fn() };
-    sut = new HouseholdInviteService(households, invites, token, encryption);
+    carryOver = {
+      onMemberJoined: vi.fn(),
+      onMemberRemoved: vi.fn(),
+      onDisband: vi.fn(),
+    } as unknown as MockedObject<HouseholdCarryOverService>;
+    sut = new HouseholdInviteService(households, invites, token, encryption, carryOver);
   });
 
   describe('createInvite', () => {
@@ -108,22 +118,26 @@ describe('HouseholdInviteService', () => {
       await expect(sut.acceptInvite('joiner', 'raw-token')).rejects.toBeInstanceOf(HouseholdFullError);
     });
 
-    it('returns the household summary on success', async () => {
+    it('returns the household summary on success and carries over the pool', async () => {
       invites.accept.mockResolvedValue({ code: 'OK', householdId: 'hh-1' });
       households.findForMember.mockResolvedValue(owned);
+      households.memberCountForUser.mockResolvedValue(2);
 
       const result = await sut.acceptInvite('joiner', 'raw-token');
 
       expect(result).toEqual(owned);
+      expect(carryOver.onMemberJoined).toHaveBeenCalledWith('hh-1', 2);
     });
 
-    it('treats ALREADY_MEMBER as success (idempotent)', async () => {
+    it('treats ALREADY_MEMBER as success without re-seeding the pool', async () => {
       invites.accept.mockResolvedValue({ code: 'ALREADY_MEMBER', householdId: 'hh-1' });
       households.findForMember.mockResolvedValue(owned);
 
       const result = await sut.acceptInvite('joiner', 'raw-token');
 
       expect(result).toEqual(owned);
+      expect(carryOver.onMemberJoined).not.toHaveBeenCalled();
+      expect(households.memberCountForUser).not.toHaveBeenCalled();
     });
 
     it('throws InvalidInviteError when the repo returns no household id', async () => {

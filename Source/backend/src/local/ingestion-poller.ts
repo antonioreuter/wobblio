@@ -28,11 +28,28 @@ export function startIngestionPoller(): void {
     for (;;) {
       try {
         const received = await client.send(
-          new ReceiveMessageCommand({ QueueUrl: queueUrl, MaxNumberOfMessages: 1, WaitTimeSeconds: 10 }),
+          new ReceiveMessageCommand({
+            QueueUrl: queueUrl,
+            MaxNumberOfMessages: 1,
+            WaitTimeSeconds: 10,
+            // So the worker's final-delivery quarantine gate sees the real redelivery count.
+            MessageSystemAttributeNames: ['ApproximateReceiveCount'],
+          }),
         );
         for (const message of received.Messages ?? []) {
           const event = {
-            Records: [{ messageId: message.MessageId, body: message.Body, receiptHandle: message.ReceiptHandle }],
+            Records: [{
+              messageId: message.MessageId,
+              body: message.Body,
+              receiptHandle: message.ReceiptHandle,
+              // The worker reads record.attributes (SentTimestamp timing log + ApproximateReceiveCount
+              // quarantine gate); real SQS always supplies them. Without these the worker throws
+              // post-commit and the message is needlessly redelivered before it's deleted.
+              attributes: {
+                SentTimestamp: String(Date.now()),
+                ApproximateReceiveCount: String(message.Attributes?.ApproximateReceiveCount ?? '1'),
+              },
+            }],
           } as unknown as SQSEvent;
           const result = await ingestionWorker(event, {} as Context);
           const failed = result.batchItemFailures.some(f => f.itemIdentifier === message.MessageId);

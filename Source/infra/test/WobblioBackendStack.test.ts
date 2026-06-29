@@ -86,7 +86,7 @@ describe('WobblioBackendStack IAM grants', () => {
       template,
       'ingestionworkerServiceRole',
       ['ssm:GetParameter'],
-      'parameter/wobblio/config/models',
+      'parameter/wobblio/config/dev/models',
     );
   });
 
@@ -142,7 +142,7 @@ describe('WobblioBackendStack IAM grants', () => {
       template,
       'apihandlerServiceRole',
       ['ssm:GetParameters'],
-      'parameter/wobblio/config/quotas/standard_uploads_per_week',
+      'parameter/wobblio/config/dev/quotas/standard_uploads_per_week',
     );
   });
 });

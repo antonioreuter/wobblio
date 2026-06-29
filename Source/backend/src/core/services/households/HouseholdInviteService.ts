@@ -2,6 +2,7 @@ import type { IHouseholdRepository, HouseholdSummary } from '../../ports/househo
 import type { IHouseholdInviteRepository } from '../../ports/households/IHouseholdInviteRepository';
 import type { ISecureToken } from '../../ports/security/ISecureToken';
 import type { IKmsEncryption } from '../../ports/security/IKmsEncryption';
+import type { HouseholdCarryOverService } from './HouseholdCarryOverService';
 import {
   HouseholdNotFoundError,
   NotHouseholdOwnerError,
@@ -24,6 +25,7 @@ export class HouseholdInviteService {
     private readonly invites: IHouseholdInviteRepository,
     private readonly token: ISecureToken,
     private readonly encryption: IKmsEncryption,
+    private readonly carryOver: HouseholdCarryOverService,
   ) {}
 
   async createInvite(userId: string, householdId: string): Promise<IssuedInvite> {
@@ -57,6 +59,13 @@ export class HouseholdInviteService {
 
     const household = await this.households.findForMember(householdId);
     if (!household) throw new HouseholdNotFoundError(householdId);
+
+    // Only a fresh join can activate the pool — a re-accept (ALREADY_MEMBER) must not
+    // re-seed and reset the pool mid-week.
+    if (code === 'OK') {
+      const memberCount = await this.households.memberCountForUser(householdId, userId);
+      await this.carryOver.onMemberJoined(householdId, memberCount);
+    }
     return household;
   }
 

@@ -123,4 +123,15 @@ export class HouseholdRepositoryAdapter implements IHouseholdRepository {
       [householdId, userId],
     );
   }
+
+  async carryOverPoolOnActivate(householdId: string, weekStart: string): Promise<void> {
+    await this.client.query(`SELECT carry_over_household_pool_on_activate($1, $2)`, [
+      householdId,
+      weekStart,
+    ]);
+  }
+
+  async settlePoolToOwner(householdId: string, weekStart: string): Promise<void> {
+    await this.client.query(`SELECT settle_household_pool_to_owner($1, $2)`, [householdId, weekStart]);
+  }
 }

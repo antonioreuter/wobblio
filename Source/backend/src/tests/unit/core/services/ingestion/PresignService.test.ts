@@ -5,6 +5,8 @@ import { QuotaService } from '@core/services/quota/QuotaService';
 import { UploadAllowanceResolver, type UploadAllowance } from '@core/services/quota/UploadAllowanceResolver';
 import type { IInvoiceRepository, InvoiceRecord } from '@core/ports/ingestion/IInvoiceRepository';
 import type { IQuotaRepository } from '@core/ports/quota/IQuotaRepository';
+import type { IUploadQuotaProvider } from '@core/ports/quota/IUploadQuotaProvider';
+import type { IUploadLimitsProvider } from '@core/ports/quota/IUploadLimitsProvider';
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
 import type { IReverseGeocoder } from '@core/ports/data-intelligence/IReverseGeocoder';
 import type { IRegionReference } from '@core/ports/data-intelligence/IRegionReference';
@@ -28,14 +30,16 @@ const baseInput = {
 const personalAllowance: UploadAllowance = {
   householdId: null,
   isPool: false,
-  counter: 'UPLOADS',
+  counter: 'CREDITS',
   quotaOwnerId: 'tenant-1',
-  cap: 3,
+  cap: 30_000, // 3 invoices × 10k avg tokens
 };
 
 describe('PresignService', () => {
   let invoiceRepo: MockedObject<IInvoiceRepository>;
   let quotaRepo: MockedObject<IQuotaRepository>;
+  let quotaProvider: MockedObject<IUploadQuotaProvider>;
+  let limitsProvider: MockedObject<IUploadLimitsProvider>;
   let resolver: MockedObject<UploadAllowanceResolver>;
   let storage: MockedObject<IS3FileStorage>;
   let reverseGeocoder: MockedObject<IReverseGeocoder>;
@@ -46,6 +50,7 @@ describe('PresignService', () => {
     invoiceRepo = {
       createPending: vi.fn(),
       getById: vi.fn(),
+      countInFlightUploads: vi.fn().mockResolvedValue(0),
       findSameTenantByHash: vi.fn().mockResolvedValue(null),
       findFuzzyDuplicate: vi.fn(),
       persistParsed: vi.fn(),
@@ -54,15 +59,25 @@ describe('PresignService', () => {
       listForTenant: vi.fn(),
       getDetail: vi.fn(),
     };
-    quotaRepo = { getUsed: vi.fn().mockResolvedValue(0), increment: vi.fn() };
+    quotaRepo = { getUsed: vi.fn().mockResolvedValue(0), increment: vi.fn(), decrement: vi.fn() };
+    quotaProvider = {
+      getPersonalUploadsCap: vi.fn(),
+      getHouseholdUploadsCap: vi.fn(),
+      getAverageTokensPerInvoice: vi.fn().mockResolvedValue(10_000),
+    };
+    limitsProvider = {
+      getMaxImageBytes: vi.fn().mockResolvedValue(5_000_000),
+      getMaxPdfBytes: vi.fn().mockResolvedValue(4_500_000),
+      getMaxPdfPages: vi.fn().mockResolvedValue(10),
+    };
     resolver = { resolve: vi.fn().mockResolvedValue(personalAllowance) } as unknown as MockedObject<UploadAllowanceResolver>;
-    storage = { presignPut: vi.fn().mockResolvedValue('https://s3/put'), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
+    storage = { presignPost: vi.fn().mockResolvedValue({ url: 'https://s3/post', fields: { key: 'k' } }), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     reverseGeocoder = { reverseGeocode: vi.fn() };
     regionReference = {
       listCountries: vi.fn(), listSubdivisions: vi.fn(), isValidRegion: vi.fn(),
       isMappedLocation: vi.fn(), resolveReceiptLocation: vi.fn(),
     };
-    sut = new PresignService(invoiceRepo, new QuotaService(quotaRepo), resolver, storage, reverseGeocoder, regionReference);
+    sut = new PresignService(invoiceRepo, new QuotaService(quotaRepo), resolver, quotaProvider, limitsProvider, storage, reverseGeocoder, regionReference);
   });
 
   it('rejects a same-tenant duplicate without resolving allowance or creating an invoice', async () => {
@@ -74,16 +89,19 @@ describe('PresignService', () => {
     expect(quotaRepo.increment).not.toHaveBeenCalled();
   });
 
-  it('issues a presigned URL for a personal upload and reserves the personal quota', async () => {
+  it('issues a presigned URL for a personal upload without charging at presign', async () => {
     invoiceRepo.createPending.mockResolvedValue('inv-1');
 
     const result = await sut.presign(baseInput);
 
-    expect(result).toEqual({ invoiceId: 'inv-1', uploadUrl: 'https://s3/put', s3Key: `receipts/tenant-1/${SHA}.jpg` });
+    expect(result).toEqual({ invoiceId: 'inv-1', url: 'https://s3/post', fields: { key: 'k' }, s3Key: `receipts/tenant-1/${SHA}.jpg` });
     expect(resolver.resolve).toHaveBeenCalledWith({ userId: 'tenant-1', role: 'STANDARD' });
-    expect(quotaRepo.increment).toHaveBeenCalledWith('tenant-1', 'UPLOADS', expect.any(String));
+    // Presign is read-only — the worker charges actual tokens at success-time.
+    expect(quotaRepo.increment).not.toHaveBeenCalled();
+    expect(quotaRepo.getUsed).toHaveBeenCalledWith('tenant-1', 'CREDITS', expect.any(String));
     expect(invoiceRepo.createPending).toHaveBeenCalledWith(expect.objectContaining({ householdId: null }));
-    expect(storage.presignPut).toHaveBeenCalledWith(`receipts/tenant-1/${SHA}.jpg`, 'image/jpeg', 300);
+    // Presigned POST with the per-format image byte cap as the content-length-range ceiling.
+    expect(storage.presignPost).toHaveBeenCalledWith(`receipts/tenant-1/${SHA}.jpg`, 'image/jpeg', 5_000_000, 300);
   });
 
   it('rejects an unsupported content type before any allowance or invoice work', async () => {
@@ -104,37 +122,56 @@ describe('PresignService', () => {
     const result = await sut.presign({ ...baseInput, role: 'PREMIUM', contentType: 'application/pdf' });
 
     expect(result.s3Key).toBe(`receipts/tenant-1/${SHA}.pdf`);
-    expect(storage.presignPut).toHaveBeenCalledWith(`receipts/tenant-1/${SHA}.pdf`, 'application/pdf', 300);
+    // PDF gets the larger per-format byte cap on the presigned POST.
+    expect(storage.presignPost).toHaveBeenCalledWith(`receipts/tenant-1/${SHA}.pdf`, 'application/pdf', 4_500_000, 300);
   });
 
-  it('reserves the shared pool and stamps the household when the resolver returns a pool allowance', async () => {
+  it('checks the shared pool counter and stamps the household for a pool allowance', async () => {
     resolver.resolve.mockResolvedValue({
-      householdId: 'hh-1', isPool: true, counter: 'HOUSEHOLD_UPLOADS', quotaOwnerId: 'hh-1', cap: 15,
+      householdId: 'hh-1', isPool: true, counter: 'HOUSEHOLD_CREDITS', quotaOwnerId: 'hh-1', cap: 150_000,
     });
-    quotaRepo.getUsed.mockResolvedValue(5);
+    quotaRepo.getUsed.mockResolvedValue(50_000);
     invoiceRepo.createPending.mockResolvedValue('inv-2');
 
     await sut.presign(baseInput);
 
-    // The shared pool counter is keyed by household_id, not the uploader.
-    expect(quotaRepo.increment).toHaveBeenCalledWith('hh-1', 'HOUSEHOLD_UPLOADS', expect.any(String));
-    expect(invoiceRepo.createPending).toHaveBeenCalledWith(expect.objectContaining({ householdId: 'hh-1' }));
+    // The shared pool counter is keyed by household_id, not the uploader; in-flight
+    // projection counts the household's PROCESSING uploads.
+    expect(quotaRepo.getUsed).toHaveBeenCalledWith('hh-1', 'HOUSEHOLD_CREDITS', expect.any(String));
+    expect(invoiceRepo.countInFlightUploads).toHaveBeenCalledWith('hh-1', true, expect.any(String));
+    expect(quotaRepo.increment).not.toHaveBeenCalled();
+    // The pool decision is persisted so the worker charges HOUSEHOLD_CREDITS regardless of
+    // a membership change before processing.
+    expect(invoiceRepo.createPending).toHaveBeenCalledWith(
+      expect.objectContaining({ householdId: 'hh-1', quotaPooled: true }),
+    );
   });
 
-  it('stamps the household but charges the personal counter for a solo-household allowance', async () => {
+  it('checks the personal counter but stamps the household for a solo-household allowance', async () => {
     resolver.resolve.mockResolvedValue({
-      householdId: 'hh-1', isPool: false, counter: 'UPLOADS', quotaOwnerId: 'tenant-1', cap: 3,
+      householdId: 'hh-1', isPool: false, counter: 'CREDITS', quotaOwnerId: 'tenant-1', cap: 30_000,
     });
     invoiceRepo.createPending.mockResolvedValue('inv-solo');
 
     await sut.presign(baseInput);
 
-    expect(quotaRepo.increment).toHaveBeenCalledWith('tenant-1', 'UPLOADS', expect.any(String));
-    expect(invoiceRepo.createPending).toHaveBeenCalledWith(expect.objectContaining({ householdId: 'hh-1' }));
+    expect(quotaRepo.getUsed).toHaveBeenCalledWith('tenant-1', 'CREDITS', expect.any(String));
+    // Stamped to the household for sharing, but charged personally — quotaPooled false.
+    expect(invoiceRepo.createPending).toHaveBeenCalledWith(
+      expect.objectContaining({ householdId: 'hh-1', quotaPooled: false }),
+    );
   });
 
   it('throws QuotaExceededError when the resolved cap is reached', async () => {
-    quotaRepo.getUsed.mockResolvedValue(3); // cap is 3 (personal allowance)
+    quotaRepo.getUsed.mockResolvedValue(30_000); // cap is 30k (personal allowance)
+
+    await expect(sut.presign(baseInput)).rejects.toBeInstanceOf(QuotaExceededError);
+    expect(invoiceRepo.createPending).not.toHaveBeenCalled();
+  });
+
+  it('blocks a burst: in-flight uploads project over the cap even when stored usage is under', async () => {
+    quotaRepo.getUsed.mockResolvedValue(25_000); // under the 30k cap on its own
+    invoiceRepo.countInFlightUploads.mockResolvedValue(1); // +1 × 10k avg = 35k projected
 
     await expect(sut.presign(baseInput)).rejects.toBeInstanceOf(QuotaExceededError);
     expect(invoiceRepo.createPending).not.toHaveBeenCalled();

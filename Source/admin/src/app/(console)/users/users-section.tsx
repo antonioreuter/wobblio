@@ -157,24 +157,24 @@ export function UsersSection() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {user.quotaUsed} / {user.quotaCap === null ? '∞' : user.quotaCap}
+                      {user.quotaUsed.toLocaleString()} / {user.quotaCap === null ? '∞' : user.quotaCap.toLocaleString()}
                     </td>
                     <td className="px-4 py-3">
-                      {/* delta is scans GRANTED: +1 frees a scan (lowers used), -1 consumes one. */}
+                      {/* delta is credits GRANTED: +10,000 frees credits (lowers used), -10,000 consumes them. */}
                       <div className="flex justify-center gap-2">
                         <button
-                          onClick={() => setPendingAdjust({ user, delta: 1 })}
+                          onClick={() => setPendingAdjust({ user, delta: 10000 })}
                           disabled={busy === user.id}
-                          title="Add 1 scan"
+                          title="Add 10,000 credits"
                           className="p-1 hover:bg-green-100 dark:hover:bg-green-900/30 rounded text-green-600 dark:text-green-400 disabled:opacity-50"
                           data-testid={`users-quota-plus-${user.id}`}
                         >
                           <Plus size={16} />
                         </button>
                         <button
-                          onClick={() => setPendingAdjust({ user, delta: -1 })}
+                          onClick={() => setPendingAdjust({ user, delta: -10000 })}
                           disabled={busy === user.id}
-                          title="Remove 1 scan"
+                          title="Remove 10,000 credits"
                           className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-red-600 dark:text-red-400 disabled:opacity-50"
                           data-testid={`users-quota-minus-${user.id}`}
                         >
@@ -206,10 +206,10 @@ export function UsersSection() {
 
       <ConfirmDialog
         open={pendingAdjust !== null}
-        title="Adjust weekly scans?"
+        title="Adjust weekly credits?"
         body={
           pendingAdjust
-            ? `${pendingAdjust.delta > 0 ? 'Grant' : 'Consume'} ${Math.abs(pendingAdjust.delta)} scan for ${pendingAdjust.user.email}.`
+            ? `${pendingAdjust.delta > 0 ? 'Grant' : 'Consume'} ${Math.abs(pendingAdjust.delta).toLocaleString()} credits for ${pendingAdjust.user.email}.`
             : ''
         }
         confirmLabel="Confirm"

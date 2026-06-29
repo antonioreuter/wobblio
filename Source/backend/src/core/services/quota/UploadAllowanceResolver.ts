@@ -44,19 +44,24 @@ export class UploadAllowanceResolver {
       return {
         householdId,
         isPool: false,
-        counter: 'UPLOADS',
+        counter: 'CREDITS',
         quotaOwnerId: userId,
         cap: await this.quotaProvider.getPersonalUploadsCap(role),
       };
     }
 
-    // The pool follows the OWNER's role: an operator-role owner (unlimited personal
-    // cap) lifts the household to unlimited. Fall back to the caller's role if the
-    // owner role can't be read (treated as a normal, capped owner).
-    const ownerRole = (await this.households.getOwnerRole(householdId!, userId)) ?? role;
-    const ownerPersonalCap = await this.quotaProvider.getPersonalUploadsCap(ownerRole);
-    const cap = effectiveHouseholdCap(ownerPersonalCap, await this.quotaProvider.getHouseholdUploadsCap());
+    const cap = await this.householdPoolCap(householdId!, userId, role);
+    return { householdId, isPool: true, counter: 'HOUSEHOLD_CREDITS', quotaOwnerId: householdId!, cap };
+  }
 
-    return { householdId, isPool: true, counter: 'HOUSEHOLD_UPLOADS', quotaOwnerId: householdId!, cap };
+  // The §2.4 household pool cap: follows the OWNER's role — an operator-role owner with an
+  // unlimited personal cap lifts the whole pool to unlimited. Falls back to the caller's
+  // role when the owner role can't be read (treated as a normal, capped owner). Shared by
+  // resolve() and the household-detail read so the displayed cap can never drift from the
+  // enforced one.
+  async householdPoolCap(householdId: string, callerUserId: string, callerRole: UserRole): Promise<number> {
+    const ownerRole = (await this.households.getOwnerRole(householdId, callerUserId)) ?? callerRole;
+    const ownerPersonalCap = await this.quotaProvider.getPersonalUploadsCap(ownerRole);
+    return effectiveHouseholdCap(ownerPersonalCap, await this.quotaProvider.getHouseholdUploadsCap());
   }
 }

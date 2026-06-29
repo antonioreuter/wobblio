@@ -8,7 +8,7 @@ the detail.
 |---|---|---|
 | 01 Ingestion Telemetry | ✅ Done | 2026-06-29 |
 | 02 Agentic Pipeline Stack | ✅ Done | 2026-06-29 |
-| 03 Strands Agent Worker | ⬜ Not started | |
+| 03 Strands Agent Worker | ✅ Done | 2026-06-29 |
 | 04 Dynamic Queue Routing | ⬜ Not started | |
 | 05 Admin Pipeline Toggle | ⬜ Not started | |
 | 06 KPI Pipeline Comparison | ⬜ Not started | |
@@ -120,8 +120,58 @@ Standalone `WobblioAgenticPipelineStack` isolating the agentic worker's compute 
 - `grantBedrockInference` / `configParamArn` / `commonLambdaEnv` are replicated inline (now in 2 stacks;
   extract to a shared helper on the 3rd per Rule-of-Three).
 
-### Next: 03 — Strands Agent Worker
-Replace the skeleton handler with the coordinator agent + 5 tools wrapping the domain services
-(Zod schemas; reuse idempotency/RLS + the 01 telemetry write path with `pipeline_type='STRANDS'`).
-First task per locked decision #3: verify `@strands-agents/sdk` is Node-24/Lambda-ready, else use the
-documented in-house tool-loop fallback.
+---
+
+## 03 — Strands Agent Worker ✅ (2026-06-29)
+
+The agentic worker now runs a real pipeline (`pipeline_type='STRANDS'`), reusing every domain
+service + cross-cutting guarantee of the legacy worker.
+
+### Key decision: deterministic workflow + tool seam, NO `@strands-agents/sdk`
+The spec mandates a **forced** tool order, which removes all model-driven control flow — so an LLM
+agent would add a heavy, unverified dep (ARM64/Lambda/esbuild) on the critical path for an order we
+must fix anyway. `@strands-agents/sdk@1.7.0` exists (`engines.node >=20`) and can later implement the
+same `InvoiceCoordinator.extract` contract unchanged, but is **deferred**. Also: the codebase has no
+Zod — schema validation uses the hand-rolled `receiptSchema.ts` `{ok,issues}` idiom, which already
+runs (with 1 retry → DLQ) inside `VisionParseService` (the only untrusted-JSON boundary). The
+arithmetic-balance + integrity gate runs once, downstream, in the shared `InvoiceFinalizer`. So the
+coordinator carries **no** redundant schema/retry/arithmetic — it is pure forced-order dispatch.
+
+### Structure (parallel service + shared front/tail)
+- **Shared front** `core/services/ingestion/ExtractionPreparer.ts` — idempotency claim, pre-AI
+  validation, OCR (via `OcrParserTool`), unreadable early-exit, location resolution. Both pipelines.
+- **Shared tail** `core/services/ingestion/InvoiceFinalizer.ts` — fuzzy-dup, integrity, status,
+  persist, price emission, ledger DONE. Both pipelines → guarantees A/B parity.
+- **Legacy `IngestionService`** refactored to `preparer → direct 5-stage calls → finalizer`
+  (ctor unchanged; its 26 unit tests pass unmodified = the refactor's safety net).
+- **Tools** `core/services/ingestion/agentic/tools/` — 5 thin wrappers (Ocr/Merchant/Product/
+  Classifier/SearchTag). `OcrParserTool` owns file-type→model routing and is used by the preparer
+  (so all 5 tools are real + wired, no double-parse).
+- **`InvoiceCoordinator`** — forced-order dispatch of the 4 canonicalization tools → `ExtractionResult`.
+- **`AgenticIngestionService`** — `preparer → coordinator → finalizer`.
+- **Shared worker shell** `handlers/shared/ingestionWorkerShell.ts` — `runIngestionRecord(ctx,
+  buildService, pipelineType)` owns the unified tx (process → charge → telemetry → COMMIT),
+  post-COMMIT side effects, and the rollback/DLQ/quarantine path. Both `ingestion-worker` (LEGACY)
+  and `agentic-worker` (STRANDS) handlers are now thin: cold-start setup + `buildService` + loop.
+
+### Validation (2026-06-29)
+- hexagonal-architecture-validator → exit 0 (all core, no SDK imports).
+- `test:unit` → 97 files / 724 pass (legacy 26 unchanged + 13 new: coordinator, agentic service, tools).
+- `tsc --noEmit` → clean.
+- Caught in self-review: the shared error path must **await** quarantine/failUserFault (they run
+  BEGIN/COMMIT on the client the loop releases) — fixed before tests.
+
+### Functional note (honest)
+STRANDS is functionally **equivalent** to LEGACY (same services, same order) — by design, since the
+order is forced. Its value is structural: the tool seam (07 eval harness), the separate worker/queue
+(02, for 04/05 routing+toggle), and `pipeline_type='STRANDS'` telemetry (06 comparison). A real
+model-driven coordinator can later slot into `InvoiceCoordinator` without touching tools/finalizer/shell.
+
+### Not done / deferred
+Real `@strands-agents/sdk` agent (documented future swap). No new migration/infra (telemetry table +
+adapter shipped in 01). Local end-to-end A/B smoke against the agentic queue not yet run (needs a
+LocalStack message on the agentic queue) — recommended before 04 routing flips real traffic.
+
+### Next: 04 — Dynamic Queue Routing
+`IInvoiceIngestionQueuePort` + dual-queue adapter + SSM feature flag (cached; defaults false → legacy).
+Reads the agentic queue URL from `/wobblio/config/<stage>/queues/agentic_url` (exported by 02).

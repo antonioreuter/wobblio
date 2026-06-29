@@ -73,7 +73,7 @@ export class ProductNormalizer implements IProductNormalizer {
       return { productId: null, categoryId: item.categoryId, baseUnit: null, packSizeBaseUnits: null, isDepositOrFee: true, provisional: false, confidence: 1, lowConfidence: false };
     }
 
-    const embedding = await this.embedder.embed(item.displayName);
+    const { embedding } = await this.embedder.embed(item.displayName);
     const [match] = await this.catalog.searchByEmbedding(embedding, item.categoryId, countryCode, 1);
 
     if (match && match.similarity >= ConfidenceThresholds.embeddingAccept) {

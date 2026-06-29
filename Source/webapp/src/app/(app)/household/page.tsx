@@ -111,8 +111,8 @@ export default function HouseholdPage() {
             <div className="hh-empty-icon"><Users size={22} /></div>
             <h3 className="hh-empty-title">Start a household</h3>
             <p className="hh-empty-body">
-              Invite up to {MAX_HOUSEHOLD_MEMBERS} members and pool 15 extra uploads each week
-              (active once a second member joins), on top of everyone’s personal scans.
+              Invite up to {MAX_HOUSEHOLD_MEMBERS} members and pool 150,000 extra weekly credits (~15 scans)
+              (active once a second member joins), on top of everyone’s personal credits.
             </p>
             <Button
               iconLeft={<Plus size={15} />}

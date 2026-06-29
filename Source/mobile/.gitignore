@@ -1,0 +1,29 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+# pubspec.lock IS committed — apps pin exact package versions for reproducible
+# builds (FVM pins only the SDK). It appears after the first `flutter pub get`.
+*.iml
+.idea/
+
+# FVM (the pinned version is committed via .fvmrc; the SDK copy is not)
+.fvm/
+
+# Generated native folders are produced by `flutter create .` per README;
+# they are intentionally NOT committed from this Dart-only scaffold slice.
+/android/
+/ios/
+/linux/
+/macos/
+/windows/
+/web/
+
+# Codegen (added in 16c)
+*.g.dart
+*.freezed.dart
+
+# Misc
+.DS_Store

@@ -19,6 +19,23 @@ const expectIssue = (content: string, fragment: string) => {
   if (!result.ok) expect(result.issues).toContain(fragment);
 };
 
+describe('parseReceiptJson — unreadable verdict', () => {
+  it('accepts the unreadable verdict as a valid (non-retry) result', () => {
+    const result = parseReceiptJson(JSON.stringify({ unreadable: true, reason: 'NOT_A_RECEIPT' }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toEqual({ unreadable: true, reason: 'NOT_A_RECEIPT' });
+  });
+
+  it('accepts BLURRY as an unreadable reason', () => {
+    const result = parseReceiptJson(JSON.stringify({ unreadable: true, reason: 'BLURRY' }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects an unreadable verdict with an unknown reason', () => {
+    expectIssue(JSON.stringify({ unreadable: true, reason: 'WHATEVER' }), 'unreadable.reason');
+  });
+});
+
 describe('parseReceiptJson — success', () => {
   it('parses a valid receipt and uppercases the currency', () => {
     const result = parseReceiptJson(JSON.stringify(validObject()));

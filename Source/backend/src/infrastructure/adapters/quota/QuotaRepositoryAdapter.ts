@@ -14,23 +14,23 @@ export class QuotaRepositoryAdapter implements IQuotaRepository {
     return parseInt(result.rows[0]?.used ?? '0', 10);
   }
 
-  async increment(tenantId: string, type: QuotaType, weekStart: string): Promise<void> {
+  async increment(tenantId: string, type: QuotaType, weekStart: string, amount: number): Promise<void> {
     await this.pool.query(
       `INSERT INTO quota_counter (tenant_id, counter, week_start, used)
-       VALUES ($1, $2, $3, 1)
+       VALUES ($1, $2, $3, $4)
        ON CONFLICT (tenant_id, counter, week_start)
-       DO UPDATE SET used = quota_counter.used + 1`,
-      [tenantId, type, weekStart],
+       DO UPDATE SET used = quota_counter.used + $4`,
+      [tenantId, type, weekStart, amount],
     );
   }
 
-  async decrement(tenantId: string, type: QuotaType, weekStart: string): Promise<void> {
+  async decrement(tenantId: string, type: QuotaType, weekStart: string, amount: number): Promise<void> {
     await this.pool.query(
       `INSERT INTO quota_counter (tenant_id, counter, week_start, used)
        VALUES ($1, $2, $3, 0)
        ON CONFLICT (tenant_id, counter, week_start)
-       DO UPDATE SET used = GREATEST(0, quota_counter.used - 1)`,
-      [tenantId, type, weekStart],
+       DO UPDATE SET used = GREATEST(0, quota_counter.used - $4)`,
+      [tenantId, type, weekStart, amount],
     );
   }
 }

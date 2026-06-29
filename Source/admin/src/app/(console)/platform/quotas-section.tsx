@@ -10,7 +10,7 @@ import { ConsoleSection } from '@/components/ui/console-section'
 interface Quota {
   key: string
   label: string
-  kind: 'uploads' | 'refunds' | 'household'
+  kind: 'uploads' | 'household' | 'upload_limit'
   role: string | null
   value: string | null
   allowUnlimited: boolean
@@ -124,7 +124,9 @@ export function QuotasSection() {
         title="Change a global quota?"
         body={
           pending
-            ? `${pending.label} applies to every ${pending.role ?? 'household'} user. Confirm the new weekly cap.`
+            ? pending.kind === 'upload_limit'
+              ? `${pending.label} applies to every upload. Confirm the new limit.`
+              : `${pending.label} applies to every ${pending.role ?? 'household'} user. Confirm the new weekly cap.`
             : ''
         }
         confirmLabel="Save"

@@ -109,22 +109,22 @@ export default function DashboardPage() {
                 tone={budgets.length === 0 ? 'neutral' : budgetTone}
               />
               <MetricCard
-                label="Scans Remaining"
+                label="Credits Remaining"
                 value={
                   !usage
                     ? '—'
                     : usage.unlimited
-                      ? '∞ left'
-                      : <AnimatedNumber value={usage.remaining ?? 0} suffix=" left" />
+                      ? '∞ credits left'
+                      : <AnimatedNumber value={usage.remaining ?? 0} suffix=" credits left" />
                 }
                 delta={
                   !usage
                     ? 'Loading…'
                     : usage.unlimited
-                      ? `${usage.used} used this week`
-                      : `${usage.used} of ${usage.cap} used this week`
+                      ? `${usage.used.toLocaleString()} credits used this week`
+                      : `${usage.used.toLocaleString()} of ${(usage.cap ?? 0).toLocaleString()} credits used this week`
                 }
-                tone={usage && !usage.unlimited && (usage.remaining ?? 0) <= 3 ? 'warning' : 'neutral'}
+                tone={usage && !usage.unlimited && (usage.remaining ?? 0) <= 10000 ? 'warning' : 'neutral'}
               />
             </>
           )}

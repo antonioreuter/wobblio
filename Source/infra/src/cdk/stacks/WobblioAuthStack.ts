@@ -9,6 +9,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import { NagSuppressions } from 'cdk-nag';
 import { EnvironmentConfig } from '../config/environment';
+import { configParamName } from '../config/appConfig';
 import { WobblioDbStack } from './WobblioDbStack';
 import { WOBBLIO_LOGIN_SETTINGS, WOBBLIO_LOGIN_ASSETS } from '../branding/web-login-branding';
 import { applyWobblioTags } from '../utils/tagging';
@@ -46,6 +47,10 @@ export class WobblioAuthStack extends Stack {
 
     const cognitoHookEnv = {
       STAGE:        config.stage,
+      // Stage-scopes the pre-signup hook's waitlist-cap SSM read to
+      // /wobblio/config/<stage>/* (same as the backend Lambdas) so each stage reads its
+      // own cap and not a shared flat param.
+      CONFIG_STAGE: config.stage,
       DB_HOST:      dbHost,
       DB_PORT:      dbPort,
       DB_SECRET_ARN: dbSecretArn,
@@ -229,7 +234,7 @@ export class WobblioAuthStack extends Stack {
       actions: ['ssm:GetParameter', 'ssm:GetParameters'],
       resources: [
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
-        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/max_free_waitlist_cap`,
+        `arn:aws:ssm:${this.region}:${this.account}:parameter${configParamName(config.stage, 'quotas/max_free_waitlist_cap')}`,
       ],
     });
 
@@ -283,6 +288,17 @@ export class WobblioAuthStack extends Stack {
     new CfnOutput(this, 'WebClientId', {
       value: this.userPoolClientWeb.userPoolClientId,
       exportName: config.resourceName('web-client-id'),
+    });
+    // Mobile (Flutter) build inputs — the device app resolves these per stage at
+    // build time via --dart-define (COGNITO_CLIENT_ID / COGNITO_DOMAIN), mirroring
+    // how the web client ID is consumed. The mobile client is public (no secret).
+    new CfnOutput(this, 'MobileClientId', {
+      value: this.userPoolClientMobile.userPoolClientId,
+      exportName: config.resourceName('mobile-client-id'),
+    });
+    new CfnOutput(this, 'CognitoDomain', {
+      value: this.cognitoDomain,
+      exportName: config.resourceName('cognito-domain'),
     });
     new CfnOutput(this, 'UserPoolIssuer', {
       value: `https://cognito-idp.${this.region}.amazonaws.com/${this.userPool.userPoolId}`,

@@ -1,5 +1,4 @@
 import type { IQuotaRepository, QuotaType } from '../../ports/quota/IQuotaRepository';
-import { QuotaExceededError } from '../../domain/errors';
 import { weekStart } from '../../domain/week';
 
 export class QuotaService {
@@ -14,12 +13,25 @@ export class QuotaService {
     return this.quotaRepo.getUsed(tenantId, type, weekStart);
   }
 
-  // Single enforcement point for upload quotas (invariant #6). The §2.4 cap is
-  // resolved by the caller (role/household matrix) and passed in.
-  async reserveUpload(tenantId: string, type: QuotaType, cap: number, now: Date): Promise<void> {
-    const weekStart = this.getWeekStart(now);
-    const used = await this.quotaRepo.getUsed(tenantId, type, weekStart);
-    if (used >= cap) throw new QuotaExceededError(type, used, cap);
-    await this.quotaRepo.increment(tenantId, type, weekStart);
+  // Read-only Soft-Cap check (§2.1): the upload is permitted while used credits stay
+  // strictly under the cap. Presign passes a pessimistic `inFlightCredits` projection
+  // (in-flight uploads × avg tokens) so a burst can't all pass before any charge lands.
+  // No write — charging happens at worker success-time.
+  async checkAvailability(
+    tenantId: string,
+    type: QuotaType,
+    cap: number,
+    now: Date,
+    inFlightCredits = 0,
+  ): Promise<boolean> {
+    if (cap === Number.POSITIVE_INFINITY) return true;
+    const used = await this.quotaRepo.getUsed(tenantId, type, this.getWeekStart(now));
+    return used + inFlightCredits < cap;
+  }
+
+  // Worker post-success charge: add the actual tokens consumed to the weekly counter
+  // (invariant #6, single write point). Runs inside the committed tenant transaction.
+  async charge(tenantId: string, type: QuotaType, weekStart: string, amount: number): Promise<void> {
+    await this.quotaRepo.increment(tenantId, type, weekStart, amount);
   }
 }

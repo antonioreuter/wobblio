@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { decideStatus, isArithmeticConsistent } from '@core/domain/ingestion';
+import { decideStatus, isArithmeticConsistent, isDeletable, isSystemFault, uploadFailureReasonCode } from '@core/domain/ingestion';
 import type { ParsedReceipt } from '@core/domain/ingestion';
+import { OversizeUploadError, TooManyPagesError, UnsupportedUploadTypeError } from '@core/domain/errors';
 
 const receipt = (total: number, lineTotals: number[]): ParsedReceipt => ({
   merchantRaw: 'AH',
@@ -29,6 +30,22 @@ describe('isArithmeticConsistent', () => {
   });
 });
 
+describe('isDeletable', () => {
+  it('blocks an in-flight PROCESSING invoice', () => {
+    expect(isDeletable('PROCESSING', null)).toBe(false);
+  });
+
+  it('blocks a system-fault-quarantined invoice (systemFaultReason set)', () => {
+    expect(isDeletable('FAILED_PROCESSING', '[23514] check drift')).toBe(false);
+  });
+
+  it('allows a terminal invoice with no quarantine (incl. user-fault FAILED_PROCESSING)', () => {
+    expect(isDeletable('PARSED', null)).toBe(true);
+    expect(isDeletable('FAILED_PROCESSING', null)).toBe(true);
+    expect(isDeletable('SUSPECTED_DUPLICATE', null)).toBe(true);
+  });
+});
+
 describe('decideStatus', () => {
   const ok = { parseConfidence: 0.9, arithmeticOk: true, hasLowConfidenceLine: false, lowConfidenceMerchant: false, isSuspectedDuplicate: false };
 
@@ -54,5 +71,29 @@ describe('decideStatus', () => {
 
   it('returns PARSED when every signal is healthy', () => {
     expect(decideStatus(ok)).toBe('PARSED');
+  });
+});
+
+describe('isSystemFault', () => {
+  it('is false for the pre-AI user-fault upload rejects', () => {
+    expect(isSystemFault(new OversizeUploadError('inv', 10, 5))).toBe(false);
+    expect(isSystemFault(new TooManyPagesError('inv', 12, 10))).toBe(false);
+    expect(isSystemFault(new UnsupportedUploadTypeError('image/heic'))).toBe(false);
+  });
+
+  it('is true for any other thrown error (our-stack fault → quarantine)', () => {
+    expect(isSystemFault(new Error('bedrock exploded'))).toBe(true);
+    expect(isSystemFault({ code: '23514' })).toBe(true);
+  });
+});
+
+describe('uploadFailureReasonCode', () => {
+  it('maps an unsupported format to UNSUPPORTED_FORMAT', () => {
+    expect(uploadFailureReasonCode(new UnsupportedUploadTypeError('image/heic'))).toBe('UNSUPPORTED_FORMAT');
+  });
+
+  it('maps size and page breaches to TOO_LARGE', () => {
+    expect(uploadFailureReasonCode(new OversizeUploadError('inv', 10, 5))).toBe('TOO_LARGE');
+    expect(uploadFailureReasonCode(new TooManyPagesError('inv', 12, 10))).toBe('TOO_LARGE');
   });
 });

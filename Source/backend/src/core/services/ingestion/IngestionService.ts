@@ -1,80 +1,78 @@
 import type { IIngestionLedger } from '../../ports/ingestion/IIngestionLedger';
 import type { ITenantContext } from '../../ports/identity/ITenantContext';
 import type { IS3FileStorage } from '../../ports/ingestion/IS3FileStorage';
-import type { IMerchantResolver, MerchantResolution } from '../../ports/data-intelligence/IMerchantResolver';
-import type { IProductNormalizer, NormalizedLine } from '../../ports/data-intelligence/IProductNormalizer';
+import type { IMerchantResolver } from '../../ports/data-intelligence/IMerchantResolver';
+import type { IProductNormalizer } from '../../ports/data-intelligence/IProductNormalizer';
 import type { IInvoiceClassifier } from '../../ports/data-intelligence/IInvoiceClassifier';
 import type { ITagGenerator } from '../../ports/data-intelligence/ITagGenerator';
-import type { IInvoiceRepository, PersistedLine } from '../../ports/ingestion/IInvoiceRepository';
+import type { IInvoiceRepository } from '../../ports/ingestion/IInvoiceRepository';
 import type { IPriceObservationStore } from '../../ports/data-intelligence/IPriceObservationStore';
 import type { IContributorContextRepository } from '../../ports/data-intelligence/IContributorContextRepository';
 import type { IRegionReference } from '../../ports/data-intelligence/IRegionReference';
+import type { IUploadLimitsProvider } from '../../ports/quota/IUploadLimitsProvider';
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
 import type { VisionParseService } from './VisionParseService';
-import { decideStatus, isArithmeticConsistent, type InvoiceStatus, type ParsedLine, type ParsedReceipt } from '../../domain/ingestion';
-import { assessInvoiceIntegrity } from '../../domain/invoiceGlobalEligibility';
-import { depositCategoryFor, discountCategoryFor } from '../../domain/categoryTaxonomy';
-import { buildPriceObservations, type ContributorContext, type ObservationLine } from '../../domain/priceObservation';
-import { resolveIngestionLocation, type LocationCandidate } from '../../domain/region';
-import { attachmentFormatFromKey } from '../../domain/uploadFormat';
+import type { InvoiceStatus, ParsedReceipt } from '../../domain/ingestion';
+import type { FailureReasonCode } from '../../domain/failureReasons';
+import { ExtractionPreparer } from './ExtractionPreparer';
+import { InvoiceFinalizer } from './InvoiceFinalizer';
+import { OcrParserTool } from './agentic/tools/OcrParserTool';
 
 export interface IngestionOutcome {
   handled: boolean; // false => duplicate SQS delivery, skipped
   status?: InvoiceStatus;
+  // Set when the model returned an `unreadable` verdict (§03.2): the user-fault reason the
+  // invoice was failed with. The model still ran, so the run is charged.
+  failureReasonCode?: FailureReasonCode;
   receipt?: ParsedReceipt; // the vision-parse result, for debug logging at the handler
   // Emission-gate decision (§6.5), for plain structured logging at the handler.
   emissionGate?: { suppressed: boolean; integral: boolean; reasons: string[] };
 }
 
-// Runs the §6 pipeline for one receipt. The caller owns the DB transaction; on a
-// thrown error the transaction is rolled back (ledger claim included), so SQS
-// retry/DLQ stays correct and idempotency is preserved.
+// Runs the §6 pipeline for one receipt (legacy pipeline, pipeline_type='LEGACY'). The shared
+// front (idempotency/parse/location) and tail (persist/emit) live in ExtractionPreparer and
+// InvoiceFinalizer; this service owns only the direct, forced-order extraction in between —
+// the same five stages the agentic coordinator wraps as tools. The caller owns the DB
+// transaction; on a thrown error it is rolled back (ledger claim included), so SQS retry/DLQ
+// stays correct and idempotency is preserved.
 export class IngestionService {
+  private readonly preparer: ExtractionPreparer;
+  private readonly finalizer: InvoiceFinalizer;
+
   constructor(
-    private readonly tenantContext: ITenantContext,
-    private readonly ledger: IIngestionLedger,
-    private readonly fileStorage: IS3FileStorage,
-    private readonly visionParser: VisionParseService,
-    // PDFs go to a document-capable model (the vision model rejects document blocks);
-    // both run the same receipt prompt + schema, differing only in the model ID.
-    private readonly documentParser: VisionParseService,
+    tenantContext: ITenantContext,
+    ledger: IIngestionLedger,
+    fileStorage: IS3FileStorage,
+    visionParser: VisionParseService,
+    // PDFs go to a document-capable model (the vision model rejects document blocks); both run
+    // the same receipt prompt + schema, differing only in the model ID.
+    documentParser: VisionParseService,
     private readonly merchantResolver: IMerchantResolver,
     private readonly productNormalizer: IProductNormalizer,
     private readonly classifier: IInvoiceClassifier,
     private readonly tagGenerator: ITagGenerator,
-    private readonly invoiceRepo: IInvoiceRepository,
-    private readonly priceObservationStore: IPriceObservationStore,
-    private readonly contributorContext: IContributorContextRepository,
-    private readonly regionReference: IRegionReference,
-  ) {}
+    invoiceRepo: IInvoiceRepository,
+    priceObservationStore: IPriceObservationStore,
+    contributorContext: IContributorContextRepository,
+    regionReference: IRegionReference,
+    uploadLimits: IUploadLimitsProvider,
+  ) {
+    this.preparer = new ExtractionPreparer(
+      tenantContext, ledger, fileStorage, invoiceRepo, contributorContext, regionReference, uploadLimits,
+      new OcrParserTool(visionParser, documentParser),
+    );
+    this.finalizer = new InvoiceFinalizer(invoiceRepo, priceObservationStore, ledger);
+  }
 
   async process(message: IngestionMessage): Promise<IngestionOutcome> {
-    await this.tenantContext.setTenantId(message.tenantId);
+    const prepared = await this.preparer.prepare(message);
+    if (prepared.kind === 'duplicate') return { handled: false };
+    if (prepared.kind === 'unreadable') return prepared.outcome;
 
-    const claimed = await this.ledger.claim(message.s3Key, message.tenantId);
-    if (!claimed) return { handled: false };
+    const { receipt, location, context } = prepared;
 
-    // Contributor country + today's date sharpen date/currency disambiguation in the
-    // vision prompt; the same context resolves the sharing location below.
-    const context = await this.contributorContext.getContext(message.tenantId);
-    const processedDate = new Date().toISOString().slice(0, 10);
-
-    const bytes = await this.fileStorage.getObjectBytes(message.s3Key);
-    const format = attachmentFormatFromKey(message.s3Key);
-    const attachment =
-      format === 'pdf' ? { format, bytes, name: 'receipt' } : { format, bytes };
-    const parser = format === 'pdf' ? this.documentParser : this.visionParser;
-    const receipt = await parser.parse(attachment, {
-      countryCode: context.countryCode,
-      processedDate,
-    });
-
-    // Resolve the sharing location first (§6.5) so the catalog is stamped with the
-    // invoice's country: merchant and product belong to where the purchase happened
-    // (receipt address → upload geo → profile fallback), not a launch-market default.
-    // countryCode is always known; region precision still follows the user gate below.
-    const location = await this.resolveLocation(message.invoiceId, receipt, context);
-
+    // Forced-order canonicalization (§6.2–6.10): merchant → product → classify → tag. The
+    // sharing location is already resolved (the catalog is stamped with the invoice's country).
     const merchant = await this.merchantResolver.resolve(receipt.merchantRaw, location.countryCode);
     const { lines: normalized, suggestedTags } = await this.productNormalizer.normalize(merchant.merchantId, receipt.lines, location.countryCode);
     const categoryId = await this.classifier.classify({
@@ -92,166 +90,6 @@ export class IngestionService {
       suggestedTags,
     });
 
-    const fuzzyDuplicate = await this.invoiceRepo.findFuzzyDuplicate(message.invoiceId, {
-      merchantId: merchant.merchantId,
-      transactionDate: receipt.transactionDate,
-      total: receipt.total,
-      lineCount: receipt.lines.length,
-    });
-    // An exact re-upload of a receipt this tenant already contributed must not emit a
-    // second, non-retractable observation set (§6.5). Presign rejects live same-hash
-    // uploads, so this can only match a previously-DELETED invoice — there is nothing
-    // for the user to compare against, so it stays a normal invoice (not flagged) and is
-    // permanently kept out of the price index via priceEmissionBlocked.
-    const alreadyContributed = await this.invoiceRepo.hasEmittedDuplicateByHash(message.invoiceId);
-    // Only a live fuzzy twin (PARSED/NEEDS_REVIEW) is an actionable duplicate the user can resolve.
-    const isSuspectedDuplicate = fuzzyDuplicate;
-    const arithmeticOk = isArithmeticConsistent(receipt);
-
-    // A non-integral parse (bad arithmetic / low vision confidence / suspected duplicate)
-    // indicts the whole receipt and contributes nothing to the global store (§6.5). A
-    // provisional product is NOT an integrity fail — it emits born-quarantined per line.
-    const integrity = assessInvoiceIntegrity({
-      parseConfidence: receipt.parseConfidence,
-      arithmeticOk,
-      isSuspectedDuplicate,
-    });
-    const suppressEmission = fuzzyDuplicate || alreadyContributed || !integrity.integral;
-
-    const status = decideStatus({
-      parseConfidence: receipt.parseConfidence,
-      arithmeticOk,
-      hasLowConfidenceLine: normalized.some(line => line.lowConfidence),
-      lowConfidenceMerchant: merchant.provisional,
-      isSuspectedDuplicate,
-    });
-
-    await this.invoiceRepo.persistParsed({
-      invoiceId: message.invoiceId,
-      merchantId: merchant.merchantId,
-      merchantProvisional: merchant.provisional,
-      transactionDate: receipt.transactionDate,
-      currency: receipt.currency,
-      total: receipt.total,
-      categoryId,
-      searchTags: tags,
-      // The receipt city is a free-text, tenant-scoped search field — kept out of the
-      // controlled tag vocabulary and out of the price observation store (§6.5).
-      searchCity: receipt.location?.city ?? null,
-      status,
-      priceEmissionBlocked: suppressEmission,
-      location: {
-        countryCode: location.countryCode,
-        regionCode: location.regionCode,
-        status: location.status,
-        source: location.source,
-      },
-      lines: receipt.lines.map((line, index) => toPersistedLine(line, normalized[index], index)),
-    });
-
-    // A duplicate (fuzzy fingerprint or exact re-upload of a deleted invoice) stays out
-    // of the price index: confirmed duplicates contribute no observations (§6.8) and
-    // emitted rows are de-identified and cannot be retracted. The reserved quota slot is
-    // kept — the scan still cost an AI parse, so it counts against the §2.4 cap (Epic 09).
-    if (!suppressEmission && location.status === 'RESOLVED') {
-      await this.emitPriceObservations(merchant, receipt, normalized, context, location);
-    }
-
-    await this.ledger.setStatus(message.s3Key, 'DONE');
-    return {
-      handled: true,
-      status,
-      receipt,
-      emissionGate: { suppressed: suppressEmission, integral: integrity.integral, reasons: integrity.reasons },
-    };
+    return this.finalizer.finalize({ message, receipt, location, context, merchant, normalized, categoryId, tags });
   }
-
-  // Decide the invoice's sharing location across all three tiers (§6.5). The receipt
-  // address is mapped to reference codes; the upload-geo prefill is read from the row
-  // (reverse-geocoded at presign); the profile is the final fallback.
-  private async resolveLocation(invoiceId: string, receipt: ParsedReceipt, context: ContributorContext) {
-    const receiptResolved = await this.regionReference.resolveReceiptLocation({
-      countryCode: receipt.location?.countryCode,
-      regionText: receipt.location?.regionText,
-    });
-    const record = await this.invoiceRepo.getById(invoiceId);
-    const uploadGeo: LocationCandidate | null = record?.uploadCountryCode
-      ? { countryCode: record.uploadCountryCode, regionCode: record.uploadRegionCode }
-      : null;
-    return resolveIngestionLocation({
-      receipt: receiptResolved,
-      uploadGeo,
-      profile: { countryCode: context.countryCode, regionCode: context.regionCode },
-    });
-  }
-
-  // Stage 5 (§6.5): emit de-identified price observations into the RLS-exempt store.
-  // The domain builder skips opt-out, missing-merchant, and non-priceable lines, and
-  // quarantines provisional catalog entries. Only a RESOLVED location reaches here, so
-  // its country/region (receipt-derived) override the contributor profile — the printed
-  // address, not where the contributor lives, anchors the observation.
-  private async emitPriceObservations(
-    merchant: MerchantResolution,
-    receipt: ParsedReceipt,
-    normalized: NormalizedLine[],
-    context: ContributorContext,
-    location: LocationCandidate,
-  ): Promise<void> {
-    const rows = buildPriceObservations({
-      merchantId: merchant.merchantId,
-      merchantProvisional: merchant.provisional,
-      transactionDate: receipt.transactionDate,
-      currency: receipt.currency,
-      lines: receipt.lines.map((line, index) => toObservationLine(line, normalized[index])),
-      context: {
-        optedOut: context.optedOut,
-        regionCode: location.regionCode,
-        countryCode: location.countryCode,
-        trustScore: context.trustScore,
-      },
-    });
-    if (rows.length > 0) await this.priceObservationStore.emit(rows);
-  }
-}
-
-function toObservationLine(line: ParsedLine, norm: NormalizedLine): ObservationLine {
-  return {
-    productId: norm.productId,
-    productProvisional: norm.productProvisional,
-    baseUnit: norm.baseUnit,
-    normalizedUnitPrice: norm.normalizedUnitPrice,
-    isDepositOrFee: norm.isDepositOrFee,
-    quantity: line.quantity,
-    lineTotal: line.lineTotal,
-    listUnitPrice: line.unitPrice ?? null,
-  };
-}
-
-function toPersistedLine(line: ParsedLine, norm: NormalizedLine, index: number): PersistedLine {
-  const isDiscount = line.lineTotal < 0;
-  return {
-    rawText: line.rawText,
-    lineIndex: index,
-    productId: norm.productId,
-    productProvisional: norm.productProvisional,
-    categoryId: resolveLineCategory(norm, isDiscount),
-    quantity: line.quantity,
-    packQuantity: norm.packQuantity,
-    baseUnit: norm.baseUnit,
-    unitPrice: line.unitPrice ?? null,
-    normalizedUnitPrice: norm.normalizedUnitPrice,
-    lineTotal: line.lineTotal,
-    isDiscount,
-    isDepositOrFee: norm.isDepositOrFee,
-    confidence: norm.confidence,
-  };
-}
-
-// Deposits and discounts are structural — a negative total or a deposit flag is a far
-// more reliable signal than the LLM's per-line category, so override it deterministically
-// to the matching per-macro bucket (keeps the LLM's macro, just fixes the leaf).
-function resolveLineCategory(norm: NormalizedLine, isDiscount: boolean): string | null {
-  if (norm.isDepositOrFee) return depositCategoryFor(norm.categoryId);
-  if (isDiscount) return discountCategoryFor(norm.categoryId);
-  return norm.categoryId;
 }

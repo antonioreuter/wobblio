@@ -7,6 +7,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import { NagSuppressions } from 'cdk-nag';
 import { EnvironmentConfig } from '../config/environment';
+import { configParamName } from '../config/appConfig';
 import { WobblioDbStack } from './WobblioDbStack';
 import { applyWobblioTags } from '../utils/tagging';
 
@@ -25,7 +26,7 @@ export class WobblioObservabilityStack extends Stack {
 
     const opsEmail = ssm.StringParameter.valueForStringParameter(
       this,
-      '/wobblio/config/ops/email',
+      configParamName(config.stage, 'ops/email'),
     );
 
     // ── SNS Ops Topic ─────────────────────────────────────────────────────────

@@ -76,6 +76,15 @@ describe('VisionParseService', () => {
     expect(receipt.lines.map(l => l.rawText)).toEqual(['COCA-COLA']);
   });
 
+  it('passes through an unreadable verdict without post-processing (no retry)', async () => {
+    converse.mockResolvedValue(converseResult(JSON.stringify({ unreadable: true, reason: 'BLURRY' })));
+
+    const result = await sut.parse(image, ctx);
+
+    expect(result).toEqual({ unreadable: true, reason: 'BLURRY' });
+    expect(converse).toHaveBeenCalledTimes(1);
+  });
+
   it('retries once with validation errors appended, then succeeds', async () => {
     converse
       .mockResolvedValueOnce(converseResult('not json'))

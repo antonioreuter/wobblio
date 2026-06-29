@@ -21,3 +21,38 @@ WebApp UI:
 Invoices:
 - Define the max usage based on the number of invoices or credits (tokens) consumed per week. If the user in his last invoice exceeds to max credits available for that week, we still process the request, however if he has reached the limit already, we must reject the next invoices. We need to define how to define.
 
+Household:
+- **Prevent invoice-quota gaming via household join/leave churn.**
+
+  Define how weekly invoice quotas behave when users move in/out of households mid-week, plus abuse detection.
+
+  Quota model (recap):
+  - Standard solo: 3/week. Premium solo: 10/week.
+  - Household shared pool = owner's cap +5 per additional member (premium owner + 1 member = 10 + 5 = 15).
+  - Members inherit premium indirectly while in a premium-owned household.
+
+  Walkthrough to handle:
+  1. Premium user at 5/10 this week.
+  2. Creates household, adds one member → pool becomes 5/15.
+  3. Invited user is Standard, currently 2/3 this week.
+  4. On join: member gains indirect premium and shares the pool (5/15).
+  5. Member leaves same week → personal quota resumes prior state (2/3), loses premium.
+  6. Household drops to owner only → pool reverts to owner's solo cap; with no uploads during the household, owner reads 5/10.
+  7. Any invoice uploaded while the household exists is debited to the household pool; on dissolution that consumption rolls into the owner's personal weekly count.
+
+  Required mechanism:
+  - Exact count-transfer rules on join, leave, and dissolution — no invoice double-counted, lost, or reset to mint free quota.
+  - Close the arbitrage vector: no extra capacity by repeatedly forming/dissolving households or cycling members within a week.
+
+  Abuse detection & enforcement:
+  - Structured log messages flagging suspicious churn (rapid join/leave, repeated create/dissolve, quota arbitrage).
+  - On detection: warn the user to stop.
+  - On continued abuse: escalate to account revocation.
+
+  Open questions:
+  - Accounting rule when household consumption exceeds the owner's solo cap on dissolution.
+  - "Same week" = calendar-week boundary or rolling 7 days?
+  - Thresholds (events per window) for warning vs. revocation.
+
+  
+- When sharing the link, add a button to share via whatsapp, like we do with the invoices.

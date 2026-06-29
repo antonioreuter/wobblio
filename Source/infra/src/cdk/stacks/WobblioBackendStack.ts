@@ -19,6 +19,7 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import { NagSuppressions } from 'cdk-nag';
 import { EnvironmentConfig } from '../config/environment';
+import { configParamName } from '../config/appConfig';
 import { WobblioDbStack } from './WobblioDbStack';
 import { WobblioAuthStack } from './WobblioAuthStack';
 import { WobblioStorageStack } from './WobblioStorageStack';
@@ -44,12 +45,20 @@ export class WobblioBackendStack extends Stack {
 
     const commonLambdaEnv = {
       STAGE:        config.stage,
+      // Stage-scopes /wobblio/config/* reads to /wobblio/config/<stage>/* (stageConfig).
+      // dev and prod share the account, so each reads its own scoped config namespace.
+      CONFIG_STAGE: config.stage,
       LOG_LEVEL:    config.logLevel,
       DB_HOST:      dbHost,
       DB_PORT:      dbPort,
       DB_SECRET_ARN: dbSecretArn,
       KMS_KEY_ARN:  dbStack.kmsKey.keyArn,
     };
+
+    // ARN of a stage-scoped config param (or a wildcard suffix like 'models/*'), kept in
+    // lock-step with the backend's stageConfig so every IAM grant matches the path read.
+    const configParamArn = (relativeKeyOrGlob: string): string =>
+      `arn:aws:ssm:${this.region}:${this.account}:parameter${configParamName(config.stage, relativeKeyOrGlob)}`;
 
     // ── SQS Queues ────────────────────────────────────────────────────────────
     const ingestionDlq = new sqs.Queue(this, 'IngestionDlq', {
@@ -196,7 +205,7 @@ export class WobblioBackendStack extends Stack {
     // Public endpoints — no Cognito auth, called by unauthenticated landing-page visitors
     const waitlistStatusFn = makeLambda('waitlist-status', 5, {
       MAX_FREE_USERS: ssm.StringParameter.valueForStringParameter(
-        this, '/wobblio/config/quotas/max_free_waitlist_cap',
+        this, configParamName(config.stage, 'quotas/max_free_waitlist_cap'),
       ),
     });
     const analyticsEventsFn = makeLambda('analytics-events', 5, {
@@ -325,11 +334,16 @@ export class WobblioBackendStack extends Stack {
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
     const waitlistCapSsmPolicy = new iam.PolicyStatement({
       actions: ['ssm:GetParameter'],
-      resources: [
-        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/max_free_waitlist_cap`,
-      ],
+      resources: [configParamArn('quotas/max_free_waitlist_cap')],
     });
     [apiHandlerFn, cronWaitlistReleaseFn].forEach(fn => fn.addToRolePolicy(waitlistCapSsmPolicy));
+
+    // SSM: system-fault alert threshold (§07.4) — api-handler reads it for the admin faults
+    // view. Separate single GetParameter (not in the quota-cap batch) so it stays admin-only.
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter'],
+      resources: [configParamArn('quotas/max_system_faults_per_week')],
+    }));
 
     // SSM: per-role quota caps — api-handler reads these (batched GetParameters)
     // for the scan-quota check on /me/usage and presign. Must include GetParameters
@@ -337,57 +351,62 @@ export class WobblioBackendStack extends Stack {
     // grant 403s the whole batch). Mirrors QUOTA_PARAMS in core/domain/quotaConfig.ts.
     const quotaCapPaths = [
       'household_uploads_per_week',
-      ...['standard', 'premium', 'tester', 'admin'].flatMap((r) => [
-        `${r}_uploads_per_week`,
-        `${r}_failure_refunds_per_week`,
-      ]),
+      // Credit cap = invoice limit × this (Non-Functional 02). The worker also reads it
+      // to charge actual tokens; the api-handler for the presign burst projection.
+      'average_tokens_per_invoice',
+      // Per-upload size/page limits (§06): api-handler reads bytes caps at presign; the
+      // worker reads all three for the worker-start size + PDF-page validation.
+      'max_image_bytes',
+      'max_pdf_bytes',
+      'max_pdf_pages',
+      // Failure-refund caps were decommissioned in 03 (success-only charging), so only the
+      // per-role upload caps remain. Mirrors QUOTA_PARAMS in core/domain/quotaConfig.ts.
+      ...['standard', 'premium', 'tester', 'admin'].map((r) => `${r}_uploads_per_week`),
     ];
-    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+    // The ingestion-worker resolves the same allowance to charge credits on success, so
+    // it loads the whole quota batch too — a missing grant would roll the ingestion back.
+    const quotaCapSsmPolicy = new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParameters'],
-      resources: quotaCapPaths.map(
-        (p) => `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/quotas/${p}`,
-      ),
-    }));
+      resources: quotaCapPaths.map((p) => configParamArn(`quotas/${p}`)),
+    });
+    [apiHandlerFn, ingestionWorkerFn].forEach((fn) => fn.addToRolePolicy(quotaCapSsmPolicy));
 
     // SSM: mock premium whitelist — api-handler reads at checkout time
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter'],
-      resources: [
-        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/billing/mock_premium_whitelist`,
-      ],
+      resources: [configParamArn('billing/mock_premium_whitelist')],
     }));
 
     // SSM: split-route thresholds — api-handler reads these for the optimizer (batched)
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParameters'],
       resources: [
-        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/routing/max_stores`,
-        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/routing/min_split_saving_eur`,
+        configParamArn('routing/max_stores'),
+        configParamArn('routing/min_split_saving_eur'),
       ],
     }));
 
     // SSM: admin parameter editor (admin-console 02) — read + write the allowlisted
-    // tunables. Paths enumerated (no wildcard) to mirror the allowlist in
-    // core/domain/adminTunables.ts and keep cdk-nag IAM5 clean.
-    const adminTunableSsmPaths = [
-      '/wobblio/config/quotas/max_free_waitlist_cap',
-      '/wobblio/config/routing/min_split_saving_eur',
-      '/wobblio/config/routing/max_stores',
-      '/wobblio/config/tags/vocabulary',
-      '/wobblio/config/tags/dedicated_call_enabled',
-      '/wobblio/config/models/limits/vision_parser_max_tokens',
-      '/wobblio/config/models/limits/auxiliary_max_tokens',
-      '/wobblio/config/models/limits/insight_max_tokens',
-      '/wobblio/config/models/limits/embedder_max_tokens',
+    // tunables. Keys enumerated (no wildcard) to mirror the allowlist in
+    // core/domain/adminTunables.ts and keep cdk-nag IAM5 clean. The admin adapter
+    // stage-scopes these at runtime, so the grants are stage-scoped too.
+    const adminTunableKeys = [
+      'quotas/max_free_waitlist_cap',
+      'routing/min_split_saving_eur',
+      'routing/max_stores',
+      'tags/vocabulary',
+      'tags/dedicated_call_enabled',
+      'models/limits/vision_parser_max_tokens',
+      'models/limits/auxiliary_max_tokens',
+      'models/limits/insight_max_tokens',
+      'models/limits/embedder_max_tokens',
       // Per-role quota caps — editable on the admin quotas page (mirrors
       // QUOTA_PARAMS in core/domain/quotaConfig.ts).
-      ...quotaCapPaths.map((p) => `/wobblio/config/quotas/${p}`),
+      ...quotaCapPaths.map((p) => `quotas/${p}`),
     ];
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameters', 'ssm:PutParameter'],
-      resources: adminTunableSsmPaths.map(
-        (p) => `arn:aws:ssm:${this.region}:${this.account}:parameter${p}`,
-      ),
+      resources: adminTunableKeys.map((k) => configParamArn(k)),
     }));
 
     // SSM: admin model-swap matrix (admin-console 03) — read + write the model IDs.
@@ -397,7 +416,7 @@ export class WobblioBackendStack extends Stack {
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameters', 'ssm:PutParameter'],
       resources: ['vision_parser', 'pdf_parser', 'auxiliary', 'insight', 'embedder'].map(
-        (role) => `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/models/${role}`,
+        (role) => configParamArn(`models/${role}`),
       ),
     }));
 
@@ -443,9 +462,7 @@ export class WobblioBackendStack extends Stack {
     grantBedrockInference(cronWeeklyAdvisorFn);
     cronWeeklyAdvisorFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter'],
-      resources: [
-        `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/models/auxiliary`,
-      ],
+      resources: [configParamArn('models/auxiliary')],
     }));
 
     // SES: cron-waitlist-release sends waitlist release notification emails
@@ -466,7 +483,9 @@ export class WobblioBackendStack extends Stack {
       new iam.PolicyStatement({
         actions: ['ssm:GetParameter'],
         resources: [
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/models/*`,
+          configParamArn('models/*'),
+          // Per-tenant daily AI-spend cap. Not yet routed through stageConfig (flat),
+          // so this grant stays flat — see the stage-scoping follow-up.
           `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/ai/*`,
         ],
       }),
@@ -596,11 +615,14 @@ export class WobblioBackendStack extends Stack {
       id: string,
       schedule: events.Schedule,
       fn: lambda.Function,
+      // Defaults to prod-only; pass true to run in every stage (e.g. the KPI roll-up,
+      // which the dev admin dashboard needs to have any data to show).
+      enabled: boolean = config.stage === 'prod',
     ) =>
       new events.Rule(this, id, {
         schedule,
         targets: [new targets.LambdaFunction(fn)],
-        enabled: config.stage === 'prod',
+        enabled,
       });
 
     // Nightly: recompute budget accumulation, fire 85%/100% alerts, roll periods
@@ -645,6 +667,7 @@ export class WobblioBackendStack extends Stack {
       'IngestionMetricsRollupCron',
       events.Schedule.cron({ minute: '30' }),
       cronIngestionMetricsRollupFn,
+      true, // always on: the admin KPI dashboard reads kpi_daily in every stage
     );
 
     // Data retention cleanup: staggered daily starting at 03:00 UTC.

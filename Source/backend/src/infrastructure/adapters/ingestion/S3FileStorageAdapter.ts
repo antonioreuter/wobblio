@@ -1,12 +1,12 @@
 import {
   S3Client,
-  PutObjectCommand,
   HeadObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+import type { IS3FileStorage, PresignedPost } from '@core/ports/ingestion/IS3FileStorage';
 
 const MAX_TTL_SECONDS = 300; // hard invariant #10
 
@@ -21,18 +21,28 @@ export class S3FileStorageAdapter implements IS3FileStorage {
     // stays virtual-hosted. Mirrors S3BillingArchiveAdapter.
     this.client = new S3Client({
       region,
-      // AWS SDK v3 (≥3.729) embeds a default CRC32 checksum into presigned PUT
-      // URLs computed over empty content; the browser then PUTs real bytes and
-      // S3 rejects the mismatch with 400. WHEN_REQUIRED stops that injection so
-      // presigned PUTs accept an arbitrary body (browsers can't send the trailer).
-      requestChecksumCalculation: 'WHEN_REQUIRED',
       ...(process.env.AWS_ENDPOINT_URL ? { forcePathStyle: true } : {}),
     });
   }
 
-  async presignPut(key: string, contentType: string, ttlSeconds: number): Promise<string> {
-    const command = new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType });
-    return getSignedUrl(this.client, command, { expiresIn: Math.min(ttlSeconds, MAX_TTL_SECONDS) });
+  async presignPost(
+    key: string,
+    contentType: string,
+    maxBytes: number,
+    ttlSeconds: number,
+  ): Promise<PresignedPost> {
+    // content-length-range makes S3 reject an over/undersize body before it lands (§06
+    // primary size guard). Min is 1: a 0-byte upload would otherwise pass the worker size
+    // check and crash Bedrock into a (wrong) system-fault quarantine. Content-Type is
+    // pinned so the stored object keeps the declared type.
+    const { url, fields } = await createPresignedPost(this.client, {
+      Bucket: this.bucket,
+      Key: key,
+      Conditions: [['content-length-range', 1, maxBytes]],
+      Fields: { 'Content-Type': contentType },
+      Expires: Math.min(ttlSeconds, MAX_TTL_SECONDS),
+    });
+    return { url, fields };
   }
 
   async presignGet(key: string, ttlSeconds: number): Promise<string> {

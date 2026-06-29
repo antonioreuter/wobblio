@@ -10,7 +10,7 @@
 // correction, self-reconciliation, two worked examples) which lifted extraction
 // quality from ~0.69 to ~0.96 on the NL sample set, while keeping the raw-only schema.
 
-export const VISION_PARSE_PROMPT_VERSION = 'vision-parse/v7';
+export const VISION_PARSE_PROMPT_VERSION = 'vision-parse/v8';
 
 export const VISION_PARSE_PROMPT = `You are a receipt OCR extraction engine. You receive a single receipt photo and return structured JSON faithful to what is printed.
 
@@ -22,7 +22,9 @@ export const VISION_PARSE_PROMPT = `You are a receipt OCR extraction engine. You
 
 <document_check>
 - Only purchase receipts, store invoices, and restaurant/cafe bills are valid.
-- If the image is clearly not one of those (a random photo, screenshot, ID, blank page), do not fabricate line items: return the schema with your best guesses, an empty-ish lines array reduced to what is truly legible, and parse_confidence <= 0.1.
+- If the image is clearly NOT one of those (a random photo, screenshot, selfie, ID, blank page), respond with the <unreadable_schema> and reason "NOT_A_RECEIPT". Do NOT fabricate line items.
+- If the image IS a receipt but is too blurry, dark, cropped, or low-resolution to transcribe with any confidence, respond with the <unreadable_schema> and reason "BLURRY".
+- Only declare unreadable when you genuinely cannot extract the receipt. If you can read even a partial receipt, extract it normally and LOWER parse_confidence instead.
 </document_check>
 
 <merchant>
@@ -75,9 +77,18 @@ NEVER emit these as lines — they are not purchased goods. Drop them silently:
 
 <output_rules>
 - Respond with a single JSON object and nothing else. No markdown, no prose.
+- A readable receipt → the <schema> object. An unreadable/not-a-receipt image → the <unreadable_schema> object. Never mix the two.
 - Use the exact field names in <schema>. Omit optional fields you cannot determine.
 - Set document_kind_hint to RESTAURANT_BILL only for restaurant/cafe bills.
 </output_rules>
+
+<unreadable_schema>
+{
+  "unreadable": true,
+  "reason": "NOT_A_RECEIPT"
+}
+</unreadable_schema>
+Use reason "NOT_A_RECEIPT" when the image is not a receipt at all, "BLURRY" when it is a receipt you cannot transcribe.
 
 <schema>
 {

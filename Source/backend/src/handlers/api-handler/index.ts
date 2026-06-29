@@ -23,7 +23,6 @@ import { WeeklyAdvisorRepositoryAdapter } from '@infrastructure/adapters/ai/Week
 import { S3FileStorageAdapter } from '@infrastructure/adapters/ingestion/S3FileStorageAdapter';
 import { SqsIngestionQueueAdapter } from '@infrastructure/adapters/ingestion/SqsIngestionQueueAdapter';
 import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
-import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
 import { BillingService } from '@core/services/billing/BillingService';
 import { ProfileService } from '@core/services/identity/ProfileService';
 import { QuotaService } from '@core/services/quota/QuotaService';
@@ -41,6 +40,7 @@ import {
   QuotaExceededError,
   InvoiceNotFoundError,
   InvoiceNotDeletableError,
+  InvoiceBlockedError,
   StaleUploadError,
   LocationAlreadySetError,
   LocationNotConfirmableError,
@@ -48,12 +48,11 @@ import {
   InvalidFeedbackError,
   PremiumRequiredError,
   UnsupportedUploadTypeError,
-  OversizeUploadError,
 } from '@core/domain/errors';
 import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import { CATEGORY_TAXONOMY } from '@core/domain/categoryTaxonomy';
 import type { PoolClient } from 'pg';
-import { REGION, json, parseJsonBody, withTenantTx } from './shared';
+import { REGION, json, parseJsonBody, withTenantTx, uploadQuotaAdapter } from './shared';
 import { handleHouseholdsRoute } from './householdRoutes';
 import { handleBudgetsRoute } from './budgetRoutes';
 import { handleNotificationsRoute } from './notificationRoutes';
@@ -278,21 +277,19 @@ async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayPro
   const quotaService = new QuotaService(new QuotaRepositoryAdapter(db));
   const resolver = new UploadAllowanceResolver(
     new HouseholdRepositoryAdapter(db),
-    new SsmUploadQuotaAdapter(REGION),
+    uploadQuotaAdapter(),
   );
-  // Cap/remaining follow whatever quota backs new uploads: the shared household pool
-  // for a 2+ member household, else the personal counter. "Used" counts this week's
-  // scans across BOTH buckets — a member's new uploads draw the pool, but personal-space
-  // uploads (incl. pre-pooling history this week) still count as scans they made.
-  // Outside a pool poolUsed is 0, so this collapses to the plain personal count.
+  // Both cap and "used" follow whatever quota backs new uploads. When pooled, report the
+  // pool counter alone: §6.3 carry-over already copied the owner's pre-pool spend into
+  // the pool on activation, so adding the personal counter would double-count it. Outside
+  // a pool, report the personal counter.
   const { cap, used } = await withTenantTx(db, user.id, async () => {
     const allowance = await resolver.resolve({ userId: user.id, role: user.role });
     const now = new Date();
-    const personalUsed = await quotaService.getUsed(user.id, 'UPLOADS', now);
-    const poolUsed = allowance.isPool
-      ? await quotaService.getUsed(allowance.quotaOwnerId, 'HOUSEHOLD_UPLOADS', now)
-      : 0;
-    return { cap: allowance.cap, used: personalUsed + poolUsed };
+    const used = allowance.isPool
+      ? await quotaService.getUsed(allowance.quotaOwnerId, 'HOUSEHOLD_CREDITS', now)
+      : await quotaService.getUsed(user.id, 'CREDITS', now);
+    return { cap: allowance.cap, used };
   });
   // TESTER/ADMIN (and unlimited household pools) have an infinite cap; Infinity is not
   // representable in JSON (serializes to null), so signal it explicitly and null the numerics.
@@ -451,6 +448,7 @@ async function handleDeleteInvoice(
     return json(204, {});
   } catch (err) {
     if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
+    if (err instanceof InvoiceBlockedError) return json(409, { message: 'This receipt is being reprocessed and cannot be deleted yet' });
     if (err instanceof InvoiceNotDeletableError) return json(409, { message: 'Invoice is still processing' });
     throw err;
   }
@@ -483,14 +481,17 @@ async function handlePresign(
   const coordinates = parseCoordinates(body);
 
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
+  const quotaProvider = uploadQuotaAdapter();
   const allowanceResolver = new UploadAllowanceResolver(
     new HouseholdRepositoryAdapter(db),
-    new SsmUploadQuotaAdapter(REGION),
+    quotaProvider,
   );
   const service = new PresignService(
     new InvoiceRepositoryAdapter(db),
     new QuotaService(new QuotaRepositoryAdapter(db)),
     allowanceResolver,
+    quotaProvider,
+    quotaProvider,
     new S3FileStorageAdapter(REGION, uploadsBucket),
     new AwsLocationReverseGeocoderAdapter(REGION, process.env.LOCATION_PLACE_INDEX ?? ''),
     new RegionReferenceAdapter(db),
@@ -583,7 +584,6 @@ async function handleConfirm(
   } catch (err) {
     if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
     if (err instanceof StaleUploadError) return json(410, { message: 'Upload missing or expired; re-initiate presign' });
-    if (err instanceof OversizeUploadError) return json(413, { message: 'PDF is too large (max 4.5 MB)' });
     throw err;
   }
 }

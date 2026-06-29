@@ -7,7 +7,7 @@ export type BedrockStage =
   | 'EMBEDDING';
 
 export interface BedrockImage {
-  format: 'jpeg' | 'png';
+  format: 'jpeg' | 'png' | 'webp';
   bytes: Uint8Array;
 }
 

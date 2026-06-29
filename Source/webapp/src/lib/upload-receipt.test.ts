@@ -24,7 +24,11 @@ function mockUploadFetch() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     if (url.endsWith('/api/invoices/presign')) {
-      return { ok: true, status: 201, json: async () => ({ invoiceId: 'inv-1', uploadUrl: 'https://s3/put' }) } as Response
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({ invoiceId: 'inv-1', url: 'https://s3/post', fields: { key: 'receipts/k', 'Content-Type': 'image/jpeg' } }),
+      } as Response
     }
     return { ok: true, status: 200, json: async () => ({}) } as Response
   })

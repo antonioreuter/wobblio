@@ -2,7 +2,7 @@ import type { BedrockConverseRequest, BedrockDocument, BedrockImage, BedrockMess
 import { parseReceiptJson } from '../../domain/receiptSchema';
 import { callJsonWithRetry } from '../../domain/llmJson';
 import { dropNonItemLines, collapseContinuationLines } from '../../domain/receiptPostProcess';
-import type { ParsedReceipt } from '../../domain/ingestion';
+import { isUnreadableVerdict, type ParsedReceipt, type UnreadableVerdict } from '../../domain/ingestion';
 
 export interface ReceiptContext {
   countryCode: string;
@@ -27,21 +27,23 @@ export class VisionParseService {
 
   // The receipt arrives as an image (JPEG/PNG → image block) or a PDF (→ native
   // document block); the adapter picks the Converse content shape from which field is set.
-  async parse(attachment: BedrockImage | BedrockDocument, ctx: ReceiptContext): Promise<ParsedReceipt> {
+  async parse(attachment: BedrockImage | BedrockDocument, ctx: ReceiptContext): Promise<ParsedReceipt | UnreadableVerdict> {
     const message: BedrockMessage =
       attachment.format === 'pdf'
         ? { role: 'user', content: buildUserInstruction(ctx), document: attachment }
         : { role: 'user', content: buildUserInstruction(ctx), image: attachment };
-    const receipt = await callJsonWithRetry({
+    const result = await callJsonWithRetry({
       call: request => this.converse.converse(request),
       buildRequest: messages => this.buildRequest(messages),
       messages: [message],
       validate: parseReceiptJson,
     });
+    // The model declared the image unreadable — pass the verdict through untouched.
+    if (isUnreadableVerdict(result)) return result;
     // Deterministic safety net: strip summary/loyalty/metadata rows the model may have
     // emitted despite the prompt's <exclusion_list>, then fold any standalone "N x price"
     // breakdown into its product line (the model double-counts these on long receipts).
-    return collapseContinuationLines(dropNonItemLines(receipt));
+    return collapseContinuationLines(dropNonItemLines(result));
   }
 
   private buildRequest(messages: BedrockMessage[]): BedrockConverseRequest {

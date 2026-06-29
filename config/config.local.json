@@ -1,0 +1,34 @@
+{
+  "models/vision_parser": "qwen.qwen3-vl-235b-a22b",
+  "models/pdf_parser": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "models/auxiliary": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "models/embedder": "amazon.titan-embed-text-v2:0",
+  "models/insight": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
+
+  "quotas/standard_uploads_per_week": "3",
+  "quotas/premium_uploads_per_week": "10",
+  "quotas/tester_uploads_per_week": "-1",
+  "quotas/admin_uploads_per_week": "-1",
+  "quotas/household_uploads_per_week": "15",
+  "quotas/average_tokens_per_invoice": "10000",
+  "quotas/max_image_bytes": "5000000",
+  "quotas/max_pdf_bytes": "4500000",
+  "quotas/max_pdf_pages": "10",
+  "quotas/max_system_faults_per_week": "25",
+  "quotas/max_free_waitlist_cap": "5000",
+
+  "routing/max_stores": "3",
+  "routing/min_split_saving_eur": "5.00",
+
+  "tags/dedicated_call_enabled": "false",
+  "tags/vocabulary": "[]",
+
+  "billing/mock_premium_whitelist": "antonioreuter@gmail.com",
+
+  "ai/daily_spend_cap": "0.10",
+
+  "ops/email": "antonioreuter@gmail.com",
+
+  "auth/google_client_id": "google-client-id-placeholder",
+  "auth/facebook_app_id": "facebook-app-id-placeholder"
+}

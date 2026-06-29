@@ -1,6 +1,6 @@
 // Client-side receipt upload: compress to ≤1MB JPEG (re-encoding via canvas also
-// strips EXIF/geotags), hash, then presign → PUT to S3 → confirm. Runs in the
-// browser only. See webapp CLAUDE.md hard rule #8 + spec §6.6.
+// strips EXIF/geotags), hash, then presign → multipart POST to S3 → confirm. Runs in
+// the browser only. See webapp CLAUDE.md hard rule #8 + spec §6.6.
 
 const MAX_BYTES = 1_000_000
 const MAX_DIMENSION = 1600
@@ -72,7 +72,7 @@ function getUploadCoordinates(): Promise<{ lat: number; lon: number } | undefine
   })
 }
 
-const MAX_PDF_BYTES = 4_500_000 // mirrors the backend ConfirmService limit (Bedrock document cap)
+const MAX_PDF_BYTES = 4_500_000 // mirrors the backend /quotas/max_pdf_bytes (§06, Bedrock doc limit); S3 also enforces it
 
 // A PDF is uploaded as-is (no canvas re-encode): there is no EXIF/geotag to strip and
 // rasterizing would lose the native text. Images still go through prepareImage.
@@ -96,14 +96,26 @@ export async function uploadReceipt(file: File): Promise<{ invoiceId: string }> 
     body: JSON.stringify({ imageSha256: sha256, contentType, ...coordinates }),
   })
   if (presign.status === 409) throw new UploadError('duplicate', 'This receipt was already scanned.')
-  if (presign.status === 429) throw new UploadError('quota', 'You’ve reached your weekly scan limit.')
+  if (presign.status === 429) throw new UploadError('quota', 'You’ve reached your weekly usage credit limit.')
   if (presign.status === 403) throw new UploadError('failed', 'PDF uploads require a premium plan.')
   if (!presign.ok) throw new UploadError('failed', 'Could not start the upload.')
 
-  const { invoiceId, uploadUrl } = (await presign.json()) as { invoiceId: string; uploadUrl: string }
+  const { invoiceId, url, fields } = (await presign.json()) as {
+    invoiceId: string
+    url: string
+    fields: Record<string, string>
+  }
 
-  const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob })
-  if (!put.ok) throw new UploadError('failed', 'Uploading the file failed.')
+  // Presigned multipart POST: submit the signed fields (policy, signature, key, Content-Type,
+  // content-length-range) and the file last. S3 rejects an oversize body before it lands (§06).
+  // No explicit Content-Type header — the browser sets the multipart boundary itself.
+  const form = new FormData()
+  for (const [name, value] of Object.entries(fields)) form.append(name, value)
+  // A filename is required for S3 to treat the `file` part as an object upload.
+  form.append('file', blob, contentType === 'application/pdf' ? 'receipt.pdf' : 'receipt.jpg')
+
+  const post = await fetch(url, { method: 'POST', body: form })
+  if (!post.ok) throw new UploadError('failed', 'Uploading the file failed.')
 
   const confirm = await fetch(`/api/invoices/${invoiceId}/confirm`, { method: 'POST' })
   if (!confirm.ok) throw new UploadError('failed', 'Could not start processing.')

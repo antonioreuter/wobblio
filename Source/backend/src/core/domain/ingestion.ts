@@ -1,3 +1,6 @@
+import type { FailureReasonCode, UnreadableReason } from './failureReasons';
+import { OversizeUploadError, TooManyPagesError, UnsupportedUploadTypeError } from './errors';
+
 export type InvoiceStatus =
   | 'PROCESSING'
   | 'NEEDS_REVIEW'
@@ -5,6 +8,19 @@ export type InvoiceStatus =
   | 'FAILED_PROCESSING'
   | 'SUSPECTED_DUPLICATE'
   | 'DISCARDED';
+
+// The vision model's escape hatch (§ 03.2): instead of fabricating a receipt from a
+// blurry/non-receipt image it returns this verdict. It is a model OUTPUT, never an
+// exception — so it flows through the normal outcome path, is charged the tokens the
+// model spent, and is a deletable user-fault (never quarantined).
+export interface UnreadableVerdict {
+  unreadable: true;
+  reason: UnreadableReason;
+}
+
+export function isUnreadableVerdict(value: ParsedReceipt | UnreadableVerdict): value is UnreadableVerdict {
+  return (value as UnreadableVerdict).unreadable === true;
+}
 
 // Only a successfully-parsed receipt is eligible for the §6.5 location gate. A
 // duplicate must contribute zero observations (§6.8), and PROCESSING/FAILED/DISCARDED
@@ -14,11 +30,34 @@ export function isLocationConfirmable(status: InvoiceStatus): boolean {
   return status === 'PARSED' || status === 'NEEDS_REVIEW';
 }
 
-// PROCESSING is the only non-terminal status; deleting an in-flight invoice would
-// leave the worker writing to a discarded row and strand its content-addressed ledger
-// claim. Every terminal status (incl. FAILED_PROCESSING/SUSPECTED_DUPLICATE) is deletable.
-export function isDeletable(status: InvoiceStatus): boolean {
-  return status !== 'PROCESSING';
+// Canonical deletion-eligibility rule — the single source of truth for every delete path
+// (user delete, future admin/GDPR purges). Two holds: PROCESSING is non-terminal, so
+// deleting it would leave the worker writing to a discarded row and strand its
+// content-addressed ledger claim; a system-fault-quarantined invoice (systemFaultReason
+// set, §03.5) is held for operator reprocess and must not be farmed via delete+re-upload.
+// Every other terminal status is deletable. `== null` also treats undefined as not-set.
+export function isDeletable(status: InvoiceStatus, systemFaultReason: string | null): boolean {
+  return status !== 'PROCESSING' && systemFaultReason == null;
+}
+
+// Pre-AI user-fault upload rejects (§06): detectable without a model call, they fail the
+// invoice plain (FAILED_PROCESSING + reason code, deletable) — never quarantine, charge,
+// or retry. Every OTHER thrown error is an our-stack fault → the quarantine path.
+const USER_FAULT_UPLOAD_ERRORS = [
+  OversizeUploadError,
+  TooManyPagesError,
+  UnsupportedUploadTypeError,
+] as const;
+
+export function isSystemFault(err: unknown): boolean {
+  return !USER_FAULT_UPLOAD_ERRORS.some((type) => err instanceof type);
+}
+
+// The friendly reason code for a user-fault upload reject — drives the invoice "why?"
+// surface (§03.4). Unsupported format vs everything-else (oversize / too many pages).
+export function uploadFailureReasonCode(err: unknown): FailureReasonCode {
+  if (err instanceof UnsupportedUploadTypeError) return 'UNSUPPORTED_FORMAT';
+  return 'TOO_LARGE';
 }
 
 // User's accuracy rating on a parsed receipt (§ invoice_feedback). One verdict per

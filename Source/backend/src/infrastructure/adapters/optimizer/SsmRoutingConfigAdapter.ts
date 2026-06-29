@@ -1,9 +1,10 @@
 import { SSMClient, GetParametersCommand } from '@aws-sdk/client-ssm';
 import type { IRoutingConfig } from '@core/ports/optimizer/IRoutingConfig';
 import type { OptimizerConfig } from '@core/domain/routeOptimizer';
+import { stageScopeConfig } from '@infrastructure/config/stageConfig';
 
-const MAX_STORES_PARAM = '/wobblio/config/routing/max_stores';
-const MIN_SPLIT_PARAM = '/wobblio/config/routing/min_split_saving_eur';
+const MAX_STORES_PARAM = stageScopeConfig('/wobblio/config/routing/max_stores');
+const MIN_SPLIT_PARAM = stageScopeConfig('/wobblio/config/routing/min_split_saving_eur');
 
 export class SsmRoutingConfigAdapter implements IRoutingConfig {
   private readonly client: SSMClient;

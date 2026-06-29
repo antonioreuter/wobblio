@@ -29,6 +29,7 @@ describe('UploadAllowanceResolver', () => {
     quota = {
       getPersonalUploadsCap: vi.fn().mockImplementation((role: string) => Promise.resolve(PERSONAL_CAPS[role])),
       getHouseholdUploadsCap: vi.fn().mockResolvedValue(HOUSEHOLD_CAP),
+      getAverageTokensPerInvoice: vi.fn().mockResolvedValue(10_000),
     };
     sut = new UploadAllowanceResolver(households, quota);
   });
@@ -37,7 +38,7 @@ describe('UploadAllowanceResolver', () => {
     const allowance = await sut.resolve({ userId: 'u1', role: 'STANDARD' });
 
     expect(allowance).toEqual({
-      householdId: null, isPool: false, counter: 'UPLOADS', quotaOwnerId: 'u1', cap: 3,
+      householdId: null, isPool: false, counter: 'CREDITS', quotaOwnerId: 'u1', cap: 3,
     });
     expect(households.memberCountForUser).not.toHaveBeenCalled();
   });
@@ -49,7 +50,7 @@ describe('UploadAllowanceResolver', () => {
     const allowance = await sut.resolve({ userId: 'u1', role: 'STANDARD' });
 
     expect(allowance).toEqual({
-      householdId: 'hh-1', isPool: false, counter: 'UPLOADS', quotaOwnerId: 'u1', cap: 3,
+      householdId: 'hh-1', isPool: false, counter: 'CREDITS', quotaOwnerId: 'u1', cap: 3,
     });
     expect(quota.getHouseholdUploadsCap).not.toHaveBeenCalled();
   });
@@ -62,7 +63,7 @@ describe('UploadAllowanceResolver', () => {
     const allowance = await sut.resolve({ userId: 'member', role: 'STANDARD' });
 
     expect(allowance).toEqual({
-      householdId: 'hh-1', isPool: true, counter: 'HOUSEHOLD_UPLOADS', quotaOwnerId: 'hh-1', cap: 15,
+      householdId: 'hh-1', isPool: true, counter: 'HOUSEHOLD_CREDITS', quotaOwnerId: 'hh-1', cap: 15,
     });
   });
 

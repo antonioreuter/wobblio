@@ -21,6 +21,7 @@ const detail: InvoiceDetail = {
   locationCountryCode: 'NL',
   locationRegionCode: 'NL-NB',
   imageS3Key: 'receipts/tenant-1/abc.jpg',
+  failureReasonCode: null,
   lines: [],
 };
 

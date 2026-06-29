@@ -78,12 +78,17 @@ aws ssm get-parameter --name /shared/db/wobblio_dev/secret-arn \
 
 This:
 - Installs PostgreSQL extensions (uuid-ossp, pg_trgm, vector)
-- Seeds SSM parameters from `config/dev.env`
 - Creates Stripe secret stub
+
+Bootstrap no longer seeds any SSM config. **All** runtime application config (models, quotas,
+routing, tags, billing, `ops/email`, `auth/*`, `ai/*`) is owned by `WobblioConfigStack-<stage>`,
+created on `cdk deploy` from the committed `config/config.<stage>.json`, under the stage-scoped
+prefix `/wobblio/config/<stage>/*`. Edit the JSON (or use the admin console at runtime) — never
+`aws ssm put-parameter` by hand.
 
 Verify SSM parameters:
 ```bash
-aws ssm get-parameters-by-path --path /wobblio/config/ \
+aws ssm get-parameters-by-path --path /wobblio/config/${STAGE:-dev}/ \
   --profile reuterAdmin --region eu-west-1 --recursive \
   --query "Parameters[].{Name:Name,Value:Value}" --output table
 ```
@@ -287,17 +292,20 @@ npm run migrate:up
 psql "$DATABASE_URL" -c "SELECT name, run_on FROM pgmigrations ORDER BY run_on DESC LIMIT 5;"
 ```
 
-### SSM Parameter Value Changed (One-Off)
+### Changing a Config Value
+
+Edit `config/config.<stage>.json` and redeploy the config stack — this keeps the committed
+source of truth and the deployed parameters in sync (Lambda picks it up on next cold start):
 
 ```bash
-# Change a single parameter (Lambda picks it up on next cold start)
-aws ssm put-parameter \
-  --name /wobblio/config/quotas/max_free_waitlist_cap \
-  --value "3000" \
-  --type String \
-  --overwrite \
-  --profile reuterAdmin --region eu-west-1
+export STAGE=dev  # or: prod
+cd Source/infra
+npx cdk deploy WobblioConfigStack-${STAGE} --profile reuterAdmin --require-approval never
 ```
+
+For a transient runtime tweak that an operator should make through the product, use the admin
+console parameter editor (it writes the stage-scoped param via the audited admin path). Avoid
+hand-running `aws ssm put-parameter` — it drifts from `config/config.<stage>.json`.
 
 Or apply all values from `config/${STAGE}.env`:
 
@@ -420,18 +428,26 @@ aws cloudfront list-distributions --profile reuterAdmin \
 
 ### SSM Parameters
 
-All SSM parameters are seeded by `scripts/aws/bootstrap.sh` from `config/${STAGE}.env`. Key parameters:
+Runtime application config lives in `config/config.<stage>.json` and is deployed by
+`WobblioConfigStack-<stage>` to the stage-scoped prefix `/wobblio/config/<stage>/*` (the
+backend reads the same physical path via `CONFIG_STAGE`). dev and prod share the AWS account,
+so the stage prefix keeps their config from colliding. Key parameters (relative key shown):
 
-| Path | Variable | Dev | Prod |
-|---|---|---|---|
-| `/wobblio/config/models/vision_parser` | `MODEL_VISION_PARSER` | `amazon.nova-lite-v1:0` | `amazon.nova-lite-v1:0` |
-| `/wobblio/config/quotas/max_free_waitlist_cap` | `QUOTA_MAX_FREE_WAITLIST_CAP` | `100` | `5000` |
-| `/wobblio/config/ops/email` | `OPS_EMAIL` | `antonioreuter@gmail.com` | `antonioreuter@gmail.com` |
+| Key (under `/wobblio/config/<stage>/`) | Dev | Prod |
+|---|---|---|
+| `models/vision_parser` | `qwen.qwen3-vl-235b-a22b` | `qwen.qwen3-vl-235b-a22b` |
+| `quotas/max_free_waitlist_cap` | `10` | `10` |
+| `ops/email` | `antonioreuter@gmail.com` | `antonioreuter@gmail.com` |
 
-To change a value permanently, edit `config/${STAGE}.env` and re-run:
+Every key is stage-scoped — including `ops/email` (read by the Observability stack) and the
+`auth/*` / `ai/*` keys — so dev and prod are fully independent with no shared flat parameters.
+
+To change a value permanently, edit `config/config.<stage>.json` and redeploy the config stack:
 
 ```bash
-./scripts/aws/bootstrap.sh --force-ssm --stage ${STAGE}
+export STAGE=dev  # or: prod
+cd Source/infra
+npx cdk deploy WobblioConfigStack-${STAGE} --profile reuterAdmin --require-approval never
 ```
 
 See `docs/runbook.md` §9 for the complete parameter reference.
@@ -480,7 +496,7 @@ make validate              # Hexagonal + GDPR + cdk synth
 cd Source/backend && npm run test:unit
 
 # Status Checks
-aws ssm get-parameters-by-path --path /wobblio/config/ --profile reuterAdmin --recursive --output table
+aws ssm get-parameters-by-path --path /wobblio/config/${STAGE:-dev}/ --profile reuterAdmin --recursive --output table
 aws acm list-certificates --region us-east-1 --profile reuterAdmin --output table
 aws cloudfront list-distributions --profile reuterAdmin --output table
 ```

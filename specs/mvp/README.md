@@ -41,6 +41,16 @@ Based on the v2.4 engineering & product specification. Files are numbered by bui
 | ⬜ | [13 — Security Controls](./13-security-controls.md) |
 | ⬜ | [14 — GDPR & Data Lifecycle](./14-gdpr-data-lifecycle.md) |
 | ⬜ | [15 — Observability, KPIs & Analytics](./15-observability-kpis-analytics.md) |
+| ⬜ | [16 — Mobile Capture & Review](./16-mobile-capture-and-review.md) *(Flutter epic — split into 16a–16h)* |
+| ⬜ | &nbsp;&nbsp;↳ [16-00 — Mobile Epic Handoff](./16-mobile/16-00-handoff.md) *(living tracker + DAG)* |
+| ⬜ | &nbsp;&nbsp;↳ [16a — Flutter Foundation & App Shell](./16-mobile/16a-mobile-foundation.md) |
+| ⬜ | &nbsp;&nbsp;↳ [16b — Auth (Cognito on device)](./16-mobile/16b-mobile-auth.md) |
+| ⬜ | &nbsp;&nbsp;↳ [16c — Capture & Upload](./16-mobile/16c-mobile-capture.md) |
+| ⬜ | &nbsp;&nbsp;↳ [16d — Dashboard & Feedback](./16-mobile/16d-mobile-dashboard-feedback.md) |
+| ⬜ | &nbsp;&nbsp;↳ [16e — Review & Correction](./16-mobile/16e-mobile-review.md) |
+| ⬜ | &nbsp;&nbsp;↳ [16f — Push Delivery Backend](./16-mobile/16f-push-delivery-backend.md) *(no Flutter SDK)* |
+| ⬜ | &nbsp;&nbsp;↳ [16g — Push Client](./16-mobile/16g-push-client.md) |
+| ⬜ | &nbsp;&nbsp;↳ [16h — Merchant Search + Tag Vocabulary](./16-mobile/16h-merchant-tag-edits.md) *(deferred)* |
 
 ## Key Architectural Decisions
 

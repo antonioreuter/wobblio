@@ -1,4 +1,5 @@
 import type { InvoiceStatus, InvoiceVerdict } from '@core/domain/ingestion';
+import type { FailureReasonCode, UnreadableReason } from '@core/domain/failureReasons';
 import type { InvoiceLocationStatus, LocationSource } from '@core/domain/region';
 import type { ObservationLine } from '@core/domain/priceObservation';
 
@@ -6,6 +7,10 @@ export interface CreatePendingInvoice {
   tenantId: string;
   uploadedByUserId: string;
   householdId: string | null;
+  // The presign charge decision (§2.4): true when this upload draws the shared household
+  // pool, false when it draws the uploader's personal counter. Persisted so the worker
+  // charges the same counter presign authorized, immune to membership changes in-window.
+  quotaPooled: boolean;
   imageS3Key: string;
   imageSha256: string;
   // Coarse upload geolocation (tier 2), reverse-geocoded at presign. Null when the
@@ -21,6 +26,9 @@ export interface InvoiceRecord {
   imageS3Key: string;
   imageSha256: string;
   householdId: string | null;
+  // Internal root cause, set only for a system-fault-quarantined invoice. Non-null is the
+  // quarantine key: a blocked invoice cannot be deleted (§03.5). Never sent to the client.
+  systemFaultReason: string | null;
   locationStatus: InvoiceLocationStatus;
   locationConfirmedAt: string | null;
   // The tier-2 upload-geo candidate the worker reads to decide the sharing location.
@@ -128,6 +136,9 @@ export interface InvoiceDetail extends InvoiceListItem {
   lines: InvoiceDetailLine[];
   // The tenant's accuracy verdict on this receipt, or null if never rated.
   feedbackVerdict: InvoiceVerdict | null;
+  // Friendly failure reason for a FAILED_PROCESSING invoice (§03.4), powering the "why?"
+  // surface. Null for any non-failed invoice. The internal root cause is never exposed.
+  failureReasonCode: FailureReasonCode | null;
 }
 
 // Highest summed-spend merchant for the current calendar month.
@@ -136,15 +147,44 @@ export interface TopMerchant {
   total: number;
 }
 
+// The presign charge decision read back at success-time: which counter this upload draws.
+// quotaPooled true → HOUSEHOLD_CREDITS keyed by householdId; false → CREDITS keyed by the
+// uploader. The worker charges this, not a fresh membership resolve. createdAt (the presign
+// week) lets the worker detect a cross-week operator reprocess (§07).
+export interface InvoiceChargeTarget {
+  quotaPooled: boolean;
+  householdId: string | null;
+  createdAt: string;
+}
+
 export interface IInvoiceRepository {
   createPending(input: CreatePendingInvoice): Promise<string>;
+  // In-flight (PROCESSING) uploads this week for the quota owner — the uploader for a
+  // personal counter, the household for the shared pool. Backs the presign burst
+  // projection so concurrent uploads can't all clear the cap before any charge lands.
+  countInFlightUploads(ownerId: string, isPool: boolean, weekStart: string): Promise<number>;
   getById(invoiceId: string): Promise<InvoiceRecord | null>;
+  // The persisted presign charge decision for this invoice (quota_pooled + household_id),
+  // read by the worker to charge the counter presign authorized. Null if the invoice is gone.
+  findChargeTarget(invoiceId: string): Promise<InvoiceChargeTarget | null>;
   findSameTenantByHash(imageSha256: string): Promise<InvoiceRecord | null>;
   findFuzzyDuplicate(invoiceId: string, fingerprint: FuzzyFingerprint): Promise<boolean>;
   // True when another same-tenant invoice with this one's image hash already reached
   // a RESOLVED location (i.e. already emitted observations) — the exact re-upload guard.
   hasEmittedDuplicateByHash(invoiceId: string): Promise<boolean>;
   persistParsed(input: PersistParsedInvoice): Promise<void>;
+  // Fail an invoice the model judged unreadable (§03.2): FAILED_PROCESSING + a user-fault
+  // reason code, leaving system_fault_reason null so it stays deletable.
+  markUnreadable(invoiceId: string, reason: UnreadableReason): Promise<void>;
+  // Fail an invoice on a pre-AI user-fault reject (§06: oversize / too many pages /
+  // unsupported format): FAILED_PROCESSING + reason code, no system_fault_reason — stays
+  // deletable, never quarantined. Sibling of markUnreadable for non-model rejects.
+  markFailed(invoiceId: string, reasonCode: FailureReasonCode): Promise<void>;
+  // Quarantine an invoice after an our-stack crash (§03.5/§03.6): FAILED_PROCESSING +
+  // SYSTEM_FAULT code + the internal root cause + blocked_at. Idempotent across SQS
+  // redeliveries — returns true only on the transition into quarantine (0 rows → false),
+  // so the caller fires the owner notification exactly once.
+  quarantine(invoiceId: string, systemFaultReason: string): Promise<boolean>;
   // Write-once location confirmation; rebuild inputs for deferred emission.
   confirmLocation(input: ConfirmLocationInput): Promise<void>;
   getForReEmission(invoiceId: string): Promise<InvoiceReEmission | null>;

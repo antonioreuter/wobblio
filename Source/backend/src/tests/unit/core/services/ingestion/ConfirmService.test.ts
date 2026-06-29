@@ -4,7 +4,7 @@ import { ConfirmService } from '@core/services/ingestion/ConfirmService';
 import type { IInvoiceRepository, InvoiceRecord } from '@core/ports/ingestion/IInvoiceRepository';
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
 import type { IIngestionQueue } from '@core/ports/ingestion/IIngestionQueue';
-import { InvoiceNotFoundError, OversizeUploadError, StaleUploadError } from '@core/domain/errors';
+import { InvoiceNotFoundError, StaleUploadError } from '@core/domain/errors';
 
 const record: InvoiceRecord = {
   id: 'inv-1',
@@ -13,6 +13,7 @@ const record: InvoiceRecord = {
   imageS3Key: 'receipts/tenant-1/abc.jpg',
   imageSha256: 'abc',
   householdId: null,
+  systemFaultReason: null,
 };
 
 const pdfRecord: InvoiceRecord = { ...record, imageS3Key: 'receipts/tenant-1/abc.pdf' };
@@ -35,7 +36,7 @@ describe('ConfirmService', () => {
       listForTenant: vi.fn(),
       getDetail: vi.fn(),
     };
-    storage = { presignPut: vi.fn(), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
+    storage = { presignPost: vi.fn(), presignGet: vi.fn(), headObject: vi.fn(), getObjectBytes: vi.fn(), deleteObject: vi.fn() };
     queue = { enqueue: vi.fn() };
     sut = new ConfirmService(invoiceRepo, storage, queue);
   });
@@ -68,17 +69,11 @@ describe('ConfirmService', () => {
     });
   });
 
-  it('rejects an oversize PDF with OversizeUploadError', async () => {
+  // Size is now enforced at presign (S3 content-length-range) + worker start (§06), so
+  // ConfirmService no longer guards bytes — a PDF that exists is simply enqueued.
+  it('enqueues a PDF upload without a byte guard', async () => {
     invoiceRepo.getById.mockResolvedValue(pdfRecord);
-    storage.headObject.mockResolvedValue({ exists: true, size: 5_000_000 });
-
-    await expect(sut.confirm('inv-1', 'tenant-1')).rejects.toBeInstanceOf(OversizeUploadError);
-    expect(queue.enqueue).not.toHaveBeenCalled();
-  });
-
-  it('enqueues a within-limit PDF upload', async () => {
-    invoiceRepo.getById.mockResolvedValue(pdfRecord);
-    storage.headObject.mockResolvedValue({ exists: true, size: 2_000_000 });
+    storage.headObject.mockResolvedValue({ exists: true, size: 9_000_000 });
 
     await sut.confirm('inv-1', 'tenant-1');
 

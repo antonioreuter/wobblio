@@ -65,7 +65,7 @@ export function CreateHouseholdDialog({ onClose, onCreated }: CreateHouseholdDia
           <div className="confirm-head">
             <h3 className="confirm-title">New household</h3>
             <p className="confirm-msg">
-              Share a weekly upload pool with up to 5 members. You’ll be the owner.
+              Share a weekly upload pool with up to 3 members. You’ll be the owner.
             </p>
           </div>
         </div>

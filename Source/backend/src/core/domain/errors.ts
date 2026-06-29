@@ -98,6 +98,16 @@ export class InvoiceNotDeletableError extends Error {
   }
 }
 
+// A system-fault-quarantined invoice (system_fault_reason set, §03.5). It is held for
+// operator reprocess-on-behalf, so the user cannot delete it (which would also let them
+// farm a free re-scan). Surfaces as 409.
+export class InvoiceBlockedError extends Error {
+  constructor(readonly invoiceId: string) {
+    super(`Invoice ${invoiceId} is blocked pending reprocessing and cannot be deleted`);
+    this.name = 'InvoiceBlockedError';
+  }
+}
+
 export class InvalidFeedbackError extends Error {
   constructor(readonly verdict: string) {
     super(`Invalid feedback verdict: ${verdict}`);
@@ -152,6 +162,13 @@ export class OversizeUploadError extends Error {
   constructor(readonly invoiceId: string, readonly size: number, readonly limit: number) {
     super(`Upload for invoice ${invoiceId} is ${size} bytes, over the ${limit}-byte limit`);
     this.name = 'OversizeUploadError';
+  }
+}
+
+export class TooManyPagesError extends Error {
+  constructor(readonly invoiceId: string, readonly pages: number, readonly limit: number) {
+    super(`PDF for invoice ${invoiceId} has ${pages} pages, over the ${limit}-page limit`);
+    this.name = 'TooManyPagesError';
   }
 }
 

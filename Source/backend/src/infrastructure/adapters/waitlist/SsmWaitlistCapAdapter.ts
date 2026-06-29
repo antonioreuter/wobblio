@@ -1,7 +1,8 @@
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import type { IWaitlistCapProvider } from '@core/ports/waitlist/IWaitlistCapProvider';
+import { stageScopeConfig } from '@infrastructure/config/stageConfig';
 
-const CAP_PARAM = '/wobblio/config/quotas/max_free_waitlist_cap';
+const CAP_PARAM = stageScopeConfig('/wobblio/config/quotas/max_free_waitlist_cap');
 
 export class SsmWaitlistCapAdapter implements IWaitlistCapProvider {
   private readonly client: SSMClient;
