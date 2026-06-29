@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toAiSpendRows, AI_TOKENS_METRIC, AI_COST_METRIC } from '@core/domain/aiSpend';
+import { toAiSpendRows, estimateCostUsd, AI_TOKENS_METRIC, AI_COST_METRIC } from '@core/domain/aiSpend';
 
 describe('toAiSpendRows', () => {
   it('aggregates stages into per-model-role token + cost rows', () => {
@@ -25,5 +25,25 @@ describe('toAiSpendRows', () => {
     const rows = toAiSpendRows('2026-06-22', [{ stage: 'EMBEDDING', inputTokens: 10000, outputTokens: 0 }]);
     const cost = rows.find((r) => r.metricName === AI_COST_METRIC)?.value ?? -1;
     expect(cost).toBeGreaterThanOrEqual(0); // embedder output rate is 0
+  });
+});
+
+describe('estimateCostUsd', () => {
+  it('prices each stage by its model role and sums them', () => {
+    // vision_parser 0.0008/1k (in+out), auxiliary 0.0008 in / 0.004 out, embedder 0.00002 in / 0 out
+    const cost = estimateCostUsd([
+      { stage: 'VISION_PARSE', inputTokens: 1000, outputTokens: 1000 }, // 0.0008 + 0.0008
+      { stage: 'MERCHANT_FALLBACK', inputTokens: 1000, outputTokens: 1000 }, // 0.0008 + 0.004
+      { stage: 'EMBEDDING', inputTokens: 1000, outputTokens: 0 }, // 0.00002
+    ]);
+    expect(cost).toBeCloseTo(0.0008 + 0.0008 + 0.0008 + 0.004 + 0.00002, 6);
+  });
+
+  it('returns 0 for no stages', () => {
+    expect(estimateCostUsd([])).toBe(0);
+  });
+
+  it('skips unknown stages rather than misattributing them', () => {
+    expect(estimateCostUsd([{ stage: 'MYSTERY', inputTokens: 9999, outputTokens: 9999 }])).toBe(0);
   });
 });

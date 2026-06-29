@@ -1,5 +1,5 @@
 import type { SQSEvent, SQSBatchResponse, SQSRecord, Context } from 'aws-lambda';
-import type { PoolClient } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { createLambdaLogger, type LambdaLogger } from '@infrastructure/logging/logger';
 import { SsmModelRegistryAdapter } from '@infrastructure/adapters/ai/SsmModelRegistryAdapter';
 import { buildPool } from '@infrastructure/config/db';
@@ -26,10 +26,18 @@ import { MockPushAdapter } from '@infrastructure/adapters/notifications/MockPush
 import { BudgetRecyclerService } from '@core/services/budgets/BudgetRecyclerService';
 import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
 import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
-import { HouseholdRepositoryAdapter } from '@infrastructure/adapters/households/HouseholdRepositoryAdapter';
-import { MIN_MEMBERS_FOR_POOL } from '@core/domain/household';
+import { QuotaService } from '@core/services/quota/QuotaService';
+import { MeteringBedrockConverse } from '@core/services/ai/MeteringBedrockConverse';
+import { MeteringBedrockEmbedder } from '@core/services/ai/MeteringBedrockEmbedder';
+import { TelemetryRepositoryAdapter } from '@infrastructure/adapters/observability/TelemetryRepositoryAdapter';
+import { TokenMeter } from '@core/domain/tokenMeter';
+import { estimateCostUsd } from '@core/domain/aiSpend';
+import type { InvoiceTelemetryRecord } from '@core/ports/observability/ITelemetryRepository';
+import { shouldChargeIngestion } from '@core/domain/ingestionCharge';
+import { isSystemFault, uploadFailureReasonCode } from '@core/domain/ingestion';
+import { friendlyFailureMessage } from '@core/domain/failureReasons';
 import { weekStart } from '@core/domain/week';
-import type { UserRole } from '@core/ports/identity/IAppUserRepository';
+import type { QuotaType } from '@core/ports/quota/IQuotaRepository';
 import type { IngestionMessage } from '@core/ports/ingestion/IIngestionQueue';
 import { VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION } from '../../prompts/visionParse';
 
@@ -69,6 +77,9 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   const embedderModelId = await modelRegistry.getModelId('embedder');
   const converse = new BedrockConverseAdapter(REGION);
   const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
+  // Per-upload size/page limits for the worker-start validation (§06). Shared across
+  // records in this warm container (caches the SSM params).
+  const uploadLimits = new SsmUploadQuotaAdapter(REGION);
 
   const batchItemFailures: { itemIdentifier: string }[] = [];
 
@@ -79,8 +90,14 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       const message = JSON.parse(record.body) as IngestionMessage;
       await client.query('BEGIN');
 
-      const visionParser = new VisionParseService(converse, visionModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
-      const documentParser = new VisionParseService(converse, pdfModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
+      // Meter every model call this run so the worker can charge the actual tokens
+      // consumed; the decorators keep the pipeline services unaware of quota.
+      const meter = new TokenMeter();
+      const meteredConverse = new MeteringBedrockConverse(converse, meter);
+      const meteredEmbedder = new MeteringBedrockEmbedder(embedder, meter);
+
+      const visionParser = new VisionParseService(meteredConverse, visionModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
+      const documentParser = new VisionParseService(meteredConverse, pdfModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
       const merchantCatalog = new MerchantCatalogAdapter(client);
       const productCatalog = new ProductCatalogAdapter(client);
       const service = new IngestionService(
@@ -89,22 +106,54 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         new S3FileStorageAdapter(REGION, uploadsBucket),
         visionParser,
         documentParser,
-        new MerchantResolver(merchantCatalog, converse, auxiliaryModelId),
-        new ProductNormalizer(productCatalog, embedder, converse, auxiliaryModelId),
-        new InvoiceClassifier(merchantCatalog, converse, auxiliaryModelId),
+        new MerchantResolver(merchantCatalog, meteredConverse, auxiliaryModelId),
+        new ProductNormalizer(productCatalog, meteredEmbedder, meteredConverse, auxiliaryModelId),
+        new InvoiceClassifier(merchantCatalog, meteredConverse, auxiliaryModelId),
         new TagGenerator(),
         new InvoiceRepositoryAdapter(client),
         new PriceObservationStoreAdapter(client),
         new ContributorContextRepositoryAdapter(client),
         new RegionReferenceAdapter(client),
+        uploadLimits,
       );
 
       const outcome = await service.process(message);
+
+      // Charge the actual tokens consumed, only when a model actually ran (charge-by-timing,
+      // §6/§03.1). The metered total is the ground truth — an `unreadable` verdict and a
+      // fuzzy duplicate both spent tokens and are charged; a duplicate SQS delivery spent
+      // none. Inside the still-open tenant transaction, so the charge commits atomically
+      // with the ledger claim + invoice rows — a redelivery short-circuits on the ledger
+      // and never double-charges.
+      if (shouldChargeIngestion(outcome.handled, meter.total)) {
+        await chargeIngestion(client, message, meter.total, log);
+      }
+
+      // Per-invoice cost & performance telemetry (non-functional 01), inside the still-open
+      // tenant transaction so it commits atomically with the invoice rows and is RLS-scoped.
+      // Only for handled runs (a duplicate SQS delivery did no real work). cost_usd is the
+      // per-role estimate over the metered stages — same pricing source as the daily rollup.
+      let telemetry: InvoiceTelemetryRecord | undefined;
+      if (outcome.handled) {
+        telemetry = {
+          tenantId: message.tenantId,
+          invoiceId: message.invoiceId,
+          pipelineType: 'LEGACY',
+          processingMs: Date.now() - workerStart,
+          inputTokens: meter.inputTotal,
+          outputTokens: meter.outputTotal,
+          costUsd: estimateCostUsd(meter.stageBreakdown()),
+          status: outcome.status ?? 'UNKNOWN',
+        };
+        await new TelemetryRepositoryAdapter(client).recordInvoiceTelemetry(telemetry);
+      }
+
       await client.query('COMMIT');
       log.info('ingestion processed', {
         invoiceId: message.invoiceId,
         handled: outcome.handled,
         status: outcome.status,
+        failureReasonCode: outcome.failureReasonCode,
       });
 
       // End-to-end processing time, rolled up daily into kpi_daily via Logs Insights.
@@ -119,6 +168,18 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
           totalMs,
           workerMs,
           queueWaitMs: totalMs - workerMs,
+        });
+      }
+      // Per-invoice telemetry log (non-functional 01 §5), mirroring the committed
+      // invoice_telemetry row — feeds the per-pipeline cost/perf comparison.
+      if (telemetry) {
+        log.info('invoice_processed', {
+          invoiceId: telemetry.invoiceId,
+          pipelineType: telemetry.pipelineType,
+          processingMs: telemetry.processingMs,
+          tokensConsumed: { input: telemetry.inputTokens, output: telemetry.outputTokens },
+          costUsd: telemetry.costUsd,
+          status: telemetry.status,
         });
       }
       if (outcome.receipt) {
@@ -154,6 +215,12 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
           });
         }
       }
+
+      // Operator reprocess-on-behalf succeeded (§07): the run came back to a usable status,
+      // so tell the owner. Best-effort, post-COMMIT (mirrors the budget/system-fault notifies).
+      if (message.reprocess && outcome.status && COUNTS_TOWARD_BUDGET.has(outcome.status)) {
+        await notifyReprocessed(pool, message.tenantId, message.invoiceId, log);
+      }
     } catch (err) {
       await client.query('ROLLBACK').catch(() => undefined);
       const cause = (err as { cause?: unknown }).cause;
@@ -162,22 +229,30 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
         err: err instanceof Error ? err : new Error(String(err)),
         cause: cause instanceof Error ? cause : cause ? new Error(String(cause)) : undefined,
       });
-      // Deterministic constraint violations can't be fixed by replay. Fail the invoice
-      // now and drop the message (omit it from batchItemFailures so SQS deletes it) —
-      // no wasted retries, no DLQ noise. The structured error log above is the record.
+      // Pre-AI user-fault reject (§06: oversize / too many pages / unsupported format that
+      // reached the worker). Fail the invoice plain — deletable, no quarantine, no charge —
+      // and drop the message (no retry/DLQ; a replay fails identically). The "why?" surface
+      // reads the reason code.
+      if (!isSystemFault(err)) {
+        await failUserFault(client, record, err, log);
+        continue;
+      }
+      // Deterministic constraint violations can't be fixed by replay. Quarantine the
+      // invoice now and drop the message (omit it from batchItemFailures so SQS deletes
+      // it) — no wasted retries, no DLQ noise. The structured error log above is the record.
       if (isNonRetryable(err)) {
         log.error('non-retryable constraint violation, failing fast', {
           messageId: record.messageId,
           code: (err as { code?: string }).code,
         });
-        await markInvoiceFailed(client, record, log);
+        await quarantineInvoice(client, pool, record, err, log);
         continue;
       }
-      // Final delivery before the DLQ: move the invoice out of the non-terminal
-      // PROCESSING state so it surfaces as failed and becomes deletable (the
-      // rolled-back run persisted no status). Best-effort and isolated — never throws.
+      // Final delivery before the DLQ: quarantine the invoice so it leaves the non-terminal
+      // PROCESSING state (the rolled-back run persisted no status) and is held for operator
+      // reprocess-on-behalf (§03.6). Best-effort and isolated — never throws.
       if (Number(record.attributes.ApproximateReceiveCount) >= MAX_RECEIVE_COUNT) {
-        await markInvoiceFailed(client, record, log);
+        await quarantineInvoice(client, pool, record, err, log);
       }
       batchItemFailures.push({ itemIdentifier: record.messageId });
     } finally {
@@ -188,80 +263,139 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   return { batchItemFailures };
 };
 
-// Flip an invoice to FAILED_PROCESSING in its own committed transaction (RLS needs
-// the tenant context first). Refund is attempted only on the first flip — the guarded
-// UPDATE makes redelivery a no-op so a re-processed record never refunds twice
-// (idempotency-first, invariant #7). Runs after the main transaction rolled back, so it
-// can reuse the same client. Swallows its own errors — a failure here must not break the
-// batch response or re-throw into the handler.
-async function markInvoiceFailed(client: PoolClient, record: SQSRecord, log: LambdaLogger): Promise<void> {
+// Quarantine an invoice after an our-stack crash, in its own committed transaction (RLS
+// needs the tenant context first). Runs after the main transaction rolled back, so it
+// reuses the same client. Credits are charged at success-time only, so a quarantined run
+// charges nothing — there is no refund to make. The invoice is held (system_fault_reason
+// set) for operator reprocess-on-behalf and the owner is notified with a friendly,
+// internals-safe reason. Swallows its own errors — a failure here must not break the batch
+// response or re-throw into the handler.
+async function quarantineInvoice(
+  client: PoolClient,
+  pool: Pool,
+  record: SQSRecord,
+  err: unknown,
+  log: LambdaLogger,
+): Promise<void> {
+  const { invoiceId, tenantId } = JSON.parse(record.body) as IngestionMessage;
+  let transitioned = false;
   try {
-    const { invoiceId, tenantId } = JSON.parse(record.body) as IngestionMessage;
-    const week = weekStart(new Date().toISOString().slice(0, 10));
-
     await client.query('BEGIN');
     await new TenantContextAdapter(client).setTenantId(tenantId);
-
-    // Atomic transition: only the first delivery flips PENDING→FAILED and gets the row.
-    // rowCount 0 means it was already FAILED (or gone) — skip the non-idempotent refund.
-    const flip = await client.query<{ household_id: string | null }>(
-      `UPDATE invoice SET status = 'FAILED_PROCESSING'
-       WHERE id = $1 AND status <> 'FAILED_PROCESSING'
-       RETURNING household_id`,
-      [invoiceId],
-    );
-    if (flip.rowCount === 0) {
-      await client.query('COMMIT');
-      log.info('invoice already FAILED_PROCESSING, refund skipped', { invoiceId });
-      return;
-    }
-
-    await refundFailedUpload(client, invoiceId, tenantId, flip.rows[0].household_id, week, log);
-
+    transitioned = await new InvoiceRepositoryAdapter(client).quarantine(invoiceId, systemFaultReason(err));
     await client.query('COMMIT');
-    log.info('invoice marked FAILED_PROCESSING after final attempt', { invoiceId });
-  } catch (err) {
+    log.info('invoice quarantined (system fault)', { invoiceId, transitioned });
+  } catch (quarantineErr) {
     await client.query('ROLLBACK').catch(() => undefined);
-    log.error('could not mark invoice failed', {
+    log.error('could not quarantine invoice', {
       messageId: record.messageId,
-      err: err instanceof Error ? err : new Error(String(err)),
+      err: quarantineErr instanceof Error ? quarantineErr : new Error(String(quarantineErr)),
+    });
+    return;
+  }
+  // Notify only on the transition INTO quarantine — a redelivery of an already-quarantined
+  // invoice matches 0 rows and must not re-notify/re-push the owner.
+  if (transitioned) await notifySystemFault(pool, tenantId, invoiceId, log);
+}
+
+// Fail an invoice on a pre-AI user-fault reject (§06) in its own committed transaction
+// (the main tx rolled back; RLS needs the tenant context first). Plain FAILED_PROCESSING
+// + reason code — no quarantine, so the user can delete and retry; no charge (no model
+// ran). Swallows its own errors so the batch response is never broken.
+async function failUserFault(
+  client: PoolClient,
+  record: SQSRecord,
+  err: unknown,
+  log: LambdaLogger,
+): Promise<void> {
+  const { invoiceId, tenantId } = JSON.parse(record.body) as IngestionMessage;
+  const reasonCode = uploadFailureReasonCode(err);
+  try {
+    await client.query('BEGIN');
+    await new TenantContextAdapter(client).setTenantId(tenantId);
+    await new InvoiceRepositoryAdapter(client).markFailed(invoiceId, reasonCode);
+    await client.query('COMMIT');
+    log.info('invoice failed (user fault)', { invoiceId, reasonCode });
+  } catch (failErr) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    log.error('could not fail invoice', {
+      messageId: record.messageId,
+      err: failErr instanceof Error ? failErr : new Error(String(failErr)),
     });
   }
 }
 
-// Credit back one upload for a final-attempt failure, capped per week. Mirror the
-// presign charge: the shared pool was only drawn when the household has 2+ members,
-// so a solo-household invoice (stamped with household_id for visibility) refunds the
-// uploader's personal counter — not the pool.
-async function refundFailedUpload(
+// The internal root cause stored in system_fault_reason — never sent to the user. Capped
+// so a giant SDK stack string doesn't bloat the row.
+function systemFaultReason(err: unknown): string {
+  const code = (err as { code?: unknown }).code;
+  const message = err instanceof Error ? err.message : String(err);
+  return (code ? `[${String(code)}] ${message}` : message).slice(0, 500);
+}
+
+// Best-effort owner notification with the friendly §03.4 reason. Uses a fresh pool
+// connection (the SECURITY DEFINER insert bypasses RLS) and never throws.
+async function notifySystemFault(pool: Pool, tenantId: string, invoiceId: string, log: LambdaLogger): Promise<void> {
+  const title = "We couldn't process your receipt";
+  const body = friendlyFailureMessage('SYSTEM_FAULT');
+  try {
+    await new NotificationRepositoryAdapter(pool).create({
+      tenantId, kind: 'invoice_system_fault', title, body, budgetId: null, ttlDays: 7,
+    });
+    await new MockPushAdapter().push(tenantId, title, body);
+  } catch (notifyErr) {
+    log.error('system-fault notification failed', {
+      invoiceId,
+      err: notifyErr instanceof Error ? notifyErr : new Error(String(notifyErr)),
+    });
+  }
+}
+
+// Charge the credits a successful run consumed against the counter PRESIGN committed to
+// the invoice (quota_pooled), not a fresh membership resolve: a join/leave in the
+// presign→worker window must not redirect the charge to a different counter than the one
+// presign checked (and than the invoice is attributed to). Runs inside the caller's
+// committed tenant transaction.
+async function chargeIngestion(
   client: PoolClient,
-  invoiceId: string,
-  tenantId: string,
-  householdId: string | null,
-  week: string,
+  message: IngestionMessage,
+  tokens: number,
   log: LambdaLogger,
 ): Promise<void> {
-  const usePool = householdId !== null
-    && (await new HouseholdRepositoryAdapter(client).memberCountForUser(householdId, tenantId)) >= MIN_MEMBERS_FOR_POOL;
-  const quotaOwnerId = usePool ? householdId! : tenantId;
-  const counterType = usePool ? 'HOUSEHOLD_UPLOADS' : 'UPLOADS';
+  const target = await new InvoiceRepositoryAdapter(client).findChargeTarget(message.invoiceId);
+  const pooled = target?.quotaPooled === true && target.householdId !== null;
+  const counter: QuotaType = pooled ? 'HOUSEHOLD_CREDITS' : 'CREDITS';
+  const quotaOwnerId = pooled ? target!.householdId! : message.tenantId;
 
-  const userResult = await client.query<{ role: string }>(
-    `SELECT role FROM app_user WHERE id = $1`,
-    [tenantId],
-  );
-  const role = (userResult.rows[0]?.role ?? 'STANDARD') as UserRole;
+  const week = weekStart(new Date().toISOString().slice(0, 10));
+  await new QuotaService(new QuotaRepositoryAdapter(client)).charge(quotaOwnerId, counter, week, tokens);
+  log.info('ingestion credits charged', { invoiceId: message.invoiceId, counter, tokens });
 
-  const refundCap = await new SsmUploadQuotaAdapter(REGION).getFailureRefundCap(role);
-  const quotaRepo = new QuotaRepositoryAdapter(client);
-  const refundsUsed = await quotaRepo.getUsed(tenantId, 'UPLOAD_FAILURE_REFUNDS', week);
-
-  if (refundsUsed >= refundCap) {
-    log.info('quota_failure_refund_blocked', { invoiceId, refundsUsed, cap: refundCap });
-    return;
+  // §07.5: an operator reprocess that lands in a later week than the original upload charges
+  // the CURRENT week. Emit a KPI log (rolled into kpi_daily) so cross-week reprocessing is
+  // visible; only when the weeks actually differ.
+  if (message.reprocess && target) {
+    const originalWeek = weekStart(target.createdAt.slice(0, 10));
+    if (originalWeek !== week) {
+      log.info('reprocess cross week', { invoiceId: message.invoiceId, tokens, originalWeek, chargedWeek: week });
+    }
   }
+}
 
-  await quotaRepo.decrement(quotaOwnerId, counterType, week);
-  await quotaRepo.increment(tenantId, 'UPLOAD_FAILURE_REFUNDS', week);
-  log.info('invoice failure refunded', { invoiceId, counterType });
+// Best-effort owner notification that an operator reprocess succeeded (§07.2). Fresh pool
+// connection (SD insert bypasses RLS); never throws into the post-COMMIT path.
+async function notifyReprocessed(pool: Pool, tenantId: string, invoiceId: string, log: LambdaLogger): Promise<void> {
+  const title = 'Your receipt is ready';
+  const body = "We finished processing your receipt — it's now in your invoices.";
+  try {
+    await new NotificationRepositoryAdapter(pool).create({
+      tenantId, kind: 'invoice_reprocessed', title, body, budgetId: null, ttlDays: 7,
+    });
+    await new MockPushAdapter().push(tenantId, title, body);
+  } catch (notifyErr) {
+    log.error('reprocessed notification failed', {
+      invoiceId,
+      err: notifyErr instanceof Error ? notifyErr : new Error(String(notifyErr)),
+    });
+  }
 }

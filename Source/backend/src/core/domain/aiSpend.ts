@@ -31,6 +31,20 @@ interface RoleTotals {
   cost: number;
 }
 
+function costForStage(stage: StageTokenTotals): number {
+  const role = STAGE_ROLE[stage.stage];
+  if (!role) return 0; // unknown stage — skip rather than misattribute
+  const rate = RATE_PER_1K[role];
+  return (stage.inputTokens / 1000) * rate.input + (stage.outputTokens / 1000) * rate.output;
+}
+
+// Estimated USD cost of one ingestion run from its per-stage token totals, priced per
+// model role. Single pricing source (RATE_PER_1K) — the per-invoice telemetry write path
+// (non-functional 01) and the daily rollup both go through here.
+export function estimateCostUsd(stages: StageTokenTotals[]): number {
+  return round(stages.reduce((sum, s) => sum + costForStage(s), 0));
+}
+
 // Aggregates per-stage token totals into per-model-role kpi_daily rows (tokens +
 // estimated cost), the shape the AI-spend dashboard reads (admin-console 07).
 export function toAiSpendRows(metricDate: string, stages: StageTokenTotals[]): KpiDailyRow[] {
@@ -38,10 +52,9 @@ export function toAiSpendRows(metricDate: string, stages: StageTokenTotals[]): K
   for (const s of stages) {
     const role = STAGE_ROLE[s.stage];
     if (!role) continue; // unknown stage — skip rather than misattribute
-    const rate = RATE_PER_1K[role];
     const acc = byRole.get(role) ?? { tokens: 0, cost: 0 };
     acc.tokens += s.inputTokens + s.outputTokens;
-    acc.cost += (s.inputTokens / 1000) * rate.input + (s.outputTokens / 1000) * rate.output;
+    acc.cost += costForStage(s);
     byRole.set(role, acc);
   }
 

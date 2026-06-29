@@ -15,7 +15,7 @@ GDPR compliance: consent capture at signup, data export (Art. 20), account erasu
 
 ## Key Boundaries
 
-- **Personal data** (under RLS, deletable): invoice, invoice_line, shopping_list, shopping_list_item, budget, bill_split, quota_counter, ingestion_ledger, invoice_feedback, data_request, household, household_member
+- **Personal data** (under RLS, deletable): invoice, invoice_line, invoice_telemetry, shopping_list, shopping_list_item, budget, bill_split, quota_counter, ingestion_ledger, invoice_feedback, data_request, household, household_member
 - **De-identified data** (price_observation — not personal, not deletable): no tenant/user/invoice reference; region coarsened; day-granular date only; k≥3 read threshold. This is documented in the privacy policy.
 - **Legally required retention**: `payment_transaction` rows retained 7 years under tax law even after account deletion; `user_id` replaced with opaque audit token on deletion.
 - **Price contribution opt-out**: `app_user.price_contribution_optout` toggle (default false). Suppresses future observation emission; retroactive deletion is technically meaningless (rows have no user reference) and is not offered — stated in privacy policy.
