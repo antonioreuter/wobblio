@@ -11,7 +11,7 @@ the detail.
 | 03 Strands Agent Worker | ✅ Done | 2026-06-29 |
 | 04 Dynamic Queue Routing | ✅ Done | 2026-06-29 |
 | 05 Admin Pipeline Toggle | ✅ Done | 2026-06-29 |
-| 06 KPI Pipeline Comparison | ⬜ Not started | |
+| 06 KPI Pipeline Comparison | ✅ Done | 2026-06-30 |
 | 07 Pipeline Evaluation Harness | ⬜ Not started | |
 
 ---
@@ -261,7 +261,52 @@ audit trail and canary guidance — switch pipelines and roll back without a dep
 - `tsc --noEmit` backend + infra → clean. infra vitest → 32 pass (IAM addition enumerated, nag clean).
 - admin app `npm run lint` (next lint + tsc) → clean.
 
-### Next: 06 — KPI Pipeline Comparison
-`pipeline_type` rollup dimension + admin comparison dashboard tab. Wires the
-`admin_pipeline_cost_deficit` SECURITY DEFINER fn (shipped unused in 01) and compares LEGACY vs
-STRANDS telemetry. The canary alert in 05 references this dashboard.
+---
+
+## 06 — KPI Pipeline Comparison ✅ (2026-06-30)
+
+Daily per-pipeline rollup of `invoice_telemetry` into `kpi_daily` (dimension `{pipeline_type}`)
++ a legacy-vs-Strands comparison section on the admin dashboard.
+
+### What shipped (backend)
+- **Migration** `Source/infra/src/migrations/20260630120000_pipeline_kpis_fn.ts` —
+  `admin_pipeline_kpis(DATE)` SECURITY DEFINER fn (`admin_business_kpis` pattern; the cron has no
+  tenant context so it can't read RLS-scoped `invoice_telemetry` directly). Returns per
+  `pipeline_type`: count, avg processing_ms, avg cost_usd, needs-review count, feedback DOWN +
+  rated counts. Feedback joined via **LATERAL latest-verdict** (no fan-out → telemetry
+  counts/averages stay one-row-per-invoice). `REVOKE … FROM PUBLIC`. **Not yet applied to
+  dev/prod/local** — runs via deploy `migrate:up` (fn grant reconciled by the deploy GRANT-ON-ALL).
+- **Domain** `core/domain/pipelineKpis.ts` — `PIPELINE_METRICS` (4 names) + `toPipelineKpiRows`
+  (derives needs-review-rate + feedback-down-ratio with zero-denominator guards → 0, not NaN).
+- **Port/adapter** `IPipelineKpiSource` + `PipelineKpiDbAdapter` (`SELECT * FROM admin_pipeline_kpis($1)`).
+- **Service** `PipelineKpiRollupService` (empty day → 0 rows). Wired into
+  `cron-ingestion-metrics-rollup` as a 5th independent rollup (`pipeline_comparison`).
+- **Read** `AdminKpiService` DEFAULT_METRICS now includes the 4 pipeline metrics, so the existing
+  `GET /admin/kpis` returns them with no endpoint-shape change (filter by `dimensions.pipeline_type`).
+
+### What shipped (admin app)
+- `Source/admin/src/app/(console)/pipeline-comparison.tsx` — self-contained `<PipelineComparison>`
+  with its **own fixed 90-day** kpi fetch (independent of the dashboard's week selector, per the
+  spec's "90-day" requirement). 4 comparison cards (latency, cost/invoice, needs-review rate,
+  feedback DOWN ratio — Legacy vs Strands, winner highlighted, lower-is-better) + 2 multi-line
+  90-day charts (latency, cost). Rendered on `(console)/page.tsx` above Growth. `data-testid`:
+  `pipeline-performance-cards`, `pipeline-performance-latency`, `pipeline-performance-cost`.
+
+### Decisions / notes
+- **SQL rollup over `invoice_telemetry`** (not the CloudWatch-Logs timing source) — feedback +
+  cost + status all live in the table/feedback join, and the table is the spec's "ingestion telemetry".
+- The spec mentioned wiring `admin_pipeline_cost_deficit` (shipped in 01); that fn is per-tenant
+  cost-deficit (different shape). 06 needs day×pipeline aggregates, so it gets its **own** thin
+  aggregate-only fn `admin_pipeline_kpis` — kept the per-tenant one untouched.
+- Both pipelines populate only once 04's flag routes real traffic to STRANDS; until then only
+  LEGACY rows exist and the Strands column reads `—`.
+
+### Validation (2026-06-30)
+- hex validator → exit 0. `test:unit` → 102 files / 743 pass (+5: domain math + rollup service).
+- `validate:security` → pass (new SECURITY DEFINER fn + REVOKE scanned). infra + backend `tsc` → clean.
+- admin `npm run lint` (next lint + tsc) → clean.
+- **Not run:** live `migrate:up` (applies on deploy) and a real end-to-end with STRANDS traffic.
+
+### Next: 07 — Pipeline Evaluation Harness
+`scripts/evaluate-pipelines.ts` + LLM-as-a-judge offline comparison. Reuses the dry-run processor
+seam from 03 (`InvoiceCoordinator`/tools). Last sub-spec of the epic.

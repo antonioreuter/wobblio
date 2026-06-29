@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Chart, type ChartSeries } from '@/components/ui/chart'
 import { BarList } from '@/components/ui/mini-bars'
+import { PipelineComparison } from './pipeline-comparison'
 
 interface KpiPoint {
   metricDate: string
@@ -177,6 +178,9 @@ export default function DashboardPage() {
           <Card label="Feedback score" desc="UP ÷ total votes" value={fbScore === undefined ? '—' : `${(fbScore * 100).toFixed(0)}%`} />
         </div>
       </Section>
+
+      {/* Pipeline performance comparison (NF-01/06) */}
+      <PipelineComparison />
 
       {/* Growth trends */}
       <Section title="Growth trends">

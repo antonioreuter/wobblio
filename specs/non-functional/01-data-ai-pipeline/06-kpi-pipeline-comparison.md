@@ -42,8 +42,8 @@ new metric names + filter by the `pipeline_type` dimension).
 
 ## Checklist
 
-- [ ] Rollup writes `kpi_daily` rows with `pipeline_type` dimension for the four metrics
-- [ ] Comparison cards (latency, cost, review rate, feedback) — Legacy vs Strands
-- [ ] 90-day multi-line time-series (latency, cost per invoice)
-- [ ] `data-testid` on cards/charts; mocked-repo unit test
-- [ ] `npm run skill:hexagonal-architecture-validator` exit 0
+- [x] Rollup writes `kpi_daily` rows with `pipeline_type` dimension for the four metrics (via `admin_pipeline_kpis` SECURITY DEFINER fn)
+- [x] Comparison cards (latency, cost, review rate, feedback) — Legacy vs Strands
+- [x] 90-day multi-line time-series (latency, cost per invoice)
+- [x] `data-testid` on cards/charts; mocked-repo unit test (domain math + rollup service)
+- [x] `npm run skill:hexagonal-architecture-validator` exit 0
