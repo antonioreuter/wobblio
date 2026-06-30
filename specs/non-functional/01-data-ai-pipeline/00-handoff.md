@@ -89,10 +89,13 @@ list in `specs/mvp/14-gdpr-data-lifecycle.md`.
 
 > **Renamed (2026-06-30): `WobblioAgenticPipelineStack` → `WobblioDataAiPipelineStack`** — the
 > dedicated data-AI-pipeline CloudFormation stack. File/class/test/`bin` updated; resources +
-> SSM export param name unchanged. **Deploy note:** the CFN stack name changes
-> (`WobblioAgenticPipelineStack-<stage>` → `WobblioDataAiPipelineStack-<stage>`). If the old stack
-> was already deployed, deploy the new one then `cdk destroy` the old — safe because the agentic
-> queue carries **no traffic** (routing flag still off), so nothing is lost. The live legacy
+> SSM export param name unchanged. **Deploy note (order matters):** the CFN stack name changes
+> (`WobblioAgenticPipelineStack-<stage>` → `WobblioDataAiPipelineStack-<stage>`), but the **physical
+> resource names are unchanged** (`wobblio-agentic-<stage>` queue/DLQ, `wobblio-agentic-worker-<stage>`
+> Lambda). SQS queue + Lambda function names are unique per account/region, so if the old stack was
+> already deployed you must **`cdk destroy` the old stack FIRST, then deploy the new** — deploying the
+> new one first collides on those names and fails. Destroy-first is safe because the agentic queue
+> carries **no traffic** (routing flag still off), so nothing is lost. The live legacy
 > ingestion queue/worker stay in `WobblioBackendStack` (moving them would be a destructive,
 > drain-required migration — left as a deliberate non-goal).
 
