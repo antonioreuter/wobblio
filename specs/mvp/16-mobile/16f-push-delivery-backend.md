@@ -59,14 +59,14 @@ Migration via the `database-migrations` skill (node-pg-migrate):
 - Flutter token registration + deep-link routing (16g).
 
 ## Checklist
-- [ ] `device_token` migration: columns, unique `(tenant_id,platform,token)`, RLS policy (no FORCE RLS)
-- [ ] `POST /me/device-token` upsert under tenant context
-- [ ] `SnsPushNotifierAdapter` reads ARNs from stage-scoped SSM; best-effort; never throws
-- [ ] Prune dead tokens on `EndpointDisabled`
-- [ ] SNS platform-app CLI runbook documented; ARNs in SSM; least-privilege IAM
-- [ ] Worker terminal-status push hook (PARSED / NEEDS_REVIEW / FAILED) in try/catch
-- [ ] `skill:hexagonal-architecture-validator` exit 0
-- [ ] `npm run test:unit` (mocked SNS port) + `npm run validate:security` (new RLS table) green
+- [x] `device_token` migration: columns, unique `(tenant_id,platform,token)`, RLS policy (no FORCE RLS)
+- [x] `POST /me/device-token` upsert under tenant context
+- [x] `SnsPushNotifierAdapter` reads ARNs from stage-scoped SSM; best-effort; never throws
+- [x] Prune dead tokens on `EndpointDisabled`
+- [x] SNS platform-app CLI runbook documented; ARNs in SSM (manual); least-privilege IAM (IAM5-suppressed)
+- [x] Worker terminal-status push hook (PARSED / NEEDS_REVIEW / FAILED) in try/catch
+- [x] `skill:hexagonal-architecture-validator` exit 0
+- [x] `npm run test:unit` (mocked SNS/SSM + repo) + `npm run validate:security` (new RLS table) green
 
 ## Verification
 - Migration up/down clean on the local sandbox; `validate:security` confirms RLS on `device_token`.

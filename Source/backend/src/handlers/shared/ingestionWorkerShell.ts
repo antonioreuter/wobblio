@@ -6,6 +6,7 @@ import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/ingestion/Inv
 import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
 import { NotificationRepositoryAdapter } from '@infrastructure/adapters/notifications/NotificationRepositoryAdapter';
 import { MockPushAdapter } from '@infrastructure/adapters/notifications/MockPushAdapter';
+import { buildPushNotifier } from '@infrastructure/adapters/notifications/pushNotifierFactory';
 import { TelemetryRepositoryAdapter } from '@infrastructure/adapters/observability/TelemetryRepositoryAdapter';
 import { BudgetRecyclerRepositoryAdapter } from '@infrastructure/adapters/budgets/BudgetRecyclerRepositoryAdapter';
 import { BudgetRecyclerService } from '@core/services/budgets/BudgetRecyclerService';
@@ -14,6 +15,8 @@ import { TokenMeter } from '@core/domain/tokenMeter';
 import { estimateCostUsd } from '@core/domain/aiSpend';
 import { shouldChargeIngestion } from '@core/domain/ingestionCharge';
 import { isSystemFault, uploadFailureReasonCode } from '@core/domain/ingestion';
+import type { InvoiceStatus } from '@core/domain/ingestion';
+import { buildIngestionPush } from '@core/domain/pushNotification';
 import { friendlyFailureMessage } from '@core/domain/failureReasons';
 import { weekStart } from '@core/domain/week';
 import type { IngestionOutcome } from '@core/services/ingestion/IngestionService';
@@ -127,7 +130,7 @@ async function runPostCommit(
   outcome: IngestionOutcome,
   telemetry: InvoiceTelemetryRecord | undefined,
 ): Promise<void> {
-  const { record, pool, workerStart, log } = ctx;
+  const { record, client, pool, workerStart, log } = ctx;
   log.info('ingestion processed', {
     invoiceId: message.invoiceId,
     handled: outcome.handled,
@@ -190,9 +193,38 @@ async function runPostCommit(
     }
   }
 
+  // Terminal-status device push (16f): tell the device a receipt is ready. Best-effort,
+  // post-COMMIT on the now-idle client (the worker pool is max:1, so don't borrow another
+  // connection) — the SNS adapter swallows its own failures, but guard anyway so a push
+  // problem never rolls back or retries the already-committed ingestion.
+  if (outcome.handled && outcome.status) {
+    await pushTerminalStatus(client, message.tenantId, message.invoiceId, outcome.status, log);
+  }
+
   // Operator reprocess-on-behalf succeeded (§07): tell the owner. Best-effort, post-COMMIT.
   if (message.reprocess && outcome.status && COUNTS_TOWARD_BUDGET.has(outcome.status)) {
-    await notifyReprocessed(pool, message.tenantId, message.invoiceId, log);
+    await notifyReprocessed(client, message.tenantId, message.invoiceId, log);
+  }
+}
+
+// Push the "receipt ready" notification for a freshly-parsed invoice (PARSED/NEEDS_REVIEW).
+// Non-terminal/duplicate statuses build no payload and are silently skipped.
+async function pushTerminalStatus(
+  client: PoolClient,
+  tenantId: string,
+  invoiceId: string,
+  status: InvoiceStatus,
+  log: LambdaLogger,
+): Promise<void> {
+  const payload = buildIngestionPush(status, invoiceId);
+  if (!payload) return;
+  try {
+    await buildPushNotifier(client).push(tenantId, payload.title, payload.body, payload.data);
+  } catch (pushErr) {
+    log.error('terminal-status push failed', {
+      invoiceId,
+      err: pushErr instanceof Error ? pushErr : new Error(String(pushErr)),
+    });
   }
 }
 
@@ -255,8 +287,9 @@ async function quarantineInvoice(
     });
     return;
   }
-  // Notify only on the transition INTO quarantine — a redelivery matches 0 rows.
-  if (transitioned) await notifySystemFault(pool, tenantId, invoiceId, log);
+  // Notify only on the transition INTO quarantine — a redelivery matches 0 rows. The client
+  // is idle post-COMMIT; reuse it (the worker pool is max:1) instead of borrowing from pool.
+  if (transitioned) await notifySystemFault(client, tenantId, invoiceId, log);
 }
 
 // Fail an invoice on a pre-AI user-fault reject (§06) in its own committed transaction. Plain
@@ -287,14 +320,15 @@ function systemFaultReason(err: unknown): string {
   return (code ? `[${String(code)}] ${message}` : message).slice(0, 500);
 }
 
-async function notifySystemFault(pool: Pool, tenantId: string, invoiceId: string, log: LambdaLogger): Promise<void> {
+async function notifySystemFault(client: PoolClient, tenantId: string, invoiceId: string, log: LambdaLogger): Promise<void> {
   const title = "We couldn't process your receipt";
   const body = friendlyFailureMessage('SYSTEM_FAULT');
+  const data = buildIngestionPush('FAILED_PROCESSING', invoiceId)?.data;
   try {
-    await new NotificationRepositoryAdapter(pool).create({
+    await new NotificationRepositoryAdapter(client).create({
       tenantId, kind: 'invoice_system_fault', title, body, budgetId: null, ttlDays: 7,
     });
-    await new MockPushAdapter().push(tenantId, title, body);
+    await buildPushNotifier(client).push(tenantId, title, body, data);
   } catch (notifyErr) {
     log.error('system-fault notification failed', {
       invoiceId,
@@ -325,14 +359,15 @@ async function chargeIngestion(client: PoolClient, message: IngestionMessage, to
   }
 }
 
-async function notifyReprocessed(pool: Pool, tenantId: string, invoiceId: string, log: LambdaLogger): Promise<void> {
+async function notifyReprocessed(client: PoolClient, tenantId: string, invoiceId: string, log: LambdaLogger): Promise<void> {
   const title = 'Your receipt is ready';
   const body = "We finished processing your receipt — it's now in your invoices.";
+  const data = buildIngestionPush('PARSED', invoiceId)?.data;
   try {
-    await new NotificationRepositoryAdapter(pool).create({
+    await new NotificationRepositoryAdapter(client).create({
       tenantId, kind: 'invoice_reprocessed', title, body, budgetId: null, ttlDays: 7,
     });
-    await new MockPushAdapter().push(tenantId, title, body);
+    await buildPushNotifier(client).push(tenantId, title, body, data);
   } catch (notifyErr) {
     log.error('reprocessed notification failed', {
       invoiceId,

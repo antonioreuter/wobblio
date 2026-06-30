@@ -19,7 +19,7 @@ slices in build order.
 | [16c](./16c-mobile-capture.md) | Capture & upload vertical slice | 🚧 | 16b | yes |
 | [16d](./16d-mobile-dashboard-feedback.md) | Dashboard & feedback | 🚧 | 16c | yes |
 | [16e](./16e-mobile-review.md) | Review & correction (non-deferred edits) | 🚧 | 16d | yes |
-| [16f](./16f-push-delivery-backend.md) | Push delivery backend | ⬜ | backend only | **no** |
+| [16f](./16f-push-delivery-backend.md) | Push delivery backend | ✅ | backend only | **no** |
 | [16g](./16g-push-client.md) | Push client | ⬜ | 16b + 16f | yes |
 | [16h](./16h-merchant-tag-edits.md) | Merchant search + tag vocabulary (deferred) | ⬜ | 16e | both |
 
@@ -31,6 +31,27 @@ first slice to ship while the toolchain is set up.
 
 ## Deferred / known gaps
 
+- **16f built & verified (✅).** Push-delivery backend full-stack and headless-verifiable.
+  Migration `device_token` (RLS `tenant_isolation`, no FORCE RLS; unique `(tenant_id,platform,token)`);
+  `IDeviceTokenRepository` + `DeviceTokenRepositoryAdapter`; `POST /me/device-token` (upsert under
+  `withTenantTx`, returns `{ deviceTokenId }`). `IPushNotifier.push` **extended additively** with an
+  optional `PushData { type, path, invoiceId? }` (the 3 existing callers compile unchanged);
+  `buildIngestionPush(status, invoiceId)` (core/domain) builds per-status copy/deep-link;
+  `SnsPushNotifierAdapter` reads stage-scoped SSM ARNs, `CreatePlatformEndpoint`→`Publish` per token
+  under a tenant-scoped tx, **best-effort (never throws)**, prunes on `EndpointDisabled`/`InvalidParameter`;
+  `buildPushNotifier(pool)` factory (Mock on local). Worker hook fires the **PARSED/NEEDS_REVIEW**
+  push post-COMMIT, and the existing **system-fault (FAILED)** + reprocessed notifications now deliver
+  via the real SNS adapter with deep-link payloads. CDK: least-privilege `sns:CreatePlatformEndpoint`+
+  `Publish` (IAM5-suppressed: platform-app ARNs created out-of-band), SSM read for `push/*_platform_arn`,
+  commented platform-app CLI runbook. Gates: hexagonal + backend `tsc` + `validate:security` clean,
+  `test:unit` 773 green (+13), infra `tsc` + `cdk synth`/cdk-nag clean.
+  **Decisions:** PARSED & NEEDS_REVIEW share "ready" copy (distinct `type` for routing) per the 16d
+  Ready contract; NEEDS_REVIEW is not flagged as needing review in the push. **Out of scope (noted):**
+  the user-fault FAILED path (`failUserFault`, e.g. blurry/not-a-receipt) still has no in-app
+  notification/push — unchanged; budget-alert pushes stay on `MockPushAdapter` (a different feature).
+  **DEPLOY LANDMINE:** ① run `migrate:up` for `device_token` before the worker pushes; ② SNS platform
+  apps + the two SSM ARN params are **manual** (runbook in `WobblioBackendStack`) — until they exist,
+  push degrades to no-delivery (no error). Next: **16g** (token registration + deep-link routing) or **16h**.
 - **16e code-complete, FULL-STACK (🚧, on-device acceptance pending).** The 07/08 correction backend
   did **not** exist — built here: migration `invoice.corrected_at`; `PUT /invoices/{id}`
   (`CorrectInvoiceService` + `IInvoiceRepository.applyCorrection`); detail now returns line
