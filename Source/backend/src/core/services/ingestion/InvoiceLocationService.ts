@@ -77,6 +77,7 @@ export class InvoiceLocationService {
       transactionDate: reEmission.transactionDate,
       currency: reEmission.currency,
       lines: reEmission.lines,
+      userCorrected: reEmission.userCorrected,
       context: { optedOut: context.optedOut, regionCode, countryCode, trustScore: context.trustScore },
     });
     if (rows.length > 0) await this.priceObservationStore.emit(rows);

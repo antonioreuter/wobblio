@@ -33,6 +33,8 @@ import { DeleteInvoiceService } from '@core/services/ingestion/DeleteInvoiceServ
 import { ShareInvoiceService } from '@core/services/ingestion/ShareInvoiceService';
 import { InvoiceLocationService } from '@core/services/ingestion/InvoiceLocationService';
 import { RecordFeedbackService } from '@core/services/ingestion/RecordFeedbackService';
+import { CorrectInvoiceService } from '@core/services/ingestion/CorrectInvoiceService';
+import type { CorrectInvoiceInput, CorrectInvoiceLine } from '@core/ports/ingestion/IInvoiceRepository';
 import {
   InvalidBillingPlanError,
   InvalidProfileError,
@@ -40,6 +42,8 @@ import {
   QuotaExceededError,
   InvoiceNotFoundError,
   InvoiceNotDeletableError,
+  InvoiceNotCorrectableError,
+  InvalidCorrectionError,
   InvoiceBlockedError,
   StaleUploadError,
   LocationAlreadySetError,
@@ -330,6 +334,7 @@ async function handleInvoicesRoute(
 
   const detailMatch = path.match(/^\/invoices\/([^/]+)$/);
   if (method === 'GET' && detailMatch) return handleInvoiceDetail(db, user, detailMatch[1]);
+  if (method === 'PUT' && detailMatch) return handleCorrectInvoice(db, user, detailMatch[1], event, log);
   if (method === 'DELETE' && detailMatch) return handleDeleteInvoice(db, user, detailMatch[1], log);
 
   return json(404, { message: 'Not Found' });
@@ -425,6 +430,60 @@ async function handleRecordFeedback(
   } catch (err) {
     if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
     if (err instanceof InvalidFeedbackError) return json(400, { message: 'verdict must be UP or DOWN' });
+    throw err;
+  }
+}
+
+// Parses one review-screen line edit. A line is dropped (returns null) when its id
+// is missing or its numerics are malformed, so a garbage entry can't corrupt the write.
+function parseCorrectionLine(raw: unknown): CorrectInvoiceLine | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const line = raw as Record<string, unknown>;
+  if (typeof line.id !== 'string') return null;
+  const quantity = Number(line.quantity);
+  const lineTotal = Number(line.lineTotal);
+  if (!Number.isFinite(quantity) || !Number.isFinite(lineTotal)) return null;
+  const unitPrice = line.unitPrice == null ? null : Number(line.unitPrice);
+  return {
+    id: line.id,
+    productId: typeof line.productId === 'string' ? line.productId : null,
+    quantity,
+    unitPrice: unitPrice != null && Number.isFinite(unitPrice) ? unitPrice : null,
+    lineTotal,
+  };
+}
+
+// Saves the review screen's corrections (16e): fixed date/total + per-line edits, then
+// flips the invoice to PARSED. The downstream USER_CONFIRMED price-observation quality is
+// driven by the stamped corrected_at at the existing location-confirm emission gate.
+async function handleCorrectInvoice(
+  db: PoolClient,
+  user: AppUser,
+  invoiceId: string,
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody(event.body);
+  const rawLines = Array.isArray(body.lines) ? body.lines : [];
+  const lines = rawLines.map(parseCorrectionLine).filter((l): l is CorrectInvoiceLine => l !== null);
+  const transactionDate = typeof body.transactionDate === 'string' ? body.transactionDate : null;
+  const total = body.total == null ? null : Number(body.total);
+  const input: CorrectInvoiceInput = {
+    invoiceId,
+    transactionDate,
+    total: total != null && Number.isFinite(total) ? total : null,
+    lines,
+  };
+
+  const service = new CorrectInvoiceService(new InvoiceRepositoryAdapter(db));
+  try {
+    await withTenantTx(db, user.id, () => service.correct(input));
+    log.info('invoice corrected', { userId: user.id, invoiceId, lineCount: lines.length });
+    return json(200, { status: 'PARSED', invoiceId });
+  } catch (err) {
+    if (err instanceof InvoiceNotFoundError) return json(404, { message: 'Invoice not found' });
+    if (err instanceof InvoiceNotCorrectableError) return json(409, { message: 'Invoice cannot be corrected' });
+    if (err instanceof InvalidCorrectionError) return json(400, { message: err.message });
     throw err;
   }
 }

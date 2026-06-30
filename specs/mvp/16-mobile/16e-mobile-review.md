@@ -38,18 +38,39 @@ deferred to 16h** (they need backend endpoints that don't exist yet).
 - Verify the exact correction/confirm endpoint + payload against `api-handler/index.ts` and the
   `ConfirmService` before wiring (the webapp drawer is the behavioral reference).
 
+## Backend built for this slice (none existed before)
+- **`PUT /invoices/{id}`** (`CorrectInvoiceService` + `IInvoiceRepository.applyCorrection`): persists
+  edited date/total + per-line `productId`/quantity/unitPrice/lineTotal, flips `NEEDS_REVIEW|PARSED →
+  PARSED`, stamps `invoice.corrected_at` (new migration), resets corrected lines' `confidence` to 1.
+  409 if not correctable, 400 on invalid payload, 404 cross-tenant (RLS).
+- **`GET /invoices/{id}`** now returns per-line `id`, `productId`, and `confidence` (for amber + edit).
+- **USER_CONFIRMED price repair:** `corrected_at` flows through `getForReEmission → userCorrected →
+  buildPriceObservations` so a corrected invoice's observations emit `quality='USER_CONFIRMED'` at the
+  **existing location-confirm gate** (`InvoiceLocationService`/`HeldInvoiceReleaseService`).
+  **Invariant #2 boundary:** the Price Observation Store keeps no invoice reference, so already-emitted
+  `AUTO` rows cannot be retroactively rewritten — "repair" means corrected lines emit `USER_CONFIRMED`
+  at emission time, not a post-hoc row update. See memory `mobile-16e-correction-pipeline`.
+
 ## Checklist
-- [ ] Split layout: pinch-to-zoom image (top), scrollable fields (bottom)
-- [ ] Amber highlight on `LOW_CONFIDENCE` fields
-- [ ] Date tap-to-fix (picker) + Total tap-to-fix (numeric)
-- [ ] Line-item bottom sheet: `/products/search`, size/unit edit, price edit
-- [ ] Confirm: saves corrections, flips to `PARSED`, triggers trust/alias + price repair
-- [ ] Discard for `SUSPECTED_DUPLICATE` (quota refunded)
-- [ ] Merchant tap-to-fix + add-tag picker **deferred to 16h** (documented in-screen)
-- [ ] `ReviewBloc` unit tests (mocked ports); `flutter analyze` clean
+- [x] Split layout: pinch-to-zoom image (top, `InteractiveViewer`), scrollable fields (bottom)
+- [x] Amber highlight on low-confidence lines (`confidence < 0.7`). *Date/total have no per-field
+      confidence in the backend (only `invoice_line.confidence`), so amber is line-level.*
+- [x] Date tap-to-fix (`showDatePicker`) + Total tap-to-fix (numeric dialog)
+- [x] Line-item bottom sheet: `/products/search` as-you-type, quantity/unit-price/line-total edit
+- [x] Confirm: saves corrections, flips to `PARSED`, drives `USER_CONFIRMED` price emission (above)
+- [x] Discard for `SUSPECTED_DUPLICATE` via existing `DELETE`. *No quota refund: the credit model
+      charges on successful processing and the refund path was decommissioned (memory
+      `system-fault-quarantine-03-core`); discard removes the receipt + S3 object + ledger claim.*
+- [x] Merchant tap-to-fix + add-tag picker **deferred to 16h** (no `/merchants/search` or tag-vocab
+      endpoint). Existing tags are not edited here.
+- [x] `ReviewBloc` unit tests (mocked ports); `flutter analyze` clean — `review_bloc_test.dart`
+      (load/fail, edit+confirm payload, confirm/discard success+failure, product-search min-length).
+      Backend: `CorrectInvoiceService.test.ts` + `buildPriceObservations` quality test; `test:unit`
+      760 green (99.01% branch), hexagonal + `tsc` + `validate:security` clean.
 
 ## Verification
-- Editing date/total/a line item and tapping Confirm flips the invoice to `PARSED` server-side.
-- Line-item product search returns matches from `/products/search`.
-- Discarding a `SUSPECTED_DUPLICATE` refunds quota (`/me/usage` reflects it) and emits no price obs.
-- A clean receipt confirms in one tap; a messy one in under ~30s.
+- [x] Unit: editing date/total/a line then Confirm posts the merged payload; a corrected invoice
+      builds `USER_CONFIRMED` observations.
+- [ ] **Pending on-device:** Confirm flips the dev invoice to `PARSED`; `/products/search` returns
+      matches in the sheet; discarding a `SUSPECTED_DUPLICATE` removes it. A clean receipt confirms in
+      one tap.

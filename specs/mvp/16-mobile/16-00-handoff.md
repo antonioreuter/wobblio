@@ -16,9 +16,9 @@ slices in build order.
 |---|---|---|---|---|
 | [16a](./16a-mobile-foundation.md) | Flutter foundation & app shell | ✅ | — | yes |
 | [16b](./16b-mobile-auth.md) | Auth (Cognito on device) | ✅ | 16a | yes |
-| [16c](./16c-mobile-capture.md) | Capture & upload vertical slice | ⬜ | 16b | yes |
-| [16d](./16d-mobile-dashboard-feedback.md) | Dashboard & feedback | ⬜ | 16c | yes |
-| [16e](./16e-mobile-review.md) | Review & correction (non-deferred edits) | ⬜ | 16d | yes |
+| [16c](./16c-mobile-capture.md) | Capture & upload vertical slice | 🚧 | 16b | yes |
+| [16d](./16d-mobile-dashboard-feedback.md) | Dashboard & feedback | 🚧 | 16c | yes |
+| [16e](./16e-mobile-review.md) | Review & correction (non-deferred edits) | 🚧 | 16d | yes |
 | [16f](./16f-push-delivery-backend.md) | Push delivery backend | ⬜ | backend only | **no** |
 | [16g](./16g-push-client.md) | Push client | ⬜ | 16b + 16f | yes |
 | [16h](./16h-merchant-tag-edits.md) | Merchant search + tag vocabulary (deferred) | ⬜ | 16e | both |
@@ -31,6 +31,47 @@ first slice to ship while the toolchain is set up.
 
 ## Deferred / known gaps
 
+- **16e code-complete, FULL-STACK (🚧, on-device acceptance pending).** The 07/08 correction backend
+  did **not** exist — built here: migration `invoice.corrected_at`; `PUT /invoices/{id}`
+  (`CorrectInvoiceService` + `IInvoiceRepository.applyCorrection`); detail now returns line
+  `id`/`productId`/`confidence`; `PriceObservationInput.quality` threaded through
+  `buildPriceObservations(userCorrected)` so a corrected invoice emits `USER_CONFIRMED` at the
+  existing location-confirm gate. **Invariant #2 boundary** (price store has no invoice ref →
+  already-emitted `AUTO` rows can't be retroactively rewritten; "repair" = corrected lines emit
+  `USER_CONFIRMED` at emission, not a post-hoc update) — see memory `mobile-16e-correction-pipeline`.
+  Flutter: `ReviewBloc` + `IReviewRepository`/`IProductSearchRepository` + adapters; `ReviewScreen`
+  (pinch-zoom photo, amber low-confidence lines, date/total/line tap-to-fix, product-search sheet,
+  Confirm/Discard); dashboard now navigates to it and refreshes on change. Backend `test:unit` 760
+  green (99.01% branch), hexagonal + `tsc` + `validate:security` clean; mobile `analyze` + 47 tests +
+  boundary clean. **Decisions:** discard = `DELETE`, **no quota refund** (credit model charges on
+  success; refund decommissioned); amber is **line-level** (no per-field date/total confidence in the
+  schema); **merchant tap-to-fix + add-tag picker deferred to 16h** (endpoints absent). Remaining:
+  on-device acceptance against the **dev** backend (correct→PARSED, product search, discard).
+- **16d code-complete (🚧, on-device acceptance pending).** Dashboard (`DashboardScreen` replaces the
+  AppShell body): recent-invoices list with status pills, pull-to-refresh, backoff terminal polling
+  (2.5/5/9s, generation-guarded), optimistic thumbs feedback, client-side tag-filter chips, weekly
+  usage pill. Behind ports `IInvoiceRepository` (list + recordFeedback) + `IUsageRepository`, with
+  `DashboardBloc`. `fvm flutter analyze` → 0, `fvm flutter test` → green (35). **Two contract
+  decisions** (confirmed with product): (1) `NEEDS_REVIEW` shows the **green "Ready"** pill, mirroring
+  the canonical webapp `invoice-map.ts` (no amber "needs review"); (2) **thumbs-down reason picker
+  deferred** — the backend `/feedback` + `invoice_feedback` store only `{ verdict }`, so the
+  3-chip reason + free-text would need a DDL + endpoint change; shipped verdict-only with a "Fix
+  details" shortcut to 16e. **Tag filter is client-side** (the list endpoint has no tag query param).
+  Row tap / thumbs-down navigate to a **16e placeholder** (`ReviewScreenPlaceholder`) that 16e
+  replaces. Remaining: on-device acceptance against the **dev** backend (feedback round-trip + revert,
+  tag filtering, pull-to-refresh updating list+usage, a captured row polling to terminal).
+- **16c code-complete (🚧, on-device acceptance pending).** Capture flow (camera/gallery/PDF →
+  EXIF-strip+compress → presign → S3 multipart POST → confirm → pop with PROCESSING snackbar) is
+  implemented behind ports (`ICameraCapture`/`IGalleryPicker`/`IDocumentPicker`/`IUploadPreparer`/
+  `IS3Uploader`/`IIngestionRepository`) with `CaptureBloc`. `fvm flutter analyze` → 0,
+  `fvm flutter test` → green (25), hexagonal boundary clean, EXIF validator passes. **Key contract
+  facts:** the S3 step is a presigned **multipart POST** (not a raw PUT), one invoice per presign
+  keyed by SHA-256, **images single-page / PDF = the multipage path** (no multi-image-per-invoice
+  endpoint exists). Remaining: real device/emulator capture against the **dev** backend (build with
+  `--dart-define` API/Cognito values) — invoice appears + worker processes + no GPS/EXIF on the
+  object + identical re-upload returns same `invoiceId` without burning quota. Native permission
+  strings (iOS `NSCameraUsageDescription`/`NSPhotoLibraryUsageDescription`) are documented in
+  `Source/mobile/README.md` and must be added when the native folders are (re)generated.
 - **16a built & verified on Flutter 3.44.4 (FVM-pinned)** — `flutter create .` generated
   `android/`+`ios/`, `wobblio://` is registered in both native manifests, `fvm flutter analyze`
   → 0 issues, and `fvm flutter test` (smoke) → green. Toolchain: FVM 4.1.2 manages the pinned SDK

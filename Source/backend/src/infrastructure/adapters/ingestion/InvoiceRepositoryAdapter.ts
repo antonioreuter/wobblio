@@ -11,6 +11,7 @@ import type {
   InvoiceListItem,
   InvoiceDetail,
   InvoiceDetailLine,
+  CorrectInvoiceInput,
   TopMerchant,
 } from '@core/ports/ingestion/IInvoiceRepository';
 import type { InvoiceStatus, InvoiceVerdict } from '@core/domain/ingestion';
@@ -18,6 +19,7 @@ import type { FailureReasonCode, UnreadableReason } from '@core/domain/failureRe
 import type { InvoiceLocationStatus } from '@core/domain/region';
 import type { ObservationLine } from '@core/domain/priceObservation';
 import { categoryNameFor } from '@core/domain/categoryTaxonomy';
+import { InvalidCorrectionError } from '@core/domain/errors';
 import { tagLabelFor } from '@core/domain/tagVocabulary';
 
 interface InvoiceListRow {
@@ -227,8 +229,10 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       merchant_provisional: boolean;
       transaction_date: string | null;
       currency: string | null;
+      user_corrected: boolean;
     }>(
-      `SELECT merchant_id, merchant_provisional, transaction_date::text AS transaction_date, currency
+      `SELECT merchant_id, merchant_provisional, transaction_date::text AS transaction_date,
+              currency, (corrected_at IS NOT NULL) AS user_corrected
        FROM invoice
        WHERE id = $1 AND status IN ('PARSED', 'NEEDS_REVIEW') AND NOT price_emission_blocked`,
       [invoiceId],
@@ -259,6 +263,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       merchantProvisional: row.merchant_provisional,
       transactionDate: row.transaction_date,
       currency: row.currency,
+      userCorrected: row.user_corrected,
       lines: lines.rows.map(l => ({
         productId: l.product_id,
         productProvisional: l.product_provisional,
@@ -322,6 +327,36 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     await this.client.query(`UPDATE invoice SET status = $2 WHERE id = $1`, [invoiceId, status]);
   }
 
+  // Apply review-screen corrections (16e). RLS scopes both writes to the tenant, so a
+  // cross-tenant id touches no rows. corrected_at stamps the invoice user-trusted, and
+  // an edited line resets confidence to 1 (the user vouched for it → no longer amber).
+  // Only the lines the user actually changed are sent, so untouched lines keep their state.
+  async applyCorrection(input: CorrectInvoiceInput): Promise<void> {
+    await this.client.query(
+      `UPDATE invoice
+         SET transaction_date = $2, total = $3, status = 'PARSED', corrected_at = now()
+       WHERE id = $1`,
+      [input.invoiceId, input.transactionDate, input.total],
+    );
+    try {
+      for (const line of input.lines) {
+        await this.client.query(
+          `UPDATE invoice_line
+             SET product_id = $3, quantity = $4, unit_price = $5, line_total = $6, confidence = 1
+           WHERE id = $1 AND invoice_id = $2`,
+          [line.id, input.invoiceId, line.productId, line.quantity, line.unitPrice, line.lineTotal],
+        );
+      }
+    } catch (err) {
+      // A line pointed at a non-existent product (deleted/merged since search) → FK
+      // violation; surface it as a client error rather than an opaque 500.
+      if (err && typeof err === 'object' && (err as { code?: string }).code === '23503') {
+        throw new InvalidCorrectionError('a line references a product that no longer exists');
+      }
+      throw err;
+    }
+  }
+
   async softDelete(invoiceId: string): Promise<void> {
     await this.client.query(`UPDATE invoice SET status = 'DISCARDED' WHERE id = $1`, [invoiceId]);
   }
@@ -365,19 +400,23 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     );
     if (!head.rows[0]) return null;
 
-    const lines = await this.client.query<{ raw_text: string; quantity: string; unit_price: string | null; line_total: string; category_name: string | null }>(
-      `SELECT il.raw_text, il.quantity::text, il.unit_price::text, il.line_total::text, pc.name AS category_name
+    const lines = await this.client.query<{ id: string; raw_text: string; product_id: string | null; quantity: string; unit_price: string | null; line_total: string; category_name: string | null; confidence: string }>(
+      `SELECT il.id, il.raw_text, il.product_id, il.quantity::text, il.unit_price::text,
+              il.line_total::text, pc.name AS category_name, il.confidence::text AS confidence
        FROM invoice_line il LEFT JOIN product_category pc ON pc.id = il.category_id
        WHERE il.invoice_id = $1 ORDER BY il.line_index`,
       [invoiceId],
     );
 
     const detailLines: InvoiceDetailLine[] = lines.rows.map(l => ({
+      id: l.id,
       rawText: l.raw_text,
+      productId: l.product_id,
       quantity: parseFloat(l.quantity),
       unitPrice: num(l.unit_price),
       lineTotal: parseFloat(l.line_total),
       categoryName: l.category_name,
+      confidence: parseFloat(l.confidence),
     }));
 
     return {

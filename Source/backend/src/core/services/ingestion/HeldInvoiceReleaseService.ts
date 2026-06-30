@@ -30,6 +30,7 @@ export class HeldInvoiceReleaseService {
       transactionDate: reEmission.transactionDate,
       currency: reEmission.currency,
       lines: reEmission.lines,
+      userCorrected: reEmission.userCorrected,
       context: {
         optedOut: context.optedOut,
         regionCode: candidate.regionCode,

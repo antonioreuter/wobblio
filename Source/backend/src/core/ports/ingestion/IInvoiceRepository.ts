@@ -96,6 +96,27 @@ export interface InvoiceReEmission {
   transactionDate: string;
   currency: string;
   lines: ObservationLine[];
+  // A human corrected this invoice (16e) → its observations emit USER_CONFIRMED.
+  userCorrected: boolean;
+}
+
+// A single line edit from the review screen (16e). Identified by its row id so the
+// client can patch the exact line it rendered from getDetail.
+export interface CorrectInvoiceLine {
+  id: string;
+  productId: string | null;
+  quantity: number;
+  unitPrice: number | null;
+  lineTotal: number;
+}
+
+// User corrections from the review screen: fixed header fields + per-line edits.
+// Applying it flips the invoice to PARSED and stamps corrected_at.
+export interface CorrectInvoiceInput {
+  invoiceId: string;
+  transactionDate: string | null;
+  total: number | null;
+  lines: CorrectInvoiceLine[];
 }
 
 export interface FuzzyFingerprint {
@@ -124,11 +145,15 @@ export interface InvoiceListItem {
 }
 
 export interface InvoiceDetailLine {
+  id: string;
   rawText: string;
+  productId: string | null;
   quantity: number;
   unitPrice: number | null;
   lineTotal: number;
   categoryName: string | null;
+  // 0..1 parse confidence; the review screen ambers a low-confidence line (16e).
+  confidence: number;
 }
 
 export interface InvoiceDetail extends InvoiceListItem {
@@ -191,6 +216,9 @@ export interface IInvoiceRepository {
   // Flips a held invoice to RESOLVED after its region is mapped and re-emitted.
   markLocationResolved(invoiceId: string): Promise<void>;
   updateStatus(invoiceId: string, status: InvoiceStatus): Promise<void>;
+  // Persist review-screen corrections: update header fields + the given lines, flip to
+  // PARSED, and stamp corrected_at (so later emission marks observations USER_CONFIRMED).
+  applyCorrection(input: CorrectInvoiceInput): Promise<void>;
   // Hides the invoice from the tenant's list by flipping its status to DISCARDED.
   softDelete(invoiceId: string): Promise<void>;
   listForTenant(limit: number): Promise<InvoiceListItem[]>;

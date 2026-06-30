@@ -19,6 +19,10 @@ dependencies:
   dio: ^5.7.0            # HTTP client behind the IApiClient port
   flutter_appauth: ^7.0.0          # Cognito Hosted-UI auth-code + PKCE (16b)
   flutter_secure_storage: ^9.2.2   # Keychain / Keystore token store (16b)
+  image_picker: ^1.1.2             # camera capture + gallery pick (16c, behind ports)
+  flutter_image_compress: ^2.3.0   # EXIF-strip + ≤1MB JPEG re-encode (keepExif:false) (16c)
+  file_picker: ^8.1.4              # PDF document pick — multipage path (16c)
+  crypto: ^3.0.5                   # SHA-256 dedup key over the final upload bytes (16c)
 
 dev_dependencies:
   flutter_test:

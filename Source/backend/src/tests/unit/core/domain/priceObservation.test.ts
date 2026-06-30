@@ -50,9 +50,17 @@ describe('buildPriceObservations', () => {
       baseUnit: 'KG',
       currency: 'EUR',
       wasDiscounted: false,
+      quality: 'AUTO',
       quarantined: false,
       contributorTrustAtWrite: 50,
     });
+  });
+
+  it('marks observations USER_CONFIRMED when the invoice was user-corrected', () => {
+    const [auto] = buildPriceObservations(input());
+    expect(auto.quality).toBe('AUTO');
+    const [corrected] = buildPriceObservations(input({ userCorrected: true }));
+    expect(corrected.quality).toBe('USER_CONFIRMED');
   });
 
   it('emits nothing when the contributor opted out', () => {

@@ -15,6 +15,7 @@ const reEmission = (): InvoiceReEmission => ({
   merchantProvisional: false,
   transactionDate: '2026-06-10',
   currency: 'EUR',
+  userCorrected: false,
   lines: [{
     productId: 'p1', productProvisional: false, baseUnit: 'L',
     normalizedUnitPrice: 2.0, isDepositOrFee: false, quantity: 1, lineTotal: 2.0, listUnitPrice: 2.0,

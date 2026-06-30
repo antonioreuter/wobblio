@@ -30,6 +30,12 @@ export function isLocationConfirmable(status: InvoiceStatus): boolean {
   return status === 'PARSED' || status === 'NEEDS_REVIEW';
 }
 
+// Only a successfully-parsed invoice (PARSED/NEEDS_REVIEW) accepts review-screen
+// corrections (16e); a PROCESSING/duplicate/failed/discarded one does not.
+export function isCorrectable(status: InvoiceStatus): boolean {
+  return status === 'PARSED' || status === 'NEEDS_REVIEW';
+}
+
 // Canonical deletion-eligibility rule — the single source of truth for every delete path
 // (user delete, future admin/GDPR purges). Two holds: PROCESSING is non-terminal, so
 // deleting it would leave the worker writing to a discarded row and strand its

@@ -24,6 +24,8 @@ export interface ObservationLine {
   listUnitPrice: number | null; // receipt's listed per-unit price, for discount detection
 }
 
+export type PriceObsQuality = 'AUTO' | 'USER_CONFIRMED';
+
 export interface ObservationBuildInput {
   merchantId: string | null;
   merchantProvisional: boolean;
@@ -31,6 +33,9 @@ export interface ObservationBuildInput {
   currency: string;
   lines: ObservationLine[];
   context: ContributorContext;
+  // A human fixed this invoice's fields/lines before emission (§6.5, 16e). Its rows
+  // are emitted USER_CONFIRMED instead of AUTO. Defaults to AUTO when omitted.
+  userCorrected?: boolean;
 }
 
 export interface PriceObservationInput {
@@ -46,6 +51,7 @@ export interface PriceObservationInput {
   baseUnit: BaseUnit | null;
   currency: string;
   wasDiscounted: boolean;
+  quality: PriceObsQuality;
   quarantined: boolean;
   contributorTrustAtWrite: number;
 }
@@ -76,6 +82,7 @@ export function buildPriceObservations(input: ObservationBuildInput): PriceObser
   const regionCode = resolveObservationRegion(input.context.regionCode, input.context.countryCode);
   const currency = input.currency.toUpperCase();
   const trust = Math.round(input.context.trustScore);
+  const quality: PriceObsQuality = input.userCorrected ? 'USER_CONFIRMED' : 'AUTO';
 
   const rows: PriceObservationInput[] = [];
   for (const line of input.lines) {
@@ -92,6 +99,7 @@ export function buildPriceObservations(input: ObservationBuildInput): PriceObser
       baseUnit: line.baseUnit,
       currency,
       wasDiscounted: isDiscounted(line, packPrice),
+      quality,
       quarantined: input.merchantProvisional || line.productProvisional,
       contributorTrustAtWrite: trust,
     });

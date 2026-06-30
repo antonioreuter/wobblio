@@ -98,6 +98,24 @@ export class InvoiceNotDeletableError extends Error {
   }
 }
 
+// Only a parsed/needs-review invoice can be user-corrected (16e). A PROCESSING,
+// duplicate, failed, or discarded invoice rejects the correction. Surfaces as 409.
+export class InvoiceNotCorrectableError extends Error {
+  constructor(readonly invoiceId: string, readonly status: string) {
+    super(`Invoice ${invoiceId} cannot be corrected in status ${status}`);
+    this.name = 'InvoiceNotCorrectableError';
+  }
+}
+
+// A review-screen correction payload that fails validation (e.g. empty lines, a
+// negative amount). Surfaces as 400.
+export class InvalidCorrectionError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid invoice correction: ${reason}`);
+    this.name = 'InvalidCorrectionError';
+  }
+}
+
 // A system-fault-quarantined invoice (system_fault_reason set, §03.5). It is held for
 // operator reprocess-on-behalf, so the user cannot delete it (which would also let them
 // farm a free re-scan). Surfaces as 409.

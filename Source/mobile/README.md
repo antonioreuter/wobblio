@@ -83,6 +83,26 @@ manifestPlaceholders += [appAuthRedirectScheme: 'wobblio']
 (No extra `<intent-filter>` is needed for AppAuth beyond this placeholder; the `wobblio://` filter
 above stays for the app's own deep links.)
 
+### Capture permissions (16c)
+
+The capture slice reads the camera and photo library (`image_picker`) and re-encodes images to
+strip EXIF/GPS before upload (`flutter_image_compress`). Declare the usage strings when the native
+folders are generated:
+
+**iOS** — `ios/Runner/Info.plist`, inside the top-level `<dict>`:
+
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Wobblio uses the camera to photograph your receipts.</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>Wobblio lets you pick a receipt photo or PDF from your library.</string>
+```
+
+**Android** — `image_picker` and `file_picker` declare their own needs; modern Android uses the
+system photo/document pickers, so no extra `<uses-permission>` is required for gallery/PDF picking.
+The plugins handle the camera intent. No `CAMERA` permission is needed unless a custom capture UI is
+added later.
+
 ## Run
 
 Stage values are resolved at build time via `--dart-define` (mirrors the webapp's stage-scoped
@@ -152,6 +172,6 @@ lib/
 ## What's intentionally deferred (YAGNI)
 
 - SRP / cognito-local device login → later (Hosted-UI against the dev pool is the 16b path)
-- Camera, EXIF strip, ≤1MB JPEG compression, presigned-URL upload → **16c**
-- `freezed`/`json_serializable` models + codegen → **16c** (added with the first real models)
+- Camera, EXIF strip, ≤1MB JPEG compression, presigned-URL upload → **done (16c)**
+- Dashboard, status pills / parse polling UI → **16d** (16c only inserts a PROCESSING receipt and returns)
 - Light "Solar" theme → later slice

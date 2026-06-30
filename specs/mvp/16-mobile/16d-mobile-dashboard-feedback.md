@@ -36,17 +36,37 @@ polling, the thumbs up/down accuracy affordance, and a tag-filter chip row.
 - Add-tag picker / merchant edit (16h).
 
 ## Checklist
-- [ ] Recent-invoices list with merchant avatar/name/date/total + status pill (shimmer/amber/green)
-- [ ] Pull-to-refresh refetches invoices + usage
-- [ ] Terminal-status polling in a BLoC (backoff, stops at terminal)
-- [ ] Thumbs up/down optimistic → `POST /invoices/{id}/feedback`
-- [ ] Thumbs-down 3-chip reason picker + optional free-text + shortcut to 16e correction
-- [ ] Tag-filter chip row (reads existing tags; no vocabulary endpoint)
-- [ ] `DashboardBloc` unit tests (mocked ports); `flutter analyze` clean
+- [x] Recent-invoices list with merchant avatar/name/date/total + status pill (shimmer/amber/green)
+      — `DashboardScreen` cards: `CircleAvatar` initial, merchant, date, total (tabular via
+      `AppTheme.money`), `_StatusPill` with a spinner for PROCESSING.
+- [x] Pull-to-refresh refetches invoices + usage — `RefreshIndicator` → `DashboardRefreshed`
+      (refetches `GET /invoices` + `GET /me/usage`); usage shown as an app-bar "N left" pill.
+- [x] Terminal-status polling in a BLoC (backoff, stops at terminal) — `_DashboardPollRequested`
+      ramps the webapp cadence (2.5s/5s/9s) then **holds at the last interval until terminal** (spec
+      says "until the row reaches a terminal status", stronger than the webapp's fixed 3 shots),
+      bounded by `maxPollAttempts` (~5.5 min) so a stuck row can't poll forever. Stops when no row is
+      `PROCESSING`; a newer refresh supersedes an in-flight loop (generation guard, re-checked after
+      every await). Schedule + cap are injectable for tests.
+- [x] Thumbs up/down optimistic → `POST /invoices/{id}/feedback` — `DashboardFeedbackSubmitted`
+      sets the verdict immediately, persists, reverts + notices on failure.
+- [~] Thumbs-down reason picker — **verdict-only shipped; reason picker deferred to a backend change.**
+      The backend `/feedback` + `invoice_feedback` store only `{ verdict }` (no reason/notes column),
+      so a 3-chip picker would silently drop data. Thumbs-down instead offers a **"Fix details"
+      shortcut to the 16e correction screen** (placeholder until 16e). See handoff gap.
+- [x] Tag-filter chip row (reads existing tags; no vocabulary endpoint) — horizontal `ChoiceChip`
+      row from the tags present on loaded invoices; **client-side** filter (the list endpoint takes
+      no tag query param). Reselect clears.
+- [x] `DashboardBloc` unit tests (mocked ports); `flutter analyze` clean — `dashboard_bloc_test.dart`
+      (load/usage-failure/poll-to-terminal/no-poll/tag-filter/optimistic-feedback+revert/refresh);
+      `fvm flutter analyze` → 0, `fvm flutter test` → green (35).
+
+> **Status-pill note:** `NEEDS_REVIEW` collapses into the green **"Ready"** pill, matching the
+> canonical webapp `invoice-map.ts` (no user action flips it → an amber "needs review" badge would
+> imply an unfinishable task). The 16e correction screen is still reachable via row tap / thumbs-down.
 
 ## Verification
-- List renders from `GET /invoices`; a freshly captured row transitions
-  Processing → Parsed/Needs-review as polling observes the worker.
-- Thumbs-down writes an `invoice_feedback` row with the chosen reason; UI updates optimistically and
-  rolls back on error.
-- Selecting a tag chip filters the list client-visible results.
+- [x] List renders from `GET /invoices`; a freshly captured row polls Processing → Parsed and stops
+      (unit-tested with an injected zero-delay schedule).
+- [ ] **Pending on-device:** thumbs-down writes an `invoice_feedback` row (verdict) and rolls back on
+      error against the **dev** backend; selecting a tag chip filters the visible list; pull-to-refresh
+      updates list + usage. (Automated gates above are green.)

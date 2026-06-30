@@ -49,15 +49,33 @@ camera capture / gallery pick
   PROCESSING row and returns).
 
 ## Checklist
-- [ ] EXIF strip + ≤1MB JPEG compression client-side before S3 PUT (verified by `exif-data-validator`)
-- [ ] Camera / gallery / image-processing / upload defined as ports, adapters in infrastructure
-- [ ] `presign → PUT → confirm` against the 07 endpoints; ID token auth
-- [ ] SHA-256 dedup key; 409 (duplicate) + 429 (quota) handled with clear UX
-- [ ] Multi-page support (multiple images per `invoiceId`)
-- [ ] Capture pops to dashboard immediately with a PROCESSING row
-- [ ] `CaptureBloc` unit tests (mocked ports); `flutter analyze` clean
+- [x] EXIF strip + ≤1MB JPEG compression client-side before S3 PUT (verified by `exif-data-validator`)
+      — `ImageCompressUploadPreparer` (`flutter_image_compress`, `keepExif: false`, JPEG re-encode,
+      quality 90→40 until ≤1MB), behind `IUploadPreparer`.
+- [x] Camera / gallery / image-processing / upload defined as ports, adapters in infrastructure
+      — `ICameraCapture`, `IGalleryPicker`, `IDocumentPicker`, `IUploadPreparer`, `IS3Uploader`,
+      `IIngestionRepository`; adapters in `infrastructure/adapters/`.
+- [x] `presign → PUT → confirm` against the 07 endpoints; ID token auth
+      — S3 step is the presigned **multipart POST** (matches `PresignService`/webapp, not a raw PUT);
+      `IApiClient` attaches the ID token, `DioS3Uploader` sends no token to S3.
+- [x] SHA-256 dedup key; 409 (duplicate) + 429 (quota) handled with clear UX
+      — `crypto` SHA-256 over final bytes; `HttpIngestionRepository` maps 409/429/403 → typed
+      `UploadException`; `CaptureScreen` surfaces clear copy per code.
+- [x] Multi-page support — **images are single-page (one image = one invoice); multipage is the PDF
+      path** (one PDF file = one invoice, pages parsed server-side). Backend has no
+      multi-image-per-`invoiceId` contract, so PDF is the multipage mechanism. PDF is premium-gated
+      (403 handled).
+- [x] Capture pops to dashboard immediately with a PROCESSING row
+      — pops to `AppShell` with a "Receipt added — processing…" snackbar; the real dashboard row +
+      status pills are 16d.
+- [x] `CaptureBloc` unit tests (mocked ports); `flutter analyze` clean
+      — `test/bloc/capture_bloc_test.dart` (hand-rolled fakes, full pipeline + cancel + 409/429/403 +
+      S3/confirm/picker-crash paths); `fvm flutter analyze` → 0 issues, `fvm flutter test` → green.
 
 ## Verification
-- A real capture uploads to the **dev** backend; the invoice appears and the worker processes it.
-- `exif-data-validator` passes; inspecting the uploaded object shows **no GPS/EXIF** metadata.
-- Re-uploading identical bytes returns the same `invoiceId` and does not decrement usage.
+- [x] `exif-data-validator` passes; EXIF strip is centralized in `ImageCompressUploadPreparer`
+      (`keepExif: false`) — the only producer of upload bytes, so no raw camera bytes reach S3.
+- [ ] **Pending on-device:** a real capture uploads to the **dev** backend; the invoice appears and
+      the worker processes it; inspecting the uploaded object shows **no GPS/EXIF** metadata;
+      re-uploading identical bytes returns the same `invoiceId` and does not decrement usage.
+      (Requires a device/emulator + dev `--dart-define` build; automated gates above are green.)
