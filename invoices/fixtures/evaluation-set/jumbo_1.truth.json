@@ -1,0 +1,24 @@
+{
+  "merchant": "Jumbo",
+  "transactionDate": "2026-06-07",
+  "currency": "EUR",
+  "total": 51.02,
+  "category": "supermarket",
+  "tags": ["groceries", "supermarket"],
+  "lines": [
+    { "rawText": "JUMBO LUSDRAAGTAS", "quantity": 1, "lineTotal": 0.89 },
+    { "rawText": "KELLOGGS FROSTIES", "quantity": 1, "lineTotal": 3.59 },
+    { "rawText": "JUMBO VANILLE IJS", "quantity": 1, "lineTotal": 2.65 },
+    { "rawText": "GOTAN SOJASAUS 500ML", "quantity": 1, "lineTotal": 4.99 },
+    { "rawText": "BELEM MADEIRA", "quantity": 1, "lineTotal": 3.59 },
+    { "rawText": "JUMBO ROOMB GE2 225", "quantity": 1, "lineTotal": 2.06 },
+    { "rawText": "JUMBO KAAS STRIPS 8P", "quantity": 1, "lineTotal": 2.99 },
+    { "rawText": "JUMB DRINKYOGH AARDB", "quantity": 1, "lineTotal": 1.14 },
+    { "rawText": "TROMP NATUURAZIJN", "quantity": 1, "lineTotal": 1.25 },
+    { "rawText": "JUMBO KOOKROOM 20%", "quantity": 1, "lineTotal": 0.98 },
+    { "rawText": "KOGELBIEFSTUK 1 ST", "quantity": 1, "lineTotal": 4.67 },
+    { "rawText": "JUMBO'S TAGLIATELLE", "quantity": 1, "lineTotal": 2.19 },
+    { "rawText": "JUMBO SPAGHETTI EI", "quantity": 2, "lineTotal": 2.78 },
+    { "rawText": "JUMBO MELKBROODJES", "quantity": 1, "lineTotal": 2.85 }
+  ]
+}

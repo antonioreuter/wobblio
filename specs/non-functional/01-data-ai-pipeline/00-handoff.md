@@ -12,7 +12,9 @@ the detail.
 | 04 Dynamic Queue Routing | ✅ Done | 2026-06-29 |
 | 05 Admin Pipeline Toggle | ✅ Done | 2026-06-29 |
 | 06 KPI Pipeline Comparison | ✅ Done | 2026-06-30 |
-| 07 Pipeline Evaluation Harness | ⬜ Not started | |
+| 07 Pipeline Evaluation Harness | ✅ Done | 2026-06-30 |
+
+**Epic complete (07/07).**
 
 ---
 
@@ -307,6 +309,47 @@ Daily per-pipeline rollup of `invoice_telemetry` into `kpi_daily` (dimension `{p
 - admin `npm run lint` (next lint + tsc) → clean.
 - **Not run:** live `migrate:up` (applies on deploy) and a real end-to-end with STRANDS traffic.
 
-### Next: 07 — Pipeline Evaluation Harness
-`scripts/evaluate-pipelines.ts` + LLM-as-a-judge offline comparison. Reuses the dry-run processor
-seam from 03 (`InvoiceCoordinator`/tools). Last sub-spec of the epic.
+---
+
+## 07 — Pipeline Evaluation Harness ✅ (2026-06-30)
+
+Offline CLI that runs both pipelines over a ground-truth fixture set in dry-run and grades the
+outputs with the `insight` model (LLM-as-a-judge), printing a legacy-vs-Strands summary.
+
+### What shipped
+- **Dry-run seam (the 03 extraction 07 depended on):** added a symmetric `extract()` to
+  `IngestionService` **and** `AgenticIngestionService` returning a shared `ExtractOutcome`
+  (`InvoiceFinalizer.ts`). `process()` is now `extract()` + `finalize()` — behaviour unchanged,
+  so all 88 existing ingestion unit tests pass untouched. `extract()` stops before persistence +
+  price emission.
+- **Judge (testable core):** `core/domain/pipelineJudgeSchema.ts` (`parsePipelineJudgeJson`,
+  {ok,issues}, 4 criteria 0..1 + analysis) and `core/domain/pipelineEvalSummary.ts` (per-pipeline
+  averaging + plain-text table). Prompt artifact `prompts/pipelineJudge.ts` (XML separators,
+  versioned `pipeline-judge/v1`).
+- **Harness** `src/local/evaluation/` — `processors.ts` (builds both services with real metered
+  Bedrock + local adapters, runs `extract()`, captures latency + cost via `estimateCostUsd`) and
+  `judge.ts` (insight model via `WEEKLY_ADVISOR` stage + `callJsonWithRetry`). Script
+  `src/local/evaluate-pipelines.ts` (`npm run compare:pipelines`): uploads each fixture to S3,
+  dry-runs both pipelines **inside a rolled-back transaction** (ledger claim + provisional catalog
+  writes discarded → pure dry-run), judges, prints the summary.
+- **Fixtures** `invoices/fixtures/evaluation-set/` — `jumbo_1` (clean, full lines) + `ah_1`
+  (crumpled, curated subset) with `<name>.truth.json` ground truth + README/schema.
+
+### Decisions / notes
+- **extract() refactor over capture-stub** (user-chosen): clean, symmetric with the agentic
+  coordinator, behaviour-preserving.
+- **Local-DB harness, not fully DB-free:** mirrors `replay-receipt.ts` (LocalStack S3 + local
+  Postgres + dev Bedrock). The BEGIN/ROLLBACK wrapper means nothing persists, but catalog/region
+  reads use the real local DB (stubbing every catalog port was a worse trade). Spec's "bypass DB"
+  is honoured at the meaningful level: no invoice rows, no price observations.
+- Judge reuses the `WEEKLY_ADVISOR` (insight) Bedrock stage rather than adding an enum value.
+- **Not run live** (needs the local stack + dev Bedrock creds, costs tokens). Core logic is
+  unit-tested (judge schema 6, summary 3); the script/harness wiring is tsc + hex-validator clean.
+- Since 03 makes the pipelines functionally identical, the expected real-run result is parity —
+  the harness's value is the repeatable scaffold + judge for when a model-driven coordinator lands.
+
+### Validation (2026-06-30)
+- hex validator → exit 0. `tsc --noEmit` → clean. My suites green: ingestion 88 (unchanged),
+  agentic, judge schema, eval summary. (`npm run test:unit` shows one **unrelated** failure in
+  `priceObservation.test.ts` from a concurrent in-tree 16e "user-correction" WIP — not part of
+  this change and not committed here.)

@@ -15,8 +15,9 @@ import type { VisionParseService } from './VisionParseService';
 import type { InvoiceStatus, ParsedReceipt } from '../../domain/ingestion';
 import type { FailureReasonCode } from '../../domain/failureReasons';
 import { ExtractionPreparer } from './ExtractionPreparer';
-import { InvoiceFinalizer } from './InvoiceFinalizer';
+import { InvoiceFinalizer, type ExtractionResult, type ExtractOutcome } from './InvoiceFinalizer';
 import { OcrParserTool } from './agentic/tools/OcrParserTool';
+import type { ResolvedIngestionLocation } from '../../domain/region';
 
 export interface IngestionOutcome {
   handled: boolean; // false => duplicate SQS delivery, skipped
@@ -65,14 +66,30 @@ export class IngestionService {
   }
 
   async process(message: IngestionMessage): Promise<IngestionOutcome> {
+    const result = await this.extract(message);
+    if (result.kind === 'duplicate') return { handled: false };
+    if (result.kind === 'unreadable') return result.outcome;
+    return this.finalizer.finalize({ message, context: result.context, ...result.extraction });
+  }
+
+  // The shared front + forced-order canonicalization, stopping before finalization. process()
+  // is extract() + finalize(); the evaluation harness (07) calls extract() alone for a dry-run
+  // grade with no persistence or price emission.
+  async extract(message: IngestionMessage): Promise<ExtractOutcome> {
     const prepared = await this.preparer.prepare(message);
-    if (prepared.kind === 'duplicate') return { handled: false };
-    if (prepared.kind === 'unreadable') return prepared.outcome;
+    if (prepared.kind === 'duplicate') return { kind: 'duplicate' };
+    if (prepared.kind === 'unreadable') return { kind: 'unreadable', outcome: prepared.outcome };
+    const extraction = await this.canonicalize(prepared.receipt, prepared.location);
+    return { kind: 'ready', extraction, context: prepared.context };
+  }
 
-    const { receipt, location, context } = prepared;
-
-    // Forced-order canonicalization (§6.2–6.10): merchant → product → classify → tag. The
-    // sharing location is already resolved (the catalog is stamped with the invoice's country).
+  // Forced-order canonicalization (§6.2–6.10): merchant → product → classify → tag. The sharing
+  // location is already resolved (the catalog is stamped with the invoice's country). Same five
+  // stages the agentic coordinator wraps as tools.
+  private async canonicalize(
+    receipt: ParsedReceipt,
+    location: ResolvedIngestionLocation,
+  ): Promise<ExtractionResult> {
     const merchant = await this.merchantResolver.resolve(receipt.merchantRaw, location.countryCode);
     const { lines: normalized, suggestedTags } = await this.productNormalizer.normalize(merchant.merchantId, receipt.lines, location.countryCode);
     const categoryId = await this.classifier.classify({
@@ -89,7 +106,6 @@ export class IngestionService {
       normalized,
       suggestedTags,
     });
-
-    return this.finalizer.finalize({ message, receipt, location, context, merchant, normalized, categoryId, tags });
+    return { receipt, location, merchant, normalized, categoryId, tags };
   }
 }

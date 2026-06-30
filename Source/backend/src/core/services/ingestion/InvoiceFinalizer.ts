@@ -28,6 +28,14 @@ export interface FinalizeInput extends ExtractionResult {
   context: ContributorContext;
 }
 
+// Result of the extraction phase (shared front + canonicalization), before finalization.
+// Both pipelines expose `extract()` returning this so the evaluation harness (07) can grade
+// the canonicalized output in dry-run, without persisting an invoice or emitting observations.
+export type ExtractOutcome =
+  | { kind: 'duplicate' }
+  | { kind: 'unreadable'; outcome: IngestionOutcome }
+  | { kind: 'ready'; extraction: ExtractionResult; context: ContributorContext };
+
 // Stage 6 of §6: duplicate/integrity gates, status decision, tenant persistence, de-identified
 // price emission, and ledger completion. Extracted from IngestionService so the legacy and
 // agentic workers share one downstream path. Runs inside the caller's open tenant transaction.

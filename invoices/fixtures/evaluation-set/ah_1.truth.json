@@ -1,0 +1,15 @@
+{
+  "merchant": "Albert Heijn",
+  "transactionDate": "2025-06-04",
+  "currency": "EUR",
+  "total": 33.43,
+  "subtotal": 37.07,
+  "category": "supermarket",
+  "tags": ["groceries", "supermarket"],
+  "note": "Crumpled receipt — line items below are a curated, confidently-legible subset; the merchant/date/currency/total are authoritative. Refine line items before relying on line_item_completeness scores.",
+  "lines": [
+    { "rawText": "AV DOEKJES", "quantity": 1, "lineTotal": 0.79 },
+    { "rawText": "LINZEN", "quantity": 1, "lineTotal": 1.15 },
+    { "rawText": "MANGO", "quantity": 1, "lineTotal": 2.49 }
+  ]
+}

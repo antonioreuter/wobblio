@@ -1,7 +1,7 @@
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
 import type { ExtractionPreparer } from './ExtractionPreparer';
 import type { InvoiceCoordinator } from './agentic/InvoiceCoordinator';
-import type { InvoiceFinalizer } from './InvoiceFinalizer';
+import type { InvoiceFinalizer, ExtractOutcome } from './InvoiceFinalizer';
 import type { IngestionOutcome } from './IngestionService';
 
 // The STRANDS pipeline (pipeline_type='STRANDS'). Same three phases as the legacy
@@ -18,11 +18,19 @@ export class AgenticIngestionService {
   ) {}
 
   async process(message: IngestionMessage): Promise<IngestionOutcome> {
-    const prepared = await this.preparer.prepare(message);
-    if (prepared.kind === 'duplicate') return { handled: false };
-    if (prepared.kind === 'unreadable') return prepared.outcome;
+    const result = await this.extract(message);
+    if (result.kind === 'duplicate') return { handled: false };
+    if (result.kind === 'unreadable') return result.outcome;
+    return this.finalizer.finalize({ message, context: result.context, ...result.extraction });
+  }
 
+  // Shared front + tool-based coordinator, stopping before finalization — the dry-run seam the
+  // evaluation harness (07) grades. process() is extract() + finalize().
+  async extract(message: IngestionMessage): Promise<ExtractOutcome> {
+    const prepared = await this.preparer.prepare(message);
+    if (prepared.kind === 'duplicate') return { kind: 'duplicate' };
+    if (prepared.kind === 'unreadable') return { kind: 'unreadable', outcome: prepared.outcome };
     const extraction = await this.coordinator.extract(prepared.receipt, prepared.location);
-    return this.finalizer.finalize({ message, context: prepared.context, ...extraction });
+    return { kind: 'ready', extraction, context: prepared.context };
   }
 }

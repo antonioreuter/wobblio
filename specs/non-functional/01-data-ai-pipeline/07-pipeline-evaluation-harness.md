@@ -40,8 +40,8 @@ average cost per invoice — for both pipelines.
 
 ## Checklist
 
-- [ ] Reusable dry-run processor extracted (from [03](./03-strands-agent-worker.md)) for both pipelines
-- [ ] `scripts/evaluate-pipelines.ts` runs fixtures through both pipelines (dry-run), collects metrics
-- [ ] `insight`-role judge with XML prompt; judge output schema-validated
-- [ ] Comparative summary table (scores, latency, cost)
-- [ ] `npm run compare:pipelines` documented; fixtures present under `invoices/fixtures/evaluation-set/`
+- [x] Reusable dry-run processor extracted — `extract()` seam on both `IngestionService` + `AgenticIngestionService`
+- [x] `src/local/evaluate-pipelines.ts` runs fixtures through both pipelines (dry-run, rolled-back tx), collects metrics
+- [x] `insight`-role judge with XML prompt; judge output schema-validated (`parsePipelineJudgeJson`, one retry)
+- [x] Comparative summary table (scores, latency, cost) — `pipelineEvalSummary.renderSummaryTable`
+- [x] `npm run compare:pipelines` documented; fixtures present under `invoices/fixtures/evaluation-set/`
