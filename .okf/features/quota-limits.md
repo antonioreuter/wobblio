@@ -17,7 +17,7 @@ Wobblio enforces strict limits on AI processing and resource consumption to prev
 To account for varying costs of different receipt layouts and language-specific OCR scans, Wobblio measures weekly quotas in **Usage Credits** instead of raw receipt counts:
 * **1 Credit = 1 LLM Token** consumed (input + output).
 * **Weekly credit caps** are computed dynamically:
-  $$\text{Weekly Credit Cap} = \text{Weekly Invoice Quota} \times \text{SSM average\_tokens\_per\_invoice (Default: 10,000)}$$
+  $$\text{Weekly Credit Cap} = \text{Weekly Invoice Quota} \times \text{SSM Average Tokens Per Invoice (Default: 10,000)}$$
 
 ### Soft-Cap-with-Hard-Block Heuristic
 * **Check at Presign:** The quota availability check is evaluated during Step 1 of the upload pipeline (`POST /invoices/presign`).
@@ -76,7 +76,7 @@ To prevent users from gaming their weekly limits by repeatedly joining and leavi
   2. **Member Uploads:** All uploads targeted at the household space debit the shared `HOUSEHOLD_CREDITS` pool, regardless of which member uploaded them.
   3. **Member Leaves:** The member's set-aside personal `CREDITS` counter resumes its previous value. Any credits spent by the member while in the household **stay in the owner's pool** (they are not returned to the leaver).
   4. **Household Dissolves:** The owner’s personal `CREDITS` is set to:
-     $$\text{CREDITS} := \text{GREATEST}(\text{CREDITS}, \text{HOUSEHOLD\_CREDITS})$$
+     $$\text{CREDITS} := \text{GREATEST}(\text{CREDITS}, \text{HOUSEHOLD-CREDITS})$$
      The cap reverts to the owner's personal tier (100,000). If this pushes the owner over their personal limit, further uploads are blocked until the weekly reset.
 
 ---

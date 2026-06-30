@@ -9,6 +9,7 @@ All updates to the Wobblio OKF knowledge bundle are recorded here chronologicall
 - Created `architecture/tech-stack.md` explaining software choices, version specs, database extensions (pgvector/pg_trgm), AI endpoints, and operations rationales.
 - Created `architecture/environments.md` detailing tech configuration, AWS LocalStack sandbox emulators, Cognito, and Stripe test/live splits for local, dev, and prod environments.
 - Created `architecture/database-schema.md` detailing the RLS-protected vs global tables schema models, field-level encryption, and GDPR de-identification boundaries.
+- Created `runbooks/testing-strategy.md` detailing test layers (Unit, Integration, E2E) and verification sequences for quota limits, household transitions, and GDPR.
 - Created `architecture/gdpr-compliance.md` detailing user consent, retention limits, asynchronous ZIP exports, and two-phase deletion rules.
 - Created `architecture/billing-integration.md` explaining Stripe web checkout, webhook ingestion, raw JSON archiving, and grace period role states.
 - Created `features/quota-limits.md` documenting the credit-based soft-cap model, RLS bypass session flags, household quotas, and membership churn guards.

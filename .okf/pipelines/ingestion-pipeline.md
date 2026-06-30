@@ -55,7 +55,7 @@ Wobblio runs two independent deduplication checks to save LLM token costs and pr
 * **Heuristic:** The worker sends the compressed image to a multimodal Bedrock model (SSM `/wobblio/config/models/vision_parser`). The prompt requires a strict JSON payload conforming to the receipt schema (raw merchant, totals, tax arrays, and itemized lines with quantities and unit prices).
 * **Edge Case (Schema Failures):** If the model's response fails JSON schema validation, the worker catches the error and retries once, echoing the validation errors back to the model. If the second attempt fails, the message is routed to the Dead Letter Queue (DLQ).
 * **Edge Case (Arithmetic Sanity Checks):** The worker calculates:
-  $$\sum(\text{line\_total}) - \text{discounts} \approx \text{invoice\_total}$$
+  $$\sum(\text{Line Total}) - \text{Discounts} \approx \text{Invoice Total}$$
   If the sum differs from the printed total by more than **€0.05** or **1%**, the invoice is flagged as `NEEDS_REVIEW` rather than rejected. This is because receipts legitimately contain deposit refunds (`STATIEGELD` in NL), merchant loyalty discounts, or roundings.
 
 ### Stage 4: Merchant Canonicalization
@@ -82,7 +82,7 @@ Wobblio runs two independent deduplication checks to save LLM token costs and pr
   - *Multipacks:* `6X33CL` is parsed as $6 \times 0.33\text{ L} = 1.98\text{ L}$.
   - *By-Weight:* Scales using the raw decimal weight printed on the receipt.
   - *Normal Calculation:*
-    $$\text{Normalized Unit Price} = \frac{\text{line\_total}}{\text{quantity} \times \text{pack\_size\_base\_units}}$$
+    $$\text{Normalized Unit Price} = \frac{\text{Line Total}}{\text{Quantity} \times \text{Pack Size Base Units}}$$
   - *Edge Case (Unparseable Sizes):* If the size cannot be parsed, the line item is kept on the user's invoice, but the worker **skips emitting a price observation**. A smaller, clean price index is favored over a large, noisy one.
 
 ### Stage 6: Invoice Classification
