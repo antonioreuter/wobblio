@@ -8,7 +8,7 @@ timestamp: 2026-06-30T23:01:00Z
 
 # GDPR Compliance & Data Lifecycle
 
-Wobblio strictly adheres to GDPR principles (such as minimization, portability, and erasure) using automated data lifecycles and architectural boundaries.
+Wobblio strictly adheres to GDPR principles (minimization, portability, and erasure) using automated S3 data lifecycles, RLS cascade purges, and de-identified index boundaries.
 
 ---
 
@@ -18,6 +18,28 @@ Wobblio strictly adheres to GDPR principles (such as minimization, portability, 
 * **Retention Schedule:**
   - **Raw Receipt Images:** Deleted automatically from the S3 uploads bucket after **18 months** via an S3 lifecycle configuration rule. This limits the exposure of raw image data while allowing historical lookups.
   - **Structured Transactions:** Parsed invoice and line-item rows are retained indefinitely in RDS to power user dashboards and reports, until account deletion is requested.
+
+### S3 Lifecycle Rules for Raw Receipts (Infrastructure Configuration)
+The `WobblioStatefulStack` configures the S3 lifecycle policy as follows:
+```json
+{
+  "Rules": [
+    {
+      "ID": "PurgeRawReceiptsAfter18Months",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "receipts/"
+      },
+      "Expiration": {
+        "Days": 548
+      },
+      "NoncurrentVersionExpiration": {
+        "NoncurrentDays": 30
+      }
+    }
+  ]
+}
+```
 
 ---
 
@@ -38,6 +60,37 @@ Users have the right to download all personal records. Since compiling invoice i
    - Converts the rows into CSV and JSON files.
    - Downloads all active receipt images owned by the tenant from S3.
    - Packs the files and images into a single ZIP archive.
+
+### SQS Job Message Contract
+```json
+{
+  "version": "1.0",
+  "action": "EXPORTER_RUN",
+  "payload": {
+    "tenantId": "f7b7b1e4-90b9-4a34-a28a-36b1d161d9a2",
+    "userId": "93a1e2f3-1811-4cb5-b461-182390a19e2f",
+    "requestId": "data_req_01j1xyzabc1234567890",
+    "countryCode": "NL",
+    "format": "ZIP_ALL"
+  }
+}
+```
+
+### Exported ZIP File Structure
+The generated ZIP file uploaded to the exports bucket includes:
+```
+/
+├── manifest.json             # Request timestamp, record counts, and schema versions
+├── profile.json              # app_user table row values (excluding credentials)
+├── invoices.csv              # List of invoices (total, dates, categories, currencies)
+├── invoice_lines.csv         # Detailed line items (raw text, quantities, prices)
+├── budgets.csv               # User budget limits and periods
+├── bill_splits.csv           # Invoice split ratios and decrypted participant names
+└── images/                   # Folder containing raw receipt captures
+    ├── receipt_a123f.jpg
+    └── receipt_b456f.jpg
+```
+
 3. **S3 Storage & Notification:**
    - The worker uploads the ZIP to `s3://wobblio-exports-{env}/{tenant_id}/{request_id}.zip`.
    - The export S3 bucket is access-logged and blocks all public read permissions.
@@ -64,7 +117,7 @@ To prevent accidental data loss or subscription recovery issues, account deletio
   - Cognito access tokens are revoked, and logins are disabled.
   - The account data is hidden from all application-facing endpoints.
   - Any active household memberships are detached.
-* **Grace Window:** The user has a **30-day grace window** to cancel the deletion by contact/support sign-in (re-enabling their account).
+* **Grace Window:** The user has a **30-day grace window** to cancel the deletion by support intervention (re-enabling their account).
 
 ### Phase 2: Hard Purge
 * A daily cron Lambda (`cron-purge-deleted-accounts`) queries for accounts whose deletion requests are older than 30 days.
@@ -73,6 +126,29 @@ To prevent accidental data loss or subscription recovery issues, account deletio
   - Deletes all associated receipt image objects from S3.
   - Purges the user identity from AWS Cognito User Pools.
   - Deletes the account profile row, leaving only a single hashed stub (user hash + timestamp) to prove the erasure occurred for compliance audits.
+
+### Tenant Cascade Deletion Flow (Database Script Execution)
+When Phase 2 executes, the cron runs the following transaction:
+```sql
+BEGIN;
+  -- Bypasses RLS to purge records
+  SET LOCAL app.bypass_rls = 'true';
+
+  -- Cascade delete deletes child invoice_line automatically
+  DELETE FROM invoice WHERE tenant_id = :target_tenant_id;
+  DELETE FROM budget WHERE tenant_id = :target_tenant_id;
+  DELETE FROM shopping_list WHERE tenant_id = :target_tenant_id;
+  DELETE FROM quota_counter WHERE tenant_id = :target_tenant_id;
+  DELETE FROM household_member WHERE user_id = :target_user_id;
+  
+  -- Delete household (deletes household_member entries and sets household_id on invoices)
+  DELETE FROM household WHERE owner_user_id = :target_user_id;
+
+  -- Delete Cognito profile via AWS SDK (handled in application layer)
+  -- Finally, delete target user
+  DELETE FROM app_user WHERE id = :target_user_id;
+COMMIT;
+```
 
 ---
 
