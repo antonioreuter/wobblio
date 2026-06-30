@@ -27,6 +27,14 @@ const fmtMs = (v: number): string => (v >= 1000 ? `${(v / 1000).toFixed(1)}s` : 
 const fmtCost = (v: number): string => `$${v.toFixed(4)}`
 const fmtPct = (v: number): string => `${(v * 100).toFixed(1)}%`
 
+const scale = (
+  chart: { xLabels: string[]; series: ChartSeries[] },
+  factor: number,
+): { xLabels: string[]; series: ChartSeries[] } => ({
+  xLabels: chart.xLabels,
+  series: chart.series.map((s) => ({ ...s, values: s.values.map((v) => v * factor) })),
+})
+
 // Self-contained 90-day legacy-vs-Strands comparison: its own kpi fetch (fixed window,
 // independent of the dashboard's week selector) over the four pipeline_type-dimensioned
 // metrics produced by the 06 rollup.
@@ -74,7 +82,9 @@ export function PipelineComparison() {
   }
 
   const latency = chart(METRIC.latency)
-  const cost = chart(METRIC.cost)
+  // Cost per invoice is sub-dollar; the chart rounds y-axis ticks to integers, so plot it in
+  // cents (×100) to keep the axis labels meaningful (a dollar axis collapses to $0.000).
+  const costCents = scale(chart(METRIC.cost), 100)
 
   return (
     <section className="flex flex-col gap-3">
@@ -97,8 +107,8 @@ export function PipelineComparison() {
           <Chart series={latency.series} xLabels={latency.xLabels} type="line" height={160} formatY={fmtMs} testid="pipeline-performance-latency" />
         </div>
         <div className="rounded-[12px] border border-line bg-card p-4">
-          <p className="mb-2 text-sm font-medium text-fg">Cost per invoice</p>
-          <Chart series={cost.series} xLabels={cost.xLabels} type="line" height={160} formatY={(v) => `$${v.toFixed(3)}`} testid="pipeline-performance-cost" />
+          <p className="mb-2 text-sm font-medium text-fg">Cost per invoice <span className="font-normal text-faint">· US¢</span></p>
+          <Chart series={costCents.series} xLabels={costCents.xLabels} type="line" height={160} formatY={(v) => `${v}¢`} testid="pipeline-performance-cost" />
         </div>
       </div>
     </section>
