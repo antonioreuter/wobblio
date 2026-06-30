@@ -371,6 +371,53 @@ export class WobblioBackendStack extends Stack {
     });
     [apiHandlerFn, ingestionWorkerFn].forEach((fn) => fn.addToRolePolicy(quotaCapSsmPolicy));
 
+    // SSM: device push platform ARNs (16f) — the ingestion-worker reads the FCM/APNs
+    // platform-application ARNs to publish terminal-status pushes. Both params enumerated
+    // (no wildcard) so cdk-nag IAM5 stays clean; a missing param simply means that platform
+    // is unconfigured and is skipped (best-effort, no delivery).
+    ingestionWorkerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+      resources: [
+        configParamArn('push/fcm_platform_arn'),
+        configParamArn('push/apns_platform_arn'),
+      ],
+    }));
+
+    // SNS: device push (16f). CreatePlatformEndpoint registers a device token against the
+    // platform app; Publish delivers to the resulting endpoint. The platform apps are created
+    // out-of-band (runbook below) so their exact ARNs aren't known at synth — scope to this
+    // account+region's platform apps + their endpoints, with a matching IAM5 suppression.
+    const snsPushResources = [
+      `arn:aws:sns:${this.region}:${this.account}:app/*`,
+      `arn:aws:sns:${this.region}:${this.account}:endpoint/*`,
+    ];
+    ingestionWorkerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['sns:CreatePlatformEndpoint', 'sns:Publish'],
+      resources: snsPushResources,
+    }));
+    NagSuppressions.addResourceSuppressions(ingestionWorkerFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'SNS platform applications + their device endpoints are created out-of-band (cannot be made via CloudFormation); their ARNs are not known at synth, so the grant is scoped to this account+region\'s app/* and endpoint/* only',
+        appliesTo: snsPushResources.map((r) => `Resource::${r}`),
+      },
+    ], true);
+
+    // ── SNS platform-application runbook (manual, 16f) ──────────────────────────────────
+    // SNS platform apps CANNOT be created via CloudFormation. Once FCM/APNs credentials land,
+    // create them once via CLI and store the returned PlatformApplicationArn in stage-scoped
+    // SSM (the two params granted above):
+    //
+    //   # Android (FCM) registers via the SNS "GCM" platform:
+    //   aws sns create-platform-application --name wobblio-<stage>-fcm \
+    //     --platform GCM --attributes PlatformCredential=<FCM_SERVER_KEY>
+    //   # iOS (APNs): APNS_SANDBOX for dev, APNS for prod:
+    //   aws sns create-platform-application --name wobblio-<stage>-apns \
+    //     --platform APNS_SANDBOX --attributes PlatformCredential=<APNS_AUTH_KEY>,PlatformPrincipal=<APNS_KEY_ID>
+    //
+    //   aws ssm put-parameter --type String --name /wobblio/config/<stage>/push/fcm_platform_arn  --value <FCM_APP_ARN>
+    //   aws ssm put-parameter --type String --name /wobblio/config/<stage>/push/apns_platform_arn --value <APNS_APP_ARN>
+
     // SSM: dynamic queue routing (Non-Functional 01/04) — api-handler reads the agentic
     // pipeline feature flag and the agentic queue URL (exported by WobblioDataAiPipelineStack)
     // at confirm time to pick the legacy vs agentic queue. Single batched GetParameters; both

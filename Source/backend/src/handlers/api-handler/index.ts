@@ -54,6 +54,8 @@ import {
   UnsupportedUploadTypeError,
 } from '@core/domain/errors';
 import type { AppUser } from '@core/ports/identity/IAppUserRepository';
+import type { PushPlatform } from '@core/ports/notifications/IDeviceTokenRepository';
+import { DeviceTokenRepositoryAdapter } from '@infrastructure/adapters/notifications/DeviceTokenRepositoryAdapter';
 import { CATEGORY_TAXONOMY } from '@core/domain/categoryTaxonomy';
 import type { PoolClient } from 'pg';
 import { REGION, json, parseJsonBody, withTenantTx, uploadQuotaAdapter } from './shared';
@@ -205,6 +207,7 @@ async function handleMeRoute(
   if (path === '/me/usage' && method === 'GET') return handleUsage(db, user);
   if (path === '/me/advisor' && method === 'GET') return handleAdvisorCard(db, user);
   if (path === '/me/stats/top-merchant' && method === 'GET') return handleTopMerchant(db, user);
+  if (path === '/me/device-token' && method === 'POST') return handleRegisterDeviceToken(db, user, event, log);
 
   if (path !== '/me/profile') {
     return json(404, { message: 'Not Found' });
@@ -239,6 +242,29 @@ async function handleMeRoute(
   }
 
   return json(405, { message: 'Method Not Allowed' });
+}
+
+// Register (or refresh) a device's FCM/APNs push token (16f). Idempotent on
+// (tenant, platform, token); the ingestion worker delivers terminal-status pushes to it.
+async function handleRegisterDeviceToken(
+  db: PoolClient,
+  user: AppUser,
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody(event.body);
+  const platform = String(body.platform ?? '');
+  const token = String(body.token ?? '');
+  if (platform !== 'FCM' && platform !== 'APNS') {
+    return json(400, { message: 'platform must be FCM or APNS' });
+  }
+  if (!token) return json(400, { message: 'token is required' });
+
+  const deviceTokenId = await withTenantTx(db, user.id, () =>
+    new DeviceTokenRepositoryAdapter(db).upsert(user.id, platform as PushPlatform, token),
+  );
+  log.info('device token registered', { userId: user.id, platform });
+  return json(200, { deviceTokenId });
 }
 
 // Reference data for onboarding and budget configuration. Regions are the
