@@ -27,6 +27,11 @@ obj/
 .serverless/
 .esbuild/
 
+# …but the CDK app entry lives in Source/infra/bin (TypeScript, not compiled output),
+# so re-include it (the bin/ rule above is for build artifacts).
+!Source/infra/bin/
+!Source/infra/bin/**
+
 # Local env files (secrets, config)
 .env
 .env.local
