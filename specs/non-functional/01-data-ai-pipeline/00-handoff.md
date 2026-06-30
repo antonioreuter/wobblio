@@ -87,8 +87,18 @@ list in `specs/mvp/14-gdpr-data-lifecycle.md`.
 
 ## 02 — Agentic Pipeline Stack ✅ (2026-06-29)
 
-Standalone `WobblioAgenticPipelineStack` isolating the agentic worker's compute + queue from
-`WobblioBackendStack`. Deployable alone; the queue gets no traffic until routing (04) flips the flag.
+> **Renamed (2026-06-30): `WobblioAgenticPipelineStack` → `WobblioDataAiPipelineStack`** — the
+> dedicated data-AI-pipeline CloudFormation stack. File/class/test/`bin` updated; resources +
+> SSM export param name unchanged. **Deploy note:** the CFN stack name changes
+> (`WobblioAgenticPipelineStack-<stage>` → `WobblioDataAiPipelineStack-<stage>`). If the old stack
+> was already deployed, deploy the new one then `cdk destroy` the old — safe because the agentic
+> queue carries **no traffic** (routing flag still off), so nothing is lost. The live legacy
+> ingestion queue/worker stay in `WobblioBackendStack` (moving them would be a destructive,
+> drain-required migration — left as a deliberate non-goal).
+
+Standalone `WobblioDataAiPipelineStack` (orig. `WobblioAgenticPipelineStack`) isolating the agentic
+worker's compute + queue from `WobblioBackendStack`. Deployable alone; the queue gets no traffic
+until routing (04) flips the flag.
 
 ### What shipped
 - **Stack** `Source/infra/src/cdk/stacks/WobblioAgenticPipelineStack.ts`:

@@ -5,7 +5,7 @@ import type { IngestionMessage } from '@core/ports/ingestion/IIngestionQueue';
 import { stageScopeConfig } from '@infrastructure/config/stageConfig';
 
 const FLAG_PARAM = stageScopeConfig('/wobblio/config/features/agentic_pipeline_enabled');
-// Written by WobblioAgenticPipelineStack at deploy; absent until that stack is deployed.
+// Written by WobblioDataAiPipelineStack at deploy; absent until that stack is deployed.
 const AGENTIC_URL_PARAM = stageScopeConfig('/wobblio/config/queues/agentic_url');
 
 // Confirm is the hot api-handler path (5s timeout, ≤25 concurrency); a per-request SSM call

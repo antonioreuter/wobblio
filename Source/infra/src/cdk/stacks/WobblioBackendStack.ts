@@ -372,7 +372,7 @@ export class WobblioBackendStack extends Stack {
     [apiHandlerFn, ingestionWorkerFn].forEach((fn) => fn.addToRolePolicy(quotaCapSsmPolicy));
 
     // SSM: dynamic queue routing (Non-Functional 01/04) — api-handler reads the agentic
-    // pipeline feature flag and the agentic queue URL (exported by WobblioAgenticPipelineStack)
+    // pipeline feature flag and the agentic queue URL (exported by WobblioDataAiPipelineStack)
     // at confirm time to pick the legacy vs agentic queue. Single batched GetParameters; both
     // enumerated (no wildcard) so cdk-nag IAM5 stays clean. Missing params fail-safe to legacy.
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({

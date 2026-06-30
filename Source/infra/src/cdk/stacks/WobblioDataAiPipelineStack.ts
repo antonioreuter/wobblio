@@ -17,18 +17,19 @@ import { WobblioDbStack } from './WobblioDbStack';
 import { WobblioStorageStack } from './WobblioStorageStack';
 import { applyWobblioTags } from '../utils/tagging';
 
-interface WobblioAgenticPipelineStackProps extends StackProps {
+interface WobblioDataAiPipelineStackProps extends StackProps {
   config: EnvironmentConfig;
   dbStack: WobblioDbStack;
   storageStack: WobblioStorageStack;
 }
 
-// Standalone agentic pipeline (Non-Functional 01 · 02): isolates the Strands worker's
-// compute + queue from WobblioBackendStack to keep its dependency surface separate.
-// Deployable on its own — the queue receives no traffic until dynamic routing (04) flips
-// the feature flag. The worker is a skeleton here; the agent logic lands in 03.
-export class WobblioAgenticPipelineStack extends Stack {
-  constructor(scope: Construct, id: string, props: WobblioAgenticPipelineStackProps) {
+// Dedicated data-AI-pipeline stack (Non-Functional 01): isolates the agentic ingestion
+// compute + queue from WobblioBackendStack so the pipeline owns its own CloudFormation
+// stack and dependency surface. The agentic queue receives no traffic until dynamic
+// routing (04) flips the feature flag — so this stack can be (re)deployed independently
+// without affecting the live legacy ingestion path in WobblioBackendStack.
+export class WobblioDataAiPipelineStack extends Stack {
+  constructor(scope: Construct, id: string, props: WobblioDataAiPipelineStackProps) {
     super(scope, id, props);
 
     const { config, dbStack, storageStack } = props;

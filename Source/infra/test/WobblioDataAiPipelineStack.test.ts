@@ -4,7 +4,7 @@ import { Template, Annotations, Match } from 'aws-cdk-lib/assertions';
 import { AwsSolutionsChecks } from 'cdk-nag';
 import { WobblioDbStack } from '../src/cdk/stacks/WobblioDbStack';
 import { WobblioStorageStack } from '../src/cdk/stacks/WobblioStorageStack';
-import { WobblioAgenticPipelineStack } from '../src/cdk/stacks/WobblioAgenticPipelineStack';
+import { WobblioDataAiPipelineStack } from '../src/cdk/stacks/WobblioDataAiPipelineStack';
 import type { EnvironmentConfig } from '../src/cdk/config/environment';
 
 const ENV = { account: '123456789012', region: 'eu-west-1' };
@@ -57,9 +57,9 @@ function expectRolePolicyAllows(
   ).toBe(true);
 }
 
-describe('WobblioAgenticPipelineStack', () => {
+describe('WobblioDataAiPipelineStack', () => {
   let template: Template;
-  let stack: WobblioAgenticPipelineStack;
+  let stack: WobblioDataAiPipelineStack;
 
   beforeAll(() => {
     // Disable NodejsFunction esbuild bundling — we assert synthesized infra only.
@@ -67,7 +67,7 @@ describe('WobblioAgenticPipelineStack', () => {
     Aspects.of(app).add(new AwsSolutionsChecks());
     const dbStack = new WobblioDbStack(app, 'DbStack', { env: ENV, config });
     const storageStack = new WobblioStorageStack(app, 'StorageStack', { env: ENV, config, dbStack });
-    stack = new WobblioAgenticPipelineStack(app, 'AgenticStack', {
+    stack = new WobblioDataAiPipelineStack(app, 'DataAiStack', {
       env: ENV,
       config,
       dbStack,
