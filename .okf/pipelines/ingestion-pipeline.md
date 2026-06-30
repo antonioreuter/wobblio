@@ -1,123 +1,126 @@
 ---
 type: Pipeline Reference
-title: Receipt Ingestion Pipeline
-description: The 10-step asynchronous SQS consumer pipeline processing receipt images into structured financial data.
-tags: [pipelines, ingestion, ai, bedrock, parsing]
-timestamp: 2026-06-23T21:54:00Z
+title: Receipt Ingestion Pipeline, Heuristics, & Edge Cases
+description: Deep-dive into Wobblio's 10-stage invoice processing pipeline, parsing heuristics, data validation, deduplication layers, and catalog anti-poisoning constraints.
+tags: [pipelines, ingestion, heuristics, data-validation, ai, deduplication]
+timestamp: 2026-06-30T22:55:00Z
 ---
 
-# Receipt Ingestion Pipeline
+# Receipt Ingestion Pipeline, Heuristics, & Edge Cases
 
-The core product path of Wobblio is driven by an asynchronous SQS consumer Lambda. It processes uploaded receipt images into structured, categorized, and de-identified financial transactions. 
+The receipt ingestion pipeline is the data processing core of Wobblio. It converts unstructured physical receipt images into clean, structured, and comparable financial records while building a crowdsourced, de-identified regional market price index.
 
-The worker implements this pipeline in the following exact order:
+---
+
+## 1. Pipeline Overview
+
+The pipeline executes as an asynchronous AWS SQS consumer. The worker processes messages in the following exact order:
 
 ```mermaid
 graph TD
-    Image[1. Image Uploaded to S3] --> Ledger[2. Ingestion Ledger Write-Through]
-    Ledger --> DupCheck[3. SHA-256 & Fingerprint Deduplication]
-    DupCheck --> Vision[4. Vision Parse - Bedrock Multimodal]
-    Vision --> Merchant[5. Merchant Canonicalization]
-    Merchant --> Product[6. Product Normalizer & Categorization]
-    Product --> Classify[7. Invoice Classification]
-    Classify --> Tags[8. AI Search Tags Assignment]
-    Tags --> DBWrites[9. Tenant-Scoped DB Writes]
-    DBWrites --> EmitObs[10. Price Observation Store Emission]
-    EmitObs --> Notify[11. Push Notification & Status Update]
+    Trigger[SQS Message Received] --> Idempotency[1. Transport Idempotency]
+    Idempotency --> DupCheck[2. Content Deduplication]
+    DupCheck --> Vision[3. AI Vision Parse]
+    Vision --> Merchant[4. Merchant Canonicalization]
+    Merchant --> Product[5. Product Normalization & Size Parse]
+    Product --> Classify[6. Invoice Classification]
+    Classify --> Tags[7. Tag Generation]
+    Tags --> DBWrites[8. RLS Database Writes]
+    DBWrites --> PriceObs[9. Price Observation Emission]
+    PriceObs --> Notify[10. Notification & Status Update]
 ```
-
-## Ingestion Steps
-
-### 1. Ingestion Ledger (Transport Idempotency)
-The worker's first step is executing:
-```sql
-INSERT INTO ingestion_ledger (s3_key, tenant_id, status, attempt_count)
-VALUES ($1, $2, 'PROCESSING', 1)
-ON CONFLICT (s3_key) DO NOTHING;
-```
-If the key already exists (due to SQS at-least-once redeliveries), the consumer short-circuits. All subsequent writes run inside the same transaction, making the worker resume cleanly after midpoint crashes.
-
-### 2. Content Deduplication
-* **SHA-256 Check (Exact Dup):** If the image's SHA-256 hash already exists under the same tenant, the upload is immediately rejected without consuming AI tokens. If a hash collision occurs *cross-tenant*, the upload is accepted (printed duplicates are possible) but flags the user accounts as a cluster for trust validation.
-* **Fuzzy Fingerprint Check:** After parsing, the fingerprint `(merchant_id, transaction_date, total, line_count)` is matched within the tenant's scope. A hit flags the invoice as `SUSPECTED_DUPLICATE`, prompting the user to confirm or discard.
-
-### 3. Vision Parse
-The image is passed to a multimodal Bedrock model (using SSM `/wobblio/config/models/vision_parser`).
-* The model must respond in a strict JSON format containing raw merchant info, total, taxes, currency, and line items.
-* If JSON validation fails, the worker retries once, echoing the validation errors back to the model. If it fails a second time, the message routes to the Dead Letter Queue (DLQ).
-
-### 4. Merchant Canonicalization
-Converts unstructured receipt headers into a single merchant identity:
-1. **Direct Identifier Match:** If a VAT or business registration number is parsed, it queries `merchant_alias.vat_id` (authoritative).
-2. **Exact Alias Match:** Checks the normalized raw string against `merchant_alias.alias_normalized`.
-3. **Fuzzy Trigram Match:** Cosine/trigram similarity via `pg_trgm` on aliases. Similarity must be $\ge 0.65$ with a $\ge 0.15$ margin over the runner-up. Confirmed matches write a new `AUTO_FUZZY` alias.
-4. **LLM Fallback:** Under `/wobblio/config/models/auxiliary` (Haiku-class), the model is prompted with the raw merchant details and 5 brand-level candidates.
-5. **Provisional Entry:** Genuinely new merchants are inserted with `status = 'PROVISIONAL'` (visible only to the contributing tenant).
-
-### 5. Product Normalization & Categorization
-Standardizes raw item description strings (e.g. `AH BIO HALFV MELK 1L` $\rightarrow$ `Albert Heijn Biologisch Halfvolle Melk 1L`):
-1. **Exact Alias Match:** Scopes match to normalized raw text per merchant (highly repeated grocery purchases match here).
-2. **Batch LLM Expansion:** Unmatched lines are batched in a single LLM call. The model expands abbreviations and extracts brands, names, categories, and unit sizes.
-3. **Embedding search:** Cosine similarity via `pgvector` HNSW indexes over product display embeddings. Accept similarity $\ge 0.92$. A similarity of $0.85\text{–}0.92$ tags the line as `LOW_CONFIDENCE`, and $< 0.85$ inserts a `PROVISIONAL` product.
-4. **Derived Unit Prices:** Computes unit prices in `KG`, `L`, or `PIECE`. Incomplete sizes are excluded from comparisons.
-
-### 6. Invoice Classification
-Assigns one macro-category to the invoice for reporting and budgets. Resolved in order:
-1. **Merchant Prior:** Default merchant category.
-2. **Line Item Vote:** Category with the highest share of spend.
-3. **LLM Tiebreak:** Auxiliary model resolves only when the prior and line votes conflict and no single category exceeds 50%.
-
-### 7. Tag Generation
-Enriches the invoice with up to 3 filtering tags:
-* Uses a deterministic check against a fixed vocabulary (`TAG_VOCABULARY`).
-* Piggybacks on the Product Expansion LLM call if the call runs, avoiding extra model costs.
-
-### 8. Tenant Database Writes
-Inserts `invoice` and `invoice_line` records within the transaction.
-
-### 9. Price Observation Emission
-Sends de-identified price facts to the `price_observation` table (RLS-exempt, no tenant identifier, day-granular dates, first 2 digits of postal code).
-
-### 10. Notification & Status Resolution
-Triggers a push notification and flips the invoice to its terminal status (e.g. `PARSED`, `NEEDS_REVIEW`, or `SUSPECTED_DUPLICATE`).
 
 ---
 
-## Invoice Status & Quality Evaluation
+## 2. Ingestion Steps, Heuristics, & Code Logic
 
-The terminal status of an invoice is determined dynamically by evaluating several parser indicators against a set of strict confidence thresholds.
+### Stage 1: Transport Idempotency
+* **Heuristic:** To prevent processing the same receipt multiple times due to SQS at-least-once delivery, the worker immediately logs the S3 file key.
+* **SQL Logic:**
+  ```sql
+  INSERT INTO ingestion_ledger (s3_key, tenant_id, status, attempt_count)
+  VALUES ($1, $2, 'PROCESSING', 1)
+  ON CONFLICT (s3_key) DO NOTHING;
+  ```
+* **Edge Case:** If the write returns a conflict (meaning the key was already registered), the container short-circuits. All subsequent pipeline writes are grouped in a single PostgreSQL transaction tied to this ledger record, enabling clean rollbacks on mid-run crashes.
 
-### 1. Confidence Thresholds
-The domain logic defines these constant thresholds:
-* **Vision Minimum (`visionMin`):** `0.7` — Minimum OCR confidence score from the Bedrock parser.
-* **Embedding Match Accept (`embeddingAccept`):** `0.92` — Match similarity cutoff to auto-adopt an existing product.
-* **Embedding Match Low (`embeddingLow`):** `0.85` — Band below which a product is considered provisional.
-* **Fuzzy Merchant Margin (`fuzzyMatchMargin`):** `0.15` — Required delta between trigram match winner and runner-up.
-* **Arithmetic Tolerance:** Total must reconcile with line items within `0.05 EUR` (`arithmeticAbsEur`) or `1%` (`arithmeticPct`).
+### Stage 2: Content Deduplication
+Wobblio runs two independent deduplication checks to save LLM token costs and protect index integrity:
+1. **Exact Duplicate (SHA-256):** The SHA-256 hash of the uploaded image bytes is checked against the tenant's existing invoices. If a match is found, the upload is rejected immediately at the API boundary, incurring zero AI costs.
+   - *Cross-Tenant Collision Edge Case:* If the same hash matches across *different* tenants, the upload is accepted (as identical printed receipts can exist). However, it flags the associated accounts as a cluster for trust auditing and voids catalog promotion quorums (§6.2).
+2. **Fuzzy Duplicate (Fingerprint Match):** After AI parsing, the worker generates a fingerprint tuple: `(merchant_id, transaction_date, total, line_count)`. It queries the tenant's historical records. If a matching tuple is found, the invoice status is marked as `SUSPECTED_DUPLICATE`.
+   - *Edge Case:* The receipt is shown on the review screen, and the user must manually confirm or discard it. Confirmed duplicates are saved but do not emit price observations and do not consume weekly quotas.
 
-### 2. Status Decision Matrix (`decideStatus`)
-The worker passes the parser results through the status decision tree:
-1. **`SUSPECTED_DUPLICATE`:** Triggered if a fuzzy fingerprint twin is found (same total, date, merchant, and line count under the tenant's scope).
-2. **`NEEDS_REVIEW`:** Triggered if:
-   * Vision parser confidence falls below `0.7`.
-   * Line totals do not reconcile mathematically with the invoice total.
-   * Any line item resolves to a low-confidence product ($0.85 \le \text{similarity} < 0.92$).
-   * The merchant resolves below threshold (meaning a new provisional merchant is created).
-3. **`PARSED`:** Triggered when all confidence and arithmetic checks pass.
+### Stage 3: AI Vision Parse (Bedrock Qwen)
+* **Heuristic:** The worker sends the compressed image to a multimodal Bedrock model (SSM `/wobblio/config/models/vision_parser`). The prompt requires a strict JSON payload conforming to the receipt schema (raw merchant, totals, tax arrays, and itemized lines with quantities and unit prices).
+* **Edge Case (Schema Failures):** If the model's response fails JSON schema validation, the worker catches the error and retries once, echoing the validation errors back to the model. If the second attempt fails, the message is routed to the Dead Letter Queue (DLQ).
+* **Edge Case (Arithmetic Sanity Checks):** The worker calculates:
+  $$\sum(\text{line\_total}) - \text{discounts} \approx \text{invoice\_total}$$
+  If the sum differs from the printed total by more than **€0.05** or **1%**, the invoice is flagged as `NEEDS_REVIEW` rather than rejected. This is because receipts legitimately contain deposit refunds (`STATIEGELD` in NL), merchant loyalty discounts, or roundings.
+
+### Stage 4: Merchant Canonicalization
+* **Heuristic:** Wobblio maps raw receipt text to a single canonical `merchant_id` (brand-level) and `branch_id` (branch-specific store details).
+* **Resolution Ladder (Cheapest first):**
+  1. *Normalization:* uppercase raw string, Unicode-fold, strip legal abbreviations (`B.V.`, `GmbH`, `LTD`), collapse whitespaces, and extract store numbers or city names (e.g. `AH 1325 EINDHOVEN` $\rightarrow$ brand alias: `AH`, store number: `1325`, city: `EINDHOVEN`).
+  2. *VAT ID Match:* If a VAT registration number was parsed, Wobblio queries `merchant_alias.vat_id`. Matches here are authoritative and short-circuit further matching.
+  3. *Exact Alias Match:* Queries the normalized brand name against the `merchant_alias` table for the user's country code.
+  4. *Fuzzy Match (pg_trgm):* Performs a trigram similarity search. A match is accepted if similarity is $\ge 0.65$ **and** there is a margin of $\ge 0.15$ over the runner-up. The matched variant is added as an `AUTO_FUZZY` alias to accelerate future matches.
+  5. *LLM Fallback:* Prompts a Haiku auxiliary model with the raw merchant details and 10 nearest fuzzy candidates. If still unresolved, it inserts a new merchant marked `status = 'PROVISIONAL'`.
+  6. *User Override:* User corrections on the review screen write a `USER_CONFIRMED` alias which outranks automatic matching on future receipts.
+
+### Stage 5: Product Normalization & Size Parse
+* **Heuristic:** Standardizes truncated receipt strings (e.g., `AH BIO HALFV MELK 1L` $\rightarrow$ `Albert Heijn Biologisch Halfvolle Melk 1L`).
+* **Resolution Steps:**
+  1. *Merchant-Scoped Alias Match:* Looks up the exact normalized raw line text within the merchant's alias map. Since supermarket item strings are highly stable, this resolves the vast majority of steady-state items.
+  2. *Batch LLM Expansion (Haiku):* All unresolved lines are passed to Haiku in **one single batch call** (saving token overhead vs. per-line calls). The model extracts the brand, clean name, variant details, pack sizes, base units, and tags deposit fees. The prompt includes the resolved merchant brand to resolve store brands (e.g., `AH` prefix is resolved as Albert Heijn's private label).
+  3. *Embedding Vector Search (Titan V2):* Embeds the expanded string and runs a `pgvector` cosine similarity search over products in the same category.
+     - Similarity $\ge 0.92$: Auto-assigns the canonical `product_id`.
+     - Similarity $0.85\text{–}0.92$: Assigns the candidate but flags the line as `LOW_CONFIDENCE` (surfaced in amber on the review screen).
+     - Similarity $< 0.85$: Creates a `PROVISIONAL` product.
+* **Unit-Price Normalization (Heuristic):**
+  The parser extracts the printed unit size and normalizes quantities to a comparable base unit (`KG`, `L`, or `PIECE`):
+  - *Multipacks:* `6X33CL` is parsed as $6 \times 0.33\text{ L} = 1.98\text{ L}$.
+  - *By-Weight:* Scales using the raw decimal weight printed on the receipt.
+  - *Normal Calculation:*
+    $$\text{Normalized Unit Price} = \frac{\text{line\_total}}{\text{quantity} \times \text{pack\_size\_base\_units}}$$
+  - *Edge Case (Unparseable Sizes):* If the size cannot be parsed, the line item is kept on the user's invoice, but the worker **skips emitting a price observation**. A smaller, clean price index is favored over a large, noisy one.
+
+### Stage 6: Invoice Classification
+* **Heuristic:** The invoice is assigned one macro-category for budgeting.
+* **Priority order:**
+  1. *Merchant Prior:* Defaults to the merchant's standard category (e.g. a Kruidvat receipt defaults to "Personal Care & Pharmacy").
+  2. *Line-Item Vote:* The category carrying the highest overall spend share on the receipt.
+  3. *LLM Tiebreak:* Triggered only if the prior and the line vote conflict, and no single category represents $>50\%$ of the spend.
+
+### Stage 7: Tag Generation
+* **Heuristic:** Assigns up to 3 filter tags (e.g. `weekly-groceries`, `bbq`, `dining-out`) from a fixed vocabulary stored in SSM.
+* **Cost Minimization Rule:** Tagging runs deterministically based on spend categories and merchant matches (e.g., $\ge 60\%$ spend in Groceries implies `weekly-groceries`). If the batch LLM expansion in Stage 5 runs, the prompt piggybacks on that call to request tag recommendations, avoiding a dedicated model call.
+
+### Stage 8: RLS Database Writes
+* **Logic:** The worker sets the PostgreSQL tenant transaction context:
+  ```sql
+  SET LOCAL app.current_tenant_id = '<uuid>';
+  ```
+  It then writes the `invoice` and `invoice_line` records inside the transaction. RLS guarantees that other users cannot access these rows.
+
+### Stage 9: Price Observation Emission
+* **Heuristic:** Emits de-identified pricing facts to the shared, RLS-exempt `price_observation` table.
+* **PII Stripping (GDPR Edge Case):**
+  To prevent re-identification, the database:
+  - Strips `invoice_id`, `tenant_id`, and `uploaded_by_user_id`.
+  - Truncates postal codes to the first 2 characters (e.g. `52` instead of `5231 BA`).
+  - Truncates times to date-only precision.
 
 ---
 
-## Feedback & Review Flywheel (User-in-the-Loop)
+## 3. Catalog Integrity & Anti-Poisoning Constraints
 
-Ingestion is designed as a continuous improvement loop, incorporating human corrections to train and stabilize catalog indexes.
+Because the price index is crowdsourced, Wobblio implements four layers of defensive heuristics to prevent malicious database pollution:
 
-### 1. The Review Screen
-If an invoice lands in `NEEDS_REVIEW` (or is marked `SUSPECTED_DUPLICATE`), it appears on the client dashboard. The user is presented with the receipt image side-by-side with the editable parsed fields:
-* Correcting a merchant or product updates/inserts a `USER_CONFIRMED` alias in the catalog tables.
-* Re-saving updates the invoice status to `PARSED` and immediately updates the associated observations in the `price_observation` store, upgrading their quality flag to `USER_CONFIRMED`.
-
-### 2. Accuracy Verdicts
-After review, users can submit an accuracy verdict:
-* **UP / DOWN:** Recorded via `RecordFeedbackService` in the `invoice_feedback` table.
-* **KPI telemetry:** The system tracks the ratio of `DOWN` verdicts as an early-warning signal for prompt regression, feeding the `kpi_daily` rollup metrics.
-
+| Defense Layer | Heuristic / Constraint | Purpose / Action |
+|---|---|---|
+| **Layer 1: Provisional Quarantine** | Automatically created merchants and products are marked as `PROVISIONAL` and are globally quarantined. | **Creators:** Can search and see these items immediately in their budgets and shopping lists.<br>**Other Users:** These items are invisible in their autocomplete searches or charts. |
+| **Layer 1a: Sybil-Resistant Quorum** | Provisional items are promoted to `ACTIVE` only after independent corroboration. | **Quorum Rules:** Must be confirmed by $\ge 3$ distinct eligible tenants, $\ge 2$ user review overrides, or manual admin approval.<br>**Eligibility:** Tenant account must be $\ge 7$ days old, have $\ge 5$ parsed receipts, and have unique device/IP hashes. Collisions void quorums. |
+| **Layer 2: Price Plausibility Bands** | Before saving a price observation, it is statistically verified. | **Action:** Prices must fall within $[\text{median} / 4, \text{median} \times 4]$ of the 90-day regional median for that product. Outliers are quarantined. Quantity caps (e.g. line quantity $\le 200$) filter out OCR scanner glitches. |
+| **Layer 3: Tenant Trust Scores** | A hidden trust score ($0\text{–}100$) is calculated nightly for every tenant. | **Action:** Scores increase with account age and review confirmations. Score decreases with quarantine violations. Users with scores $<10$ contribute quarantined observations only. |
+| **Layer 4: Velocity Limits** | Caps provisional creations per tenant per day. | **Action:** Limits tenants to $\le 10$ new merchants and $\le 60$ new products daily, bounding the blast radius of spam accounts. |
