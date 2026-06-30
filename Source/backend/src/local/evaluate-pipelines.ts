@@ -137,33 +137,48 @@ async function main(): Promise<void> {
   const embedder = new BedrockTitanEmbedderAdapter(REGION, modelIds.embedder);
   const deps: EvalDeps = { region: REGION, uploadsBucket, modelIds, converse, embedder };
 
+  // Each fixture is isolated: a Bedrock error or a judge that fails schema twice skips that
+  // fixture (already-graded results are kept and still summarised) instead of aborting the run.
   const evaluations: FixtureEvaluation[] = [];
   for (const fixture of fixtures) {
-    console.log(`\n[eval] ${fixture.name} …`);
-    const { message } = await uploadFixture(s3, uploadsBucket, fixture, tenant);
-
-    const legacy = await dryRun(pool, 'LEGACY', deps, message);
-    const agentic = await dryRun(pool, 'STRANDS', deps, message);
-    if (legacy.outcome !== 'ready' || !legacy.extraction || agentic.outcome !== 'ready' || !agentic.extraction) {
-      console.warn(`[eval] skipped ${fixture.name}: legacy=${legacy.outcome}, agentic=${agentic.outcome}`);
-      continue;
+    try {
+      const evaluation = await evaluateFixture(s3, uploadsBucket, tenant, pool, deps, converse, insightModelId, fixture);
+      if (evaluation) evaluations.push(evaluation);
+    } catch (err) {
+      console.warn(`[eval] skipped ${fixture.name}: ${err instanceof Error ? err.message : String(err)}`);
     }
-
-    const judgement = await judgePipelines(converse, insightModelId, fixture.groundTruth, legacy.extraction, agentic.extraction);
-    console.log(`[eval] ${fixture.name}: legacy ${legacy.metrics.processingMs}ms / $${legacy.metrics.costUsd.toFixed(4)}, ` +
-      `agentic ${agentic.metrics.processingMs}ms / $${agentic.metrics.costUsd.toFixed(4)}`);
-    console.log(`[eval] judge: ${judgement.analysis}`);
-
-    evaluations.push({
-      fixture: fixture.name,
-      judgement,
-      legacy: legacy.metrics,
-      agentic: agentic.metrics,
-    });
   }
 
   console.log('\n' + renderSummaryTable(summarizePipelineEval(evaluations)));
   await pool.end();
+}
+
+async function evaluateFixture(
+  s3: S3Client,
+  uploadsBucket: string,
+  tenant: string,
+  pool: Pool,
+  deps: EvalDeps,
+  converse: BedrockConverseAdapter,
+  insightModelId: string,
+  fixture: Fixture,
+): Promise<FixtureEvaluation | null> {
+  console.log(`\n[eval] ${fixture.name} …`);
+  const { message } = await uploadFixture(s3, uploadsBucket, fixture, tenant);
+
+  const legacy = await dryRun(pool, 'LEGACY', deps, message);
+  const agentic = await dryRun(pool, 'STRANDS', deps, message);
+  if (legacy.outcome !== 'ready' || !legacy.extraction || agentic.outcome !== 'ready' || !agentic.extraction) {
+    console.warn(`[eval] skipped ${fixture.name}: legacy=${legacy.outcome}, agentic=${agentic.outcome}`);
+    return null;
+  }
+
+  const judgement = await judgePipelines(converse, insightModelId, fixture.groundTruth, legacy.extraction, agentic.extraction);
+  console.log(`[eval] ${fixture.name}: legacy ${legacy.metrics.processingMs}ms / $${legacy.metrics.costUsd.toFixed(4)}, ` +
+    `agentic ${agentic.metrics.processingMs}ms / $${agentic.metrics.costUsd.toFixed(4)}`);
+  console.log(`[eval] judge: ${judgement.analysis}`);
+
+  return { fixture: fixture.name, judgement, legacy: legacy.metrics, agentic: agentic.metrics };
 }
 
 main().catch((err) => {
