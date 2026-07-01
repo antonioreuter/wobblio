@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Calendar, ImageIcon, MapPin, Share2, Shield, ShieldCheck, Tag as TagIcon, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
+import { Box, Calendar, ImageIcon, MapPin, Share2, Shield, ShieldCheck, Tag as TagIcon, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react'
 import { Badge, MerchantIcon, Tag } from '@/components/ds'
 import { eur, fmtDate, type Invoice } from './invoice-data'
 import { InvoiceLocationGate } from './invoice-location-gate'
@@ -13,6 +13,7 @@ interface InvoiceDrawerProps {
   onClose: () => void
   onRequestDelete: (inv: Invoice) => void
   onShare: (inv: Invoice) => void
+  onSplit: (inv: Invoice) => void
   onLocationConfirmed: (status: 'RESOLVED' | 'HELD_UNMAPPED') => void
 }
 
@@ -31,7 +32,7 @@ interface InvoiceDetail {
   feedbackVerdict?: 'UP' | 'DOWN' | null
 }
 
-export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onLocationConfirmed }: InvoiceDrawerProps) {
+export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSplit, onLocationConfirmed }: InvoiceDrawerProps) {
   const [viewerOpen, setViewerOpen] = useState(false)
 
   useEffect(() => {
@@ -240,6 +241,17 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onLo
           >
             <Share2 size={15} /> Share
           </button>
+          {invoice.status[1] === 'Ready' && (
+            <button
+              type="button"
+              className="btn btn--outline"
+              style={{ flex: 1 }}
+              onClick={() => onSplit(invoice)}
+              data-testid="split-open"
+            >
+              <Users size={15} /> Split bill
+            </button>
+          )}
           <button
             type="button"
             className="btn btn--outline drawer-del"

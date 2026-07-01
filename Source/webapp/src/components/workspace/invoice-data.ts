@@ -67,6 +67,20 @@ export const fmtDate = (iso: string): string => {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`
 }
 export const eur = (n: number): string => '€' + n.toFixed(2)
+
+// Mirrors the backend's WhatsApp-export money() helper (BillSplitService) so a
+// split panel showing a non-EUR invoice doesn't lie with a hardcoded € sign.
+// NOT a duplicate to consolidate with `@/lib/currency`'s formatMoney: that one is
+// Intl/locale-based (nl-NL comma-decimal, e.g. "€ 12,50") for the dashboard/reports
+// surfaces; this one intentionally matches eur()'s plain period-decimal style
+// ("€12.50") so amounts stay visually consistent within the invoice drawer, where
+// eur()/ds/Money.tsx already render that way. Pick based on which surface you're on.
+const CURRENCY_SYMBOLS: Record<string, string> = { EUR: '€', GBP: '£', USD: '$' }
+export const fmtMoney = (amount: number, currency: string | null): string => {
+  if (!currency) return amount.toFixed(2)
+  const symbol = CURRENCY_SYMBOLS[currency]
+  return symbol ? `${symbol}${amount.toFixed(2)}` : `${currency} ${amount.toFixed(2)}`
+}
 export const daysAgo = (n: number): Date => {
   const d = new Date(TODAY)
   d.setDate(d.getDate() - n)

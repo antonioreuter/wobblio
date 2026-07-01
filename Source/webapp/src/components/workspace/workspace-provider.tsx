@@ -15,6 +15,7 @@ import { type Budget } from './budget-data'
 import { InvoiceDrawer } from './invoice-drawer'
 import { ConfirmDialog } from './confirm-dialog'
 import { ShareDialog } from './share-dialog'
+import { BillSplitDialog } from './bill-split-dialog'
 import { WorkspaceToast, type ToastState, type ToastTone } from './workspace-toast'
 import { mapInvoice, type BackendInvoice } from '@/lib/invoice-map'
 import { uploadReceipt, UploadError } from '@/lib/upload-receipt'
@@ -76,6 +77,7 @@ interface WorkspaceContextValue {
   setOpenInvoice: (inv: Invoice | null) => void
   setConfirmDelete: (inv: Invoice | null) => void
   setShareTarget: (inv: Invoice | null) => void
+  setSplitTarget: (inv: Invoice | null) => void
   showToast: (msg: string, tone?: ToastTone) => void
   scanReceipt: () => void
 }
@@ -95,9 +97,11 @@ const PDF_ACCEPT = `${IMAGE_ACCEPT},application/pdf,.pdf`
 export function WorkspaceProvider({
   children,
   pdfUploadEnabled = false,
+  userRole,
 }: {
   children: ReactNode
   pdfUploadEnabled?: boolean
+  userRole?: string
 }) {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [usage, setUsage] = useState<Usage | null>(null)
@@ -108,6 +112,7 @@ export function WorkspaceProvider({
   const [openInvoice, setOpenInvoice] = useState<Invoice | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Invoice | null>(null)
   const [shareTarget, setShareTarget] = useState<Invoice | null>(null)
+  const [splitTarget, setSplitTarget] = useState<Invoice | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -236,6 +241,7 @@ export function WorkspaceProvider({
     setOpenInvoice,
     setConfirmDelete,
     setShareTarget,
+    setSplitTarget,
     showToast,
     scanReceipt,
   }
@@ -260,6 +266,7 @@ export function WorkspaceProvider({
           onClose={() => setOpenInvoice(null)}
           onRequestDelete={setConfirmDelete}
           onShare={setShareTarget}
+          onSplit={setSplitTarget}
           onLocationConfirmed={onLocationConfirmed}
         />
       )}
@@ -268,6 +275,13 @@ export function WorkspaceProvider({
           invoice={shareTarget}
           onClose={() => setShareTarget(null)}
           onCopy={copyLink}
+        />
+      )}
+      {splitTarget && (
+        <BillSplitDialog
+          invoice={splitTarget}
+          role={userRole}
+          onClose={() => setSplitTarget(null)}
         />
       )}
       {confirmDelete && (

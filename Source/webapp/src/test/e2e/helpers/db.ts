@@ -39,7 +39,51 @@ export async function deleteUser(email: string): Promise<void> {
   await pool.query(`DELETE FROM household_member WHERE household_id IN (${owned})`, [email])
   await pool.query('DELETE FROM household_member WHERE user_id IN (SELECT id FROM app_user WHERE email = $1)', [email])
   await pool.query(`DELETE FROM household WHERE id IN (${owned})`, [email])
+  // invoice.tenant_id has no ON DELETE CASCADE — any invoice seeded for this user
+  // (e.g. seedParsedInvoice) must be torn down first or the app_user delete below
+  // trips a FK violation. bill_split_line → bill_split → invoice_line/feedback →
+  // invoice is the dependency order (invoice_share/invoice_telemetry cascade).
+  const tenantInvoices = `SELECT id FROM invoice WHERE tenant_id = (SELECT id FROM app_user WHERE email = $1)`
+  await pool.query(
+    `DELETE FROM bill_split_line WHERE line_id IN (SELECT id FROM invoice_line WHERE invoice_id IN (${tenantInvoices}))`,
+    [email],
+  )
+  await pool.query(`DELETE FROM bill_split WHERE invoice_id IN (${tenantInvoices})`, [email])
+  await pool.query(`DELETE FROM invoice_feedback WHERE invoice_id IN (${tenantInvoices})`, [email])
+  await pool.query(`DELETE FROM invoice_line WHERE invoice_id IN (${tenantInvoices})`, [email])
+  await pool.query('DELETE FROM invoice WHERE tenant_id = (SELECT id FROM app_user WHERE email = $1)', [email])
   await pool.query('DELETE FROM app_user WHERE email = $1', [email])
+}
+
+// Seeds a PARSED invoice directly (skips upload + real Bedrock parsing) so E2E
+// specs can exercise post-parse features like bill splitting deterministically.
+// location_status is forced RESOLVED so InvoiceLocationGate never intercepts.
+export async function seedParsedInvoice(
+  email: string,
+  lines: { rawText: string; lineTotal: number }[],
+): Promise<{ invoiceId: string; lineIds: string[] }> {
+  const userRes = await pool.query<{ id: string }>('SELECT id FROM app_user WHERE email = $1', [email])
+  const tenantId = userRes.rows[0].id
+  const total = lines.reduce((sum, l) => sum + l.lineTotal, 0)
+  const invoiceRes = await pool.query<{ id: string }>(
+    `INSERT INTO invoice
+       (tenant_id, uploaded_by_user_id, status, transaction_date, currency, total, category_id,
+        image_s3_key, image_sha256, location_status)
+     VALUES ($1, $1, 'PARSED', CURRENT_DATE, 'EUR', $2, 'cat-groceries', $3, $4, 'RESOLVED')
+     RETURNING id`,
+    [tenantId, total, `e2e/${tenantId}.jpg`, `e2e-${tenantId}-${Date.now()}`],
+  )
+  const invoiceId = invoiceRes.rows[0].id
+  const lineIds: string[] = []
+  for (const [i, line] of lines.entries()) {
+    const lineRes = await pool.query<{ id: string }>(
+      `INSERT INTO invoice_line (invoice_id, line_index, raw_text, quantity, line_total)
+       VALUES ($1, $2, $3, 1, $4) RETURNING id`,
+      [invoiceId, i, line.rawText, line.lineTotal],
+    )
+    lineIds.push(lineRes.rows[0].id)
+  }
+  return { invoiceId, lineIds }
 }
 
 // Flip a user's role directly (the role column is never client-writable). Used to

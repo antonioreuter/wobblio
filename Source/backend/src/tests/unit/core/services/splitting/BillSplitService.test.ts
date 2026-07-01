@@ -77,6 +77,13 @@ describe('BillSplitService', () => {
     await expect(sut.assignLine('split-1', 'L1', '  ', 1)).rejects.toBeInstanceOf(InvalidSplitError);
   });
 
+  it('rejects "You" (any case) as an assignable participant — it is the implicit owner', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    await expect(sut.assignLine('split-1', 'L1', 'You', 1)).rejects.toBeInstanceOf(InvalidSplitError);
+    await expect(sut.assignLine('split-1', 'L1', ' YOU ', 1)).rejects.toBeInstanceOf(InvalidSplitError);
+    expect(splits.upsertAssignment).not.toHaveBeenCalled();
+  });
+
   it('throws BillSplitNotFoundError for an unknown split', async () => {
     splits.getMeta.mockResolvedValue(null);
     await expect(sut.assignLine('ghost', 'L1', 'Alice', 1)).rejects.toBeInstanceOf(BillSplitNotFoundError);

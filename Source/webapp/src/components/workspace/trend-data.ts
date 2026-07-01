@@ -7,3 +7,7 @@ export const SERIES_COLORS = [
 ]
 
 export const MAX_PRODUCTS = 3
+
+// Index-based rotation through the palette (3rd occurrence of this pattern —
+// reports/page.tsx has two inline uses — so it's pulled out per Rule of Three).
+export const seriesColor = (index: number): string => SERIES_COLORS[index % SERIES_COLORS.length]

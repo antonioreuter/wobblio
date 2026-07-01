@@ -40,6 +40,10 @@ export class BillSplitService {
     const meta = await this.requireMeta(splitId);
     const name = participantName?.trim() ?? '';
     if (!name) throw new InvalidSplitError('participant name is required');
+    // "You" is the synthetic implicit remainder owner computeSplitSummary always
+    // adds (billSplit.ts's default ownerLabel) — accepting it here as a real
+    // assignment would produce two distinct "You" rows in the summary.
+    if (name.toLowerCase() === 'you') throw new InvalidSplitError('"You" is reserved and cannot be assigned to');
     if (!(fraction > 0 && fraction <= 1)) throw new InvalidSplitError('fraction must be in (0, 1]');
 
     const invoice = await this.requireInvoice(meta.invoiceId);

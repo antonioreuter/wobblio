@@ -8,6 +8,7 @@ import { LeftNav, LeftNavDrawer, NavDrawerProvider } from '@/components/ui/left-
 import { TopBar } from '@/components/ui/top-bar'
 import { RlsWarningBanner } from '@/components/ui/top-bar/rls-warning-banner'
 import { WorkspaceProvider } from '@/components/workspace'
+import { deriveInitials } from '@/lib/user-initials'
 
 const SANDBOX_ENABLED = process.env.NEXT_PUBLIC_SANDBOX_MODE === 'true'
 
@@ -63,7 +64,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <LeftNav userRole={userRole} />
             <LeftNavDrawer userRole={userRole} />
             <div className="app-body">
-              <WorkspaceProvider pdfUploadEnabled={userRole !== 'STANDARD'}>
+              <WorkspaceProvider pdfUploadEnabled={userRole !== 'STANDARD'} userRole={userRole}>
                 <TopBar userInitials={userInitials} userRole={userRole} />
                 {SANDBOX_ENABLED && <RlsWarningBanner />}
                 <div className="app-canvas">{children}</div>
@@ -75,19 +76,4 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <SessionTimeoutGuard />
     </AuthSessionProvider>
   )
-}
-
-function deriveInitials(name: string, email: string): string {
-  // First letter of the first name + first letter of the last name.
-  // A single name yields just its first letter (e.g. "Antonio" → "A").
-  const words = name.trim().split(/\s+/).filter((w) => /\p{L}/u.test(w))
-  if (words.length >= 2) {
-    const first = words[0][0]
-    const last = words[words.length - 1][0]
-    return (first + last).toUpperCase()
-  }
-  if (words.length === 1) return words[0][0].toUpperCase()
-  // Fall back to the email local part when no name is available.
-  const localPart = email.split('@')[0].replace(/[^\p{L}]/gu, '')
-  return (localPart.slice(0, 2) || 'AR').toUpperCase()
 }

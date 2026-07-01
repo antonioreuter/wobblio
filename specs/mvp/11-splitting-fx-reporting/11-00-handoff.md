@@ -28,7 +28,7 @@ splitting** (greenfield), and a few **reporting drill-down endpoints** — split
 |---|---|---|---|
 | [11a](./11a-fx-pipeline.md) | ECB daily FX cron + ingestion currency harmonization | — | ✅ code complete (2026-07-01) — integration run pending local stack |
 | [11b](./11b-bill-splitting-backend.md) | Bill-split domain + endpoints + WhatsApp export (Premium) | — | ✅ code complete (2026-07-01) |
-| [11c](./11c-bill-splitting-web-ui.md) | Web bill-split panel + WhatsApp copy | 11b | ⬜ not started |
+| [11c](./11c-bill-splitting-web-ui.md) | Web bill-split panel + WhatsApp copy | 11b | ✅ code complete (2026-07-01) |
 | [11d](./11d-reporting-endpoints.md) | `/reports/*` overview + drill-down + personal price history | — | ⬜ not started |
 
 DAG: **11a · 11b → 11c · 11d** independent. Recommended order: 11a → 11b → 11c → 11d.
@@ -61,6 +61,39 @@ DAG: **11a · 11b → 11c · 11d** independent. Recommended order: 11a → 11b �
 - WhatsApp export uses the **invoice's own currency symbol** (EUR€/GBP£/USD$, else code prefix) — country-agnostic, not hardcoded €.
 - Gates green: hexagonal validator (exit 0), `test:unit` (800 pass, +18 new domain/service), `BillSplit.local.test.ts` integration (adapter CRUD + encryption round-trip under RLS), `validate:security`, `tsc --noEmit`. (Pre-existing local-stack integration failures in BillingService/DataIntelligence are unrelated env/schema drift — need full `deploy-local`.)
 - **Next:** 11c (web bill-split panel, depends on 11b) · 11d (`/reports/*` endpoints, independent).
+
+## 11c — done (2026-07-01)
+
+- Zero backend changes — 11b's contract already covered everything. New files: `bill-split-dialog.tsx`
+  (modal, mirrors `ShareDialog`; premium-gates internally with the `Crown`/`budget-upsell` pattern so
+  the entry button stays visible for STANDARD users), `use-bill-split.ts` (resolves/creates the split id,
+  refetches assignments+summary after every mutation rather than re-deriving `computeSplitSummary`'s
+  fee-pool/rounding math client-side), 5 BFF routes under `api/invoices/[id]/splits/...`.
+- **Split-id persistence (locked):** no `GET /invoices/{id}/splits` list endpoint exists in 11b, so the
+  hook caches `splitId` in `localStorage` (`wobblio:split:{invoiceId}`) and validates it on reopen before
+  falling back to POSTing a new one — avoids orphaning a fresh split every time the drawer reopens.
+  Cheapest fix that didn't require reopening 11b.
+  Entry button: `invoice-drawer.tsx` footer, gated on `invoice.status[1] === 'Ready'` (covers both
+  PARSED and NEEDS_REVIEW without needing the raw backend status on the frontend `Invoice` type).
+- **Currency:** added `fmtMoney(amount, currency)` to `invoice-data.ts` (symbol-prefix, period-decimal —
+  mirrors backend `BillSplitService`'s `money()` helper) — deliberately *not* the pre-existing
+  `formatMoney` in `src/lib/currency.ts` (Intl/locale-based, nl-NL comma-decimal), which would have
+  looked visually inconsistent against `eur()`/`ds/Money.tsx` elsewhere in the same drawer. Two
+  differently-shaped `formatMoney`-named exports already coexist in this codebase (`lib/currency.ts` and
+  the unused `ui/money/money.tsx` component) — worth consolidating some day, out of scope here.
+  `InvoiceDetail.currency` and `InvoiceDetailLine.{id,isDiscount,isDepositOrFee}` were already returned
+  by `GET /invoices/{id}` (pass-through `{...rest}` in the handler) — just untyped on the frontend
+  before now; `use-bill-split.ts` has its own local type for them rather than touching the drawer's.
+- Gates green: `tsc --noEmit`, `eslint` (new/changed files), full webapp `vitest run` (27 files / 110
+  tests), `next build`. New Playwright spec `bill-split.spec.ts` (seeds a PARSED invoice directly via a
+  new `seedParsedInvoice` DB helper — skips real Bedrock parsing, which isn't this feature's concern) run
+  green against the real local stack (Postgres + cognito-local + backend :3001 + webapp :3000). Also
+  manually clicked through the flow in a real browser against the local stack.
+- **Landmine fixed in passing:** `helpers/db.ts`'s `deleteUser` had no invoice cleanup — any E2E test
+  seeding an invoice for a user would fail teardown on the `invoice.tenant_id` FK. Extended it to cascade
+  `bill_split_line → bill_split → invoice_feedback → invoice_line → invoice` before the `app_user`
+  delete (general fix, not bill-split-specific — benefits any future E2E spec touching invoices).
+- **Next:** 11d (`/reports/*` endpoints, independent, can start any time).
 
 ## Notes / landmines
 

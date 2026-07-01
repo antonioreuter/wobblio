@@ -16,10 +16,15 @@ fee breakdown, per-participant totals, and a WhatsApp copy-to-clipboard export.
 
 ## Design
 
-- `src/components/workspace/bill-split-panel.tsx` — entry from the invoice drawer (action button / tab
-  "Split bill", visible only on parsed invoices). Participant name chips (add/remove); line list with
-  tap-to-assign to a chip + fraction stepper (1, ½, ⅓); live proportional fee breakdown + per-participant
-  summary card; **WhatsApp** button = copy-to-clipboard of the `/whatsapp` text (web variant of native share).
+- `src/components/workspace/bill-split-dialog.tsx` — entry from the invoice drawer (footer button
+  "Split bill", visible only when `invoice.status[1] === 'Ready'`, i.e. PARSED/NEEDS_REVIEW). Built as
+  a modal (mirrors `ShareDialog`), not an inline drawer panel — the drawer already scrolls a lot
+  (details, location gate, receipt toggle, line items, feedback) and the split UI needs its own room.
+  Participant name chips (add/remove); line list with tap-to-assign to a chip + fraction stepper
+  (1, ½, ⅓); live proportional fee breakdown + per-participant summary card; **WhatsApp** button =
+  copy-to-clipboard of the `/whatsapp` text (web variant of native share). No `GET /invoices/{id}/splits`
+  list endpoint exists (11b), so the split id is cached in `localStorage` per invoice to avoid minting a
+  fresh orphan split on every drawer reopen.
 - `src/components/workspace/use-bill-split.ts` — create/load split, assign/remove, fetch summary + whatsapp.
 - BFF routes under `src/app/api/invoices/[id]/splits/...` forwarding to backend via `proxyToBackend`.
 - Premium gate: for STANDARD show lock + upsell (mirror reports). `data-testid`s: `split-open`,
@@ -27,12 +32,12 @@ fee breakdown, per-participant totals, and a WhatsApp copy-to-clipboard export.
 
 ## Checklist
 
-- [ ] `bill-split-panel.tsx` + entry point in `invoice-drawer.tsx`
-- [ ] `use-bill-split.ts` hook
-- [ ] BFF routes `/api/invoices/[id]/splits/*`
-- [ ] Premium gate + upsell
-- [ ] Copy-to-clipboard WhatsApp export
-- [ ] Playwright happy path: create split → add participants → assign lines → summary reconciles → copy export
+- [x] `bill-split-dialog.tsx` (modal, not inline panel — see handoff) + entry point in `invoice-drawer.tsx`
+- [x] `use-bill-split.ts` hook
+- [x] BFF routes `/api/invoices/[id]/splits/*`
+- [x] Premium gate + upsell
+- [x] Copy-to-clipboard WhatsApp export
+- [x] Playwright happy path: create split → add participants → assign lines → summary reconciles → copy export
 
 ## Verify
 
