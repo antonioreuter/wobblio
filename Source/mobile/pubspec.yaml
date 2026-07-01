@@ -23,6 +23,8 @@ dependencies:
   flutter_image_compress: ^2.3.0   # EXIF-strip + ≤1MB JPEG re-encode (keepExif:false) (16c)
   file_picker: ^8.1.4              # PDF document pick — multipage path (16c)
   crypto: ^3.0.5                   # SHA-256 dedup key over the final upload bytes (16c)
+  google_fonts: ^8.1.0              # Outfit + Inter, matching the webapp's Google Fonts CDN load (17a)
+  lucide_icons: ^0.257.0            # Lucide glyph set, matching the webapp's icon language (17a)
 
 dev_dependencies:
   flutter_test:

@@ -1,57 +1,48 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-/// Obsidian-Aurora color tokens, ported from the webapp design system
-/// (`Source/webapp/src/styles/ds/tokens/colors.css`, dark `:root`). Dark is the
-/// default; the light "Solar" theme is deferred to a later slice.
-class AppColors {
-  const AppColors._();
+import 'package:wobblio/ui/design_system/tokens.dart';
 
-  static const Color background = Color(0xFF161A24); // --bg-color
-  static const Color surface = Color(0xFF0F121B); // glass base, opaque
-  static const Color textPrimary = Color(0xFFF8FAFC); // --text-primary
-  static const Color textSecondary = Color(0xFF94A3B8); // --text-secondary
-  static const Color textMuted = Color(0xFF64748B); // --text-muted
+/// Re-exports the design-system color tokens under the name existing screens
+/// already import (`AppColors`), so `17a` can land without touching every
+/// screen at once — `17b`–`17e` migrate call sites to the richer widget set.
+export 'package:wobblio/ui/design_system/tokens.dart' show AppColors;
 
-  static const Color brand = Color(0xFF6366F1); // Electric Indigo
-  static const Color brandHover = Color(0xFF4F46E5);
-  static const Color success = Color(0xFF0D9488); // Aurora Teal
-  static const Color warning = Color(0xFFF59E0B); // Warm Amber
-  static const Color danger = Color(0xFFF43F5E); // Sunset Coral
-}
-
-/// Builds the dark [ThemeData] used app-wide. Money figures use tabular
-/// figures so columns of currency align (a hard webapp rule).
+/// Builds the dark [ThemeData] used app-wide, sourced from the Obsidian Aurora
+/// tokens ported in `ui/design_system/tokens.dart`. Outfit (display) + Inter
+/// (body) load via `google_fonts`, matching the webapp's Google Fonts CDN load.
 class AppTheme {
   const AppTheme._();
 
   static ThemeData get dark {
     const scheme = ColorScheme.dark(
       primary: AppColors.brand,
-      onPrimary: AppColors.textPrimary,
+      onPrimary: Colors.white,
       secondary: AppColors.success,
       surface: AppColors.surface,
       onSurface: AppColors.textPrimary,
       error: AppColors.danger,
     );
 
+    final base = GoogleFonts.interTextTheme(ThemeData(brightness: Brightness.dark).textTheme);
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: scheme,
       scaffoldBackgroundColor: AppColors.background,
-      textTheme: _textTheme,
+      textTheme: base.copyWith(
+        bodyLarge: base.bodyLarge?.copyWith(color: AppColors.textPrimary),
+        bodyMedium: base.bodyMedium?.copyWith(color: AppColors.textSecondary),
+        labelSmall: base.labelSmall?.copyWith(color: AppColors.textMuted),
+      ),
     );
   }
 
-  static const TextTheme _textTheme = TextTheme(
-    bodyLarge: TextStyle(color: AppColors.textPrimary),
-    bodyMedium: TextStyle(color: AppColors.textSecondary),
-    labelSmall: TextStyle(color: AppColors.textMuted),
-  );
-
-  /// Text style for monetary amounts: tabular figures keep digits aligned.
-  static const TextStyle money = TextStyle(
-    color: AppColors.textPrimary,
-    fontFeatures: [FontFeature.tabularFigures()],
-  );
+  /// Text style for monetary amounts: Outfit display face, tabular figures so
+  /// columns of currency align (a hard webapp rule). Existing screens
+  /// (pre-`17b`–`17e`) use this as a plain style; call [AppTypography.display]
+  /// directly wherever a custom size/color is needed.
+  static TextStyle get money =>
+      AppTypography.display(size: AppTypography.textMd, weight: FontWeight.w700, tabularNumbers: true);
 }
