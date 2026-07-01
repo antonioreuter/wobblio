@@ -1,0 +1,382 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "Workspace.jsx",
+              "components/brand/**",
+              "components/core/**",
+              "components/data/**",
+              "components/forms/**",
+              "kit-icons.jsx",
+              "kit-login.jsx",
+              "kit-workspace.jsx",
+              "ui_kits/web/**"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Inter|Outfit))/i]",
+        "message": "Font not provided by the design system. Available: Inter, Outfit."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Avatar'] > JSXAttribute > JSXIdentifier[name!=/^(?:initials|size|key|ref|className|style|children)$/]",
+        "message": "<Avatar> doesn't accept that prop. Declared props: initials, size."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Badge'] > JSXAttribute > JSXIdentifier[name!=/^(?:tone|children|key|ref|className|style|children)$/]",
+        "message": "<Badge> doesn't accept that prop. Declared props: tone, children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Badge'] > JSXAttribute[name.name='tone'] > Literal[value!=/^(?:primary|success|warning|danger)$/]",
+        "message": "<Badge> tone must be one of 'primary' | 'success' | 'warning' | 'danger'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute > JSXIdentifier[name!=/^(?:variant|size|iconLeft|iconRight|children|key|ref|className|style|children)$/]",
+        "message": "<Button> doesn't accept that prop. Declared props: variant, size, iconLeft, iconRight, children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='variant'] > Literal[value!=/^(?:primary|outline|text)$/]",
+        "message": "<Button> variant must be one of 'primary' | 'outline' | 'text'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Button'] > JSXAttribute[name.name='size'] > Literal[value!=/^(?:md|lg)$/]",
+        "message": "<Button> size must be one of 'md' | 'lg'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Card'] > JSXAttribute > JSXIdentifier[name!=/^(?:interactive|children|key|ref|className|style|children)$/]",
+        "message": "<Card> doesn't accept that prop. Declared props: interactive, children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Checkbox'] > JSXAttribute > JSXIdentifier[name!=/^(?:checked|defaultChecked|onChange|label|id|disabled|key|ref|className|style|children)$/]",
+        "message": "<Checkbox> doesn't accept that prop. Declared props: checked, defaultChecked, onChange, label, id, disabled."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Input'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|icon|flagged|key|ref|className|style|children)$/]",
+        "message": "<Input> doesn't accept that prop. Declared props: label, icon, flagged."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='MerchantIcon'] > JSXAttribute > JSXIdentifier[name!=/^(?:merchant|size|key|ref|className|style|children)$/]",
+        "message": "<MerchantIcon> doesn't accept that prop. Declared props: merchant, size."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='MetricCard'] > JSXAttribute > JSXIdentifier[name!=/^(?:label|value|delta|tone|key|ref|className|style|children)$/]",
+        "message": "<MetricCard> doesn't accept that prop. Declared props: label, value, delta, tone."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='MetricCard'] > JSXAttribute[name.name='tone'] > Literal[value!=/^(?:neutral|success|warning|danger)$/]",
+        "message": "<MetricCard> tone must be one of 'neutral' | 'success' | 'warning' | 'danger'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ProgressBar'] > JSXAttribute > JSXIdentifier[name!=/^(?:value|tone|showThreshold|key|ref|className|style|children)$/]",
+        "message": "<ProgressBar> doesn't accept that prop. Declared props: value, tone, showThreshold."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ProgressBar'] > JSXAttribute[name.name='tone'] > Literal[value!=/^(?:success|warning|danger)$/]",
+        "message": "<ProgressBar> tone must be one of 'success' | 'warning' | 'danger'."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Switch'] > JSXAttribute > JSXIdentifier[name!=/^(?:checked|defaultChecked|onChange|disabled|id|key|ref|className|style|children)$/]",
+        "message": "<Switch> doesn't accept that prop. Declared props: checked, defaultChecked, onChange, disabled, id."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Tag'] > JSXAttribute > JSXIdentifier[name!=/^(?:removable|onRemove|children|key|ref|className|style|children)$/]",
+        "message": "<Tag> doesn't accept that prop. Declared props: removable, onRemove, children."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='WobblioLogo'] > JSXAttribute > JSXIdentifier[name!=/^(?:size|withWordmark|style|key|ref|className|style|children)$/]",
+        "message": "<WobblioLogo> doesn't accept that prop. Declared props: size, withWordmark, style."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {
+      "Avatar": {
+        "replaces": []
+      },
+      "Badge": {
+        "replaces": []
+      },
+      "Button": {
+        "replaces": []
+      },
+      "Card": {
+        "replaces": []
+      },
+      "Checkbox": {
+        "replaces": []
+      },
+      "Input": {
+        "replaces": []
+      },
+      "MerchantIcon": {
+        "replaces": []
+      },
+      "MetricCard": {
+        "replaces": []
+      },
+      "ProgressBar": {
+        "replaces": []
+      },
+      "Switch": {
+        "replaces": []
+      },
+      "Tag": {
+        "replaces": []
+      },
+      "WobblioLogo": {
+        "replaces": []
+      }
+    },
+    "tokens": [
+      "--amber-500",
+      "--amber-600",
+      "--app-max",
+      "--bg-color",
+      "--blob-gradient-1",
+      "--blob-gradient-2",
+      "--blob-gradient-3",
+      "--blur-glass",
+      "--blur-nav",
+      "--blur-overlay",
+      "--brand",
+      "--brand-glow",
+      "--brand-hover",
+      "--card-shadow",
+      "--container-max",
+      "--container-wide",
+      "--control-height",
+      "--control-height-sm",
+      "--danger",
+      "--danger-glow",
+      "--ease-out",
+      "--font-body",
+      "--font-display",
+      "--font-mono",
+      "--glass-bg",
+      "--glass-border",
+      "--glass-highlight",
+      "--glass-hover-border",
+      "--gradient-avatar",
+      "--gradient-brand",
+      "--gradient-heading",
+      "--icon-button",
+      "--indigo-500",
+      "--indigo-600",
+      "--indigo-700",
+      "--ink-900",
+      "--leading-body",
+      "--leading-snug",
+      "--leading-tight",
+      "--merchant-ah",
+      "--merchant-cantinho",
+      "--merchant-dirk",
+      "--merchant-jumbo",
+      "--merchant-lidl",
+      "--merchant-tokomania",
+      "--nav-bg",
+      "--radius-2xl",
+      "--radius-lg",
+      "--radius-md",
+      "--radius-pill",
+      "--radius-sm",
+      "--radius-xl",
+      "--rail-width",
+      "--rose-500",
+      "--rose-600",
+      "--shadow-brand-glow",
+      "--shadow-drawer",
+      "--slate-300",
+      "--slate-400",
+      "--slate-500",
+      "--solar-100",
+      "--space-1",
+      "--space-10",
+      "--space-12",
+      "--space-16",
+      "--space-2",
+      "--space-20",
+      "--space-3",
+      "--space-4",
+      "--space-5",
+      "--space-6",
+      "--space-8",
+      "--space-900",
+      "--space-950",
+      "--success",
+      "--success-glow",
+      "--teal-600",
+      "--text-2xl",
+      "--text-2xs",
+      "--text-3xl",
+      "--text-4xl",
+      "--text-hero",
+      "--text-lg",
+      "--text-md",
+      "--text-muted",
+      "--text-primary",
+      "--text-secondary",
+      "--text-sm",
+      "--text-xl",
+      "--text-xs",
+      "--tracking-hero",
+      "--tracking-tight",
+      "--tracking-wide",
+      "--transition-fast",
+      "--transition-glass",
+      "--warning",
+      "--warning-glow",
+      "--weight-black",
+      "--weight-bold",
+      "--weight-medium",
+      "--weight-regular",
+      "--weight-semibold",
+      "--white-50"
+    ],
+    "tokenKinds": {
+      "--indigo-500": "color",
+      "--indigo-600": "color",
+      "--indigo-700": "color",
+      "--teal-600": "color",
+      "--amber-500": "color",
+      "--amber-600": "color",
+      "--rose-500": "color",
+      "--rose-600": "color",
+      "--space-950": "spacing",
+      "--space-900": "spacing",
+      "--ink-900": "color",
+      "--slate-500": "color",
+      "--slate-400": "color",
+      "--slate-300": "color",
+      "--white-50": "color",
+      "--solar-100": "color",
+      "--merchant-ah": "color",
+      "--merchant-jumbo": "color",
+      "--merchant-dirk": "color",
+      "--merchant-lidl": "color",
+      "--merchant-tokomania": "color",
+      "--merchant-cantinho": "color",
+      "--bg-color": "color",
+      "--glass-bg": "color",
+      "--glass-border": "color",
+      "--glass-hover-border": "color",
+      "--glass-highlight": "color",
+      "--nav-bg": "color",
+      "--text-primary": "font",
+      "--text-secondary": "font",
+      "--text-muted": "font",
+      "--brand": "color",
+      "--brand-glow": "color",
+      "--brand-hover": "color",
+      "--success": "color",
+      "--success-glow": "color",
+      "--warning": "color",
+      "--warning-glow": "color",
+      "--danger": "color",
+      "--danger-glow": "color",
+      "--font-display": "font",
+      "--font-body": "font",
+      "--font-mono": "font",
+      "--text-2xs": "font",
+      "--text-xs": "font",
+      "--text-sm": "font",
+      "--text-md": "font",
+      "--text-lg": "font",
+      "--text-xl": "font",
+      "--text-2xl": "font",
+      "--text-3xl": "font",
+      "--text-4xl": "font",
+      "--text-hero": "font",
+      "--weight-regular": "font",
+      "--weight-medium": "font",
+      "--weight-semibold": "font",
+      "--weight-bold": "font",
+      "--weight-black": "font",
+      "--leading-tight": "font",
+      "--leading-snug": "font",
+      "--leading-body": "font",
+      "--tracking-tight": "font",
+      "--tracking-hero": "font",
+      "--tracking-wide": "font",
+      "--space-1": "spacing",
+      "--space-2": "spacing",
+      "--space-3": "spacing",
+      "--space-4": "spacing",
+      "--space-5": "spacing",
+      "--space-6": "spacing",
+      "--space-8": "spacing",
+      "--space-10": "spacing",
+      "--space-12": "spacing",
+      "--space-16": "spacing",
+      "--space-20": "spacing",
+      "--radius-sm": "radius",
+      "--radius-md": "radius",
+      "--radius-lg": "radius",
+      "--radius-xl": "radius",
+      "--radius-2xl": "radius",
+      "--radius-pill": "radius",
+      "--control-height": "spacing",
+      "--control-height-sm": "spacing",
+      "--icon-button": "spacing",
+      "--container-max": "spacing",
+      "--container-wide": "spacing",
+      "--app-max": "spacing",
+      "--rail-width": "spacing",
+      "--card-shadow": "shadow",
+      "--shadow-brand-glow": "shadow",
+      "--shadow-drawer": "shadow",
+      "--blur-glass": "other",
+      "--blur-nav": "other",
+      "--blur-overlay": "other",
+      "--blob-gradient-1": "other",
+      "--blob-gradient-2": "other",
+      "--blob-gradient-3": "other",
+      "--gradient-brand": "other",
+      "--gradient-avatar": "other",
+      "--gradient-heading": "other",
+      "--ease-out": "other",
+      "--transition-fast": "other",
+      "--transition-glass": "other"
+    },
+    "fontFamilies": [
+      "Inter",
+      "Outfit"
+    ]
+  }
+}

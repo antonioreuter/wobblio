@@ -1,0 +1,7 @@
+/* ==========================================================================
+   Wobblio · Webfonts
+   Type pairing: Outfit (display) + Inter (body). Loaded from Google Fonts.
+   NOTE: substituted from CDN — the source project linked these same Google
+   families. Swap for self-hosted .woff2 if you need fully offline assets.
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');

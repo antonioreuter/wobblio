@@ -1,0 +1,38 @@
+/* ==========================================================================
+   Wobblio · Effects — glass, shadow, blur, aurora gradients, motion
+   ========================================================================== */
+:root {
+  /* Elevation */
+  --card-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.5),
+                 0 0 1px 1px rgba(255, 255, 255, 0.05) inset;
+  --shadow-brand-glow: 0 10px 30px -10px var(--brand-glow);
+  --shadow-drawer: -10px 0 40px rgba(0, 0, 0, 0.4);
+
+  /* Glass blur */
+  --blur-glass: blur(20px) saturate(160%); /* @kind other */
+  --blur-nav:   blur(16px); /* @kind other */
+  --blur-overlay: blur(8px); /* @kind other */
+
+  /* Aurora background blobs (dark) */
+  --blob-gradient-1: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 65%); /* @kind other */
+  --blob-gradient-2: radial-gradient(circle, rgba(13, 148, 136, 0.12) 0%, transparent 65%); /* @kind other */
+  --blob-gradient-3: radial-gradient(circle, rgba(244, 63, 94, 0.08) 0%, transparent 65%); /* @kind other */
+
+  /* Brand gradients */
+  --gradient-brand: linear-gradient(90deg, #6366f1 0%, #0d9488 100%); /* @kind other */
+  --gradient-avatar: linear-gradient(135deg, var(--brand) 0%, var(--brand-hover) 100%); /* @kind other */
+  --gradient-heading: linear-gradient(135deg, var(--text-primary) 30%, var(--brand) 100%); /* @kind other */
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.25, 0.8, 0.25, 1); /* @kind other */
+  --transition-fast: 0.2s ease; /* @kind other */
+  --transition-glass: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s var(--ease-out); /* @kind other */
+}
+
+[data-theme="light"] {
+  --card-shadow: 0 18px 40px -14px rgba(15, 23, 42, 0.16),
+                 0 0 0 1px rgba(15, 23, 42, 0.03) inset;
+  --blob-gradient-1: radial-gradient(circle, rgba(99, 102, 241, 0.18) 0%, transparent 65%); /* @kind other */
+  --blob-gradient-2: radial-gradient(circle, rgba(13, 148, 136, 0.16) 0%, transparent 65%); /* @kind other */
+  --blob-gradient-3: radial-gradient(circle, rgba(244, 63, 94, 0.12) 0%, transparent 65%); /* @kind other */
+}
