@@ -7,6 +7,8 @@ function isPublic(pathname: string): boolean {
   return (
     PUBLIC_PATHS.has(pathname) ||
     pathname.startsWith('/r/') ||
+    pathname.startsWith('/shared-lists/') ||
+    pathname.startsWith('/api/shared-lists/') ||
     pathname.startsWith('/api/auth') ||
     pathname.startsWith('/api/waitlist') ||
     pathname.startsWith('/_next') ||

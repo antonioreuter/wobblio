@@ -187,6 +187,13 @@ export function macroCategoryId(id: string): string {
   return PARENT_BY_ID.get(id) ?? id;
 }
 
+// The macro id itself plus every leaf under it — the set a "products in this
+// macro" filter (e.g. shopping-list category lock, §10b) must match against,
+// since a product can be tagged with either the macro or one of its leaves.
+export function categoryIdsUnderMacro(macroId: string): string[] {
+  return [macroId, ...CATEGORY_TAXONOMY.filter(c => c.parentId === macroId).map(c => c.id)];
+}
+
 // Deterministic structural buckets: a deposit/discount line's displayed category must
 // not depend on the LLM's guess. Map to the matching per-macro leaf, falling back to
 // the cat-other leaf when the line's macro can't be resolved to a real bucket.

@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Crown, Route, Store } from 'lucide-react'
-import { Badge, Button, Card, Money } from '@/components/ds'
+import { Crown, Route, Store, X } from 'lucide-react'
+import { Avatar, Badge, Button, Card, Money } from '@/components/ds'
 import { useWorkspace } from './workspace-provider'
 import {
   canOptimize,
@@ -11,6 +11,7 @@ import {
   type Confidence,
   type OptimizationResult,
   type StoreLine,
+  type StoreSubList,
 } from './list-data'
 
 interface ListOptimizerPanelProps {
@@ -31,13 +32,20 @@ const daysOld = (iso: string | null): number | null => {
   return Math.max(0, Math.floor(ms / 86_400_000))
 }
 
+const storeInitials = (name: string): string =>
+  name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?'
+
 // §6.5.3 split-route optimizer surface. Premium-gated (mirrors the budgets upsell).
 // Renders the store-grouped result with honest per-line confidence and staleness,
-// and lists items the optimizer couldn't price.
+// a removable store-chip row (mirrors the bill-split "People" chips), and lists
+// items the optimizer couldn't price.
 export function ListOptimizerPanel({ listId, role, itemCount }: ListOptimizerPanelProps) {
   const { showToast } = useWorkspace()
   const [result, setResult] = useState<OptimizationResult | null>(null)
   const [running, setRunning] = useState(false)
+  // Session-local, one-off exclusions (§10c) — reset when the panel remounts
+  // (i.e. the shopper reopens the list), never persisted server-side.
+  const [excludedMerchantIds, setExcludedMerchantIds] = useState<string[]>([])
 
   if (!canOptimize(role)) {
     return (
@@ -52,10 +60,10 @@ export function ListOptimizerPanel({ listId, role, itemCount }: ListOptimizerPan
     )
   }
 
-  const run = async () => {
+  const run = async (excluded: string[]) => {
     setRunning(true)
     try {
-      setResult(await optimizeList(listId))
+      setResult(await optimizeList(listId, excluded))
     } catch {
       showToast('Couldn’t optimize this list — please try again.', 'danger')
     } finally {
@@ -63,13 +71,22 @@ export function ListOptimizerPanel({ listId, role, itemCount }: ListOptimizerPan
     }
   }
 
+  const removeStore = (merchantId: string) => {
+    const next = [...excludedMerchantIds, merchantId]
+    setExcludedMerchantIds(next)
+    void run(next)
+  }
+
   return (
     <Card className="panel" data-testid="optimizer-panel">
       <div className="panel-header">
-        <span className="panel-title">Split-route optimizer</span>
+        <span className="panel-title">
+          Split-route optimizer
+          {result && <Badge tone="primary" className="premium-pill">Premium</Badge>}
+        </span>
         <Button
           iconLeft={<Route size={15} />}
-          onClick={run}
+          onClick={() => run(excludedMerchantIds)}
           disabled={running || itemCount === 0}
           data-testid="optimizer-run"
         >
@@ -84,15 +101,46 @@ export function ListOptimizerPanel({ listId, role, itemCount }: ListOptimizerPan
             : 'Find the cheapest split across nearby stores. Every scan makes it smarter.'}
         </p>
       ) : (
-        <OptimizerResult result={result} />
+        <OptimizerResult result={result} onRemoveStore={removeStore} />
       )}
     </Card>
   )
 }
 
-function OptimizerResult({ result }: { result: OptimizationResult }) {
+function OptimizerResult({
+  result,
+  onRemoveStore,
+}: {
+  result: OptimizationResult
+  onRemoveStore: (merchantId: string) => void
+}) {
+  const removable = result.stores.length > 1
+  const total = result.stores.reduce((sum, s) => sum + s.subtotal, 0)
+
   return (
     <div className="optimizer-result" data-testid="optimizer-result">
+      {result.stores.length > 0 && (
+        <div className="store-chip-row" data-testid="optimizer-store-chips">
+          {result.stores.map((store) => (
+            <div className="store-chip" key={store.merchantId} data-testid="optimizer-store-chip">
+              <Avatar initials={storeInitials(store.name)} size={26} />
+              <span className="store-chip-name">{store.name}</span>
+              {removable && (
+                <button
+                  type="button"
+                  className="store-chip-remove"
+                  aria-label={`Remove ${store.name} from this route`}
+                  onClick={() => onRemoveStore(store.merchantId)}
+                  data-testid="optimizer-store-chip-remove"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {result.optimized ? (
         <p className="optimizer-headline">
           Save <Money amount={result.totalExpectedSaving} className="optimizer-save" /> across{' '}
@@ -106,22 +154,14 @@ function OptimizerResult({ result }: { result: OptimizationResult }) {
             : `One store is cheapest right now${result.reason ? ` — ${result.reason}.` : '.'}`}
         </p>
       )}
+      {result.stores.length > 0 && (
+        <p className="optimizer-progress tabular">
+          <Money amount={total} /> grouped across {result.stores.length} {result.stores.length === 1 ? 'store' : 'stores'}
+        </p>
+      )}
 
       {result.stores.map((store) => (
-        <div className="store-block" key={store.merchantId} data-testid="optimizer-store">
-          <div className="store-head">
-            <span className="store-name">
-              <Store size={14} /> {store.name}
-              {store.isPrimary && <span className="store-primary">primary</span>}
-            </span>
-            <span className="store-subtotal tabular"><Money amount={store.subtotal} /></span>
-          </div>
-          <div className="store-lines">
-            {store.lines.map((line) => (
-              <StoreLineRow key={line.productId} line={line} />
-            ))}
-          </div>
-        </div>
+        <StoreBlock key={store.merchantId} store={store} />
       ))}
 
       {result.unresolvedItems.length > 0 && (
@@ -138,20 +178,44 @@ function OptimizerResult({ result }: { result: OptimizationResult }) {
   )
 }
 
+function StoreBlock({ store }: { store: StoreSubList }) {
+  return (
+    <div className="store-block" data-testid="optimizer-store">
+      <div className="store-head">
+        <span className="store-name">
+          <Store size={14} /> {store.name}
+          {store.isPrimary && <span className="store-primary">primary</span>}
+        </span>
+        <span className="store-subtotal tabular"><Money amount={store.subtotal} /></span>
+      </div>
+      <div className="store-lines">
+        {store.lines.map((line) => (
+          <StoreLineRow key={line.productId} line={line} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function StoreLineRow({ line }: { line: StoreLine }) {
   const conf = CONFIDENCE[line.confidence]
   const age = daysOld(line.lastObservedOn)
   const stale = age !== null && age > STALE_OBSERVATION_DAYS
   return (
     <div className={`store-line ${stale ? 'store-line--stale' : ''}`} data-testid="optimizer-line">
-      <span className="store-line-name">{line.displayName}</span>
+      <span className="store-line-name">
+        {line.displayName}
+        {line.quantity > 1 && (
+          <span className="store-line-qty tabular"> ×{line.quantity} @ <Money amount={line.expectedPrice} /></span>
+        )}
+      </span>
       <span className="store-line-meta">
         <Badge tone={conf.tone} className="store-line-conf">{conf.label}</Badge>
         {age !== null && (
           <span className="store-line-age">{stale ? `${age}d old` : `${age}d`}</span>
         )}
       </span>
-      <span className="store-line-price tabular"><Money amount={line.expectedPrice} /></span>
+      <span className="store-line-price tabular"><Money amount={line.lineTotal} /></span>
     </div>
   )
 }

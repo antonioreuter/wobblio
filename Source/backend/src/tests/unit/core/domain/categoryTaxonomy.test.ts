@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  categoryIdsUnderMacro,
   categoryNameFor,
   depositCategoryFor,
   discountCategoryFor,
@@ -31,5 +32,17 @@ describe('categoryTaxonomy structural buckets', () => {
     expect(categoryNameFor('cat-personal-care')).toBe('Personal Care & Pharmacy');
     expect(categoryNameFor('not-a-category')).toBeNull();
     expect(categoryNameFor(null)).toBeNull();
+  });
+
+  it('collects a macro id plus every leaf under it', () => {
+    const ids = categoryIdsUnderMacro('cat-personal-care');
+    expect(ids).toContain('cat-personal-care');
+    expect(ids).toContain('cat-pharmacy');
+    expect(ids).toContain('cat-skincare');
+    expect(ids).not.toContain('cat-groceries');
+  });
+
+  it('returns just the id itself for a macro with no leaves', () => {
+    expect(categoryIdsUnderMacro('not-a-category')).toEqual(['not-a-category']);
   });
 });

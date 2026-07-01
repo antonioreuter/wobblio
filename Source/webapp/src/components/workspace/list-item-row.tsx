@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Tag, Trash2 } from 'lucide-react'
+import { Check, Minus, Plus, Tag, Trash2 } from 'lucide-react'
 import type { ListItem } from './list-data'
 
 interface ListItemRowProps {
@@ -9,12 +9,13 @@ interface ListItemRowProps {
   onToggle: (checked: boolean) => void
   onEdit: (freeText: string) => void
   onRemove: () => void
+  onQuantityChange: (quantity: number) => void
 }
 
 // One shopping-list line: a checkbox (optimistic toggle handled by the parent),
 // the item text (click to rename), a catalog badge when resolved to a product,
 // and a remove action.
-export function ListItemRow({ item, onToggle, onEdit, onRemove }: ListItemRowProps) {
+export function ListItemRow({ item, onToggle, onEdit, onRemove, onQuantityChange }: ListItemRowProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(item.freeText)
 
@@ -68,6 +69,27 @@ export function ListItemRow({ item, onToggle, onEdit, onRemove }: ListItemRowPro
           <Tag size={11} /> catalog
         </span>
       )}
+
+      <div className="qty-stepper qty-stepper--sm" data-testid="list-item-quantity">
+        <button
+          type="button"
+          className="qty-stepper-btn"
+          disabled={item.quantity <= 1}
+          onClick={() => onQuantityChange(item.quantity - 1)}
+          aria-label={`Decrease quantity of ${item.freeText}`}
+        >
+          <Minus size={11} />
+        </button>
+        <span className="qty-stepper-value tabular">{item.quantity}</span>
+        <button
+          type="button"
+          className="qty-stepper-btn"
+          onClick={() => onQuantityChange(item.quantity + 1)}
+          aria-label={`Increase quantity of ${item.freeText}`}
+        >
+          <Plus size={11} />
+        </button>
+      </div>
 
       <button
         type="button"

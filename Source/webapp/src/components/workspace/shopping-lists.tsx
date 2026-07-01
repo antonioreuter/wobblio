@@ -10,15 +10,19 @@ import { ConfirmDialog } from './confirm-dialog'
 import { AddItemRow } from './add-item-row'
 import { ListItemRow } from './list-item-row'
 import { ListOptimizerPanel } from './list-optimizer-panel'
+import { ShareListBar } from './share-list-bar'
 import {
   activeListLimit,
   addItem,
+  canOptimize,
   completeList,
   fetchListDetail,
   fetchLists,
   patchItem,
   removeItem,
+  type ItemPatch,
   type ListDetail,
+  type ListItem,
   type ListSummary,
 } from './list-data'
 
@@ -75,11 +79,11 @@ export function ShoppingLists() {
   const bumpCount = (id: string, delta: number) =>
     setLists((prev) => prev.map((l) => (l.id === id ? { ...l, itemCount: l.itemCount + delta } : l)))
 
-  const onAddItem = async (freeText: string, productId: string | null) => {
+  const onAddItem = async (freeText: string, productId: string | null, quantity: number) => {
     if (!detail) return
     const id = detail.id
     try {
-      await addItem(id, freeText, productId)
+      await addItem(id, freeText, productId, quantity)
     } catch {
       showToast('Couldn’t add that item — please try again.', 'danger')
       return
@@ -95,29 +99,34 @@ export function ShoppingLists() {
     }
   }
 
-  const onToggle = async (itemId: string, checked: boolean) => {
+  // Shared shape for every single-field item edit: snapshot, optimistic mutate,
+  // patch, roll back + toast on failure. `mutate` applies the same field the
+  // patch carries, so the optimistic UI and the server write can never disagree.
+  const patchItemOptimistically = async (
+    itemId: string,
+    patch: ItemPatch,
+    mutate: (item: ListItem) => ListItem,
+    errorMessage: string,
+  ) => {
     if (!detail) return
     const prev = detail
-    setDetail({ ...detail, items: detail.items.map((it) => (it.id === itemId ? { ...it, checked } : it)) })
+    setDetail({ ...detail, items: detail.items.map((it) => (it.id === itemId ? mutate(it) : it)) })
     try {
-      await patchItem(detail.id, itemId, { checked })
+      await patchItem(detail.id, itemId, patch)
     } catch {
       setDetail(prev)
-      showToast('Couldn’t update that item — please try again.', 'danger')
+      showToast(errorMessage, 'danger')
     }
   }
 
-  const onEditItem = async (itemId: string, freeText: string) => {
-    if (!detail) return
-    const prev = detail
-    setDetail({ ...detail, items: detail.items.map((it) => (it.id === itemId ? { ...it, freeText } : it)) })
-    try {
-      await patchItem(detail.id, itemId, { freeText })
-    } catch {
-      setDetail(prev)
-      showToast('Couldn’t rename that item — please try again.', 'danger')
-    }
-  }
+  const onToggle = (itemId: string, checked: boolean) =>
+    patchItemOptimistically(itemId, { checked }, (it) => ({ ...it, checked }), 'Couldn’t update that item — please try again.')
+
+  const onEditItem = (itemId: string, freeText: string) =>
+    patchItemOptimistically(itemId, { freeText }, (it) => ({ ...it, freeText }), 'Couldn’t rename that item — please try again.')
+
+  const onChangeQuantity = (itemId: string, quantity: number) =>
+    patchItemOptimistically(itemId, { quantity }, (it) => ({ ...it, quantity }), 'Couldn’t update the quantity — please try again.')
 
   const onRemoveItem = async (itemId: string) => {
     if (!detail) return
@@ -244,7 +253,7 @@ export function ShoppingLists() {
                   </div>
                 ) : (
                   <>
-                    <AddItemRow key={selectedId} onAdd={onAddItem} disabled={false} />
+                    <AddItemRow key={selectedId} onAdd={onAddItem} disabled={false} categoryId={detail.categoryId} />
                     {detail.items.length === 0 ? (
                       <p className="list-items-empty">No items yet — add the first one above.</p>
                     ) : (
@@ -256,6 +265,7 @@ export function ShoppingLists() {
                             onToggle={(checked) => onToggle(item.id, checked)}
                             onEdit={(text) => onEditItem(item.id, text)}
                             onRemove={() => onRemoveItem(item.id)}
+                            onQuantityChange={(quantity) => onChangeQuantity(item.id, quantity)}
                           />
                         ))}
                       </div>
@@ -267,6 +277,8 @@ export function ShoppingLists() {
               {detail && (
                 <ListOptimizerPanel key={selectedId} listId={detail.id} role={role} itemCount={detail.items.length} />
               )}
+
+              {detail && <ShareListBar key={selectedId} listId={detail.id} listName={detail.name} />}
             </>
           )}
         </div>
@@ -279,6 +291,7 @@ export function ShoppingLists() {
             await loadLists()
             void openList(id)
           }}
+          isPremium={canOptimize(role)}
         />
       )}
 

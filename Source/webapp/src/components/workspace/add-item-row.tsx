@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Minus, Plus } from 'lucide-react'
 
 interface ApiProduct {
   productId: string
@@ -12,23 +12,26 @@ interface ApiProduct {
 interface AddItemRowProps {
   // freeText is always sent; productId resolves the item to a catalog product
   // (and lets the optimizer price it). null = a plain free-text item.
-  onAdd: (freeText: string, productId: string | null) => Promise<void>
+  onAdd: (freeText: string, productId: string | null, quantity: number) => Promise<void>
   disabled: boolean
+  // §10b: locks search to the list's category macro (cat-groceries | cat-personal-care).
+  categoryId: string
 }
 
 const MIN_QUERY = 2
 const DEBOUNCE_MS = 250
 
 // Add-item field for a shopping list. Mirrors ProductSearch's typeahead against
-// /api/products/search (ACTIVE ∪ own-PROVISIONAL), but Enter adds the typed text
-// as a free-text item — shoppers often jot things the catalog doesn't have yet.
-// Picking a suggestion resolves the item to that product.
-export function AddItemRow({ onAdd, disabled }: AddItemRowProps) {
+// /api/products/search (ACTIVE ∪ own-PROVISIONAL, filtered to the list's category),
+// but Enter adds the typed text as a free-text item — shoppers often jot things the
+// catalog doesn't have yet. Picking a suggestion resolves the item to that product.
+export function AddItemRow({ onAdd, disabled, categoryId }: AddItemRowProps) {
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [results, setResults] = useState<ApiProduct[]>([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [quantity, setQuantity] = useState(1)
   const inputRef = useRef<HTMLInputElement>(null)
   const query = q.trim()
 
@@ -40,7 +43,7 @@ export function AddItemRow({ onAdd, disabled }: AddItemRowProps) {
     const controller = new AbortController()
     setLoading(true)
     const timer = setTimeout(() => {
-      fetch(`/api/products/search?q=${encodeURIComponent(query)}`, {
+      fetch(`/api/products/search?q=${encodeURIComponent(query)}&category=${encodeURIComponent(categoryId)}`, {
         cache: 'no-store',
         signal: controller.signal,
       })
@@ -53,7 +56,7 @@ export function AddItemRow({ onAdd, disabled }: AddItemRowProps) {
       controller.abort()
       clearTimeout(timer)
     }
-  }, [query])
+  }, [query, categoryId])
 
   const matches = results.slice(0, 8)
   const inputDisabled = disabled || busy
@@ -63,10 +66,11 @@ export function AddItemRow({ onAdd, disabled }: AddItemRowProps) {
     if (!text || busy) return
     setBusy(true)
     try {
-      await onAdd(text, productId)
+      await onAdd(text, productId, quantity)
       setQ('')
       setResults([])
       setOpen(false)
+      setQuantity(1)
       inputRef.current?.focus()
     } finally {
       setBusy(false)
@@ -74,57 +78,81 @@ export function AddItemRow({ onAdd, disabled }: AddItemRowProps) {
   }
 
   return (
-    <div className="filter-field typeahead-field list-add">
-      <div className="filter-wrap">
-        <span className="lead-icon"><Plus size={15} /></span>
-        <input
-          ref={inputRef}
-          className="filter-select ta-input"
-          type="text"
-          disabled={inputDisabled}
-          placeholder="Add an item…"
-          value={q}
-          onChange={(e) => { setQ(e.target.value); setOpen(true) }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 150)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              commit(q, null)
-            }
-          }}
-          data-testid="list-add-item"
-        />
-      </div>
-      {open && !inputDisabled && query.length >= MIN_QUERY && (
-        <div className="typeahead">
-          {loading && matches.length === 0 ? (
-            <div className="typeahead-empty">Searching…</div>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="typeahead-opt"
-                onMouseDown={(e) => { e.preventDefault(); commit(q, null) }}
-              >
-                <span className="ta-name">Add “{query}”</span>
-                <span className="ta-stores">free text</span>
-              </button>
-              {matches.map((p) => (
+    <div className="list-add-row">
+      <div className="filter-field typeahead-field list-add">
+        <div className="filter-wrap">
+          <span className="lead-icon"><Plus size={15} /></span>
+          <input
+            ref={inputRef}
+            className="filter-select ta-input"
+            type="text"
+            disabled={inputDisabled}
+            placeholder="Add an item…"
+            value={q}
+            onChange={(e) => { setQ(e.target.value); setOpen(true) }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commit(q, null)
+              }
+            }}
+            data-testid="list-add-item"
+          />
+        </div>
+        {open && !inputDisabled && query.length >= MIN_QUERY && (
+          <div className="typeahead">
+            {loading && matches.length === 0 ? (
+              <div className="typeahead-empty">Searching…</div>
+            ) : (
+              <>
                 <button
-                  key={p.productId}
                   type="button"
                   className="typeahead-opt"
-                  onMouseDown={(e) => { e.preventDefault(); commit(p.displayName, p.productId) }}
+                  onMouseDown={(e) => { e.preventDefault(); commit(q, null) }}
                 >
-                  <span className="ta-name">{p.displayName}</span>
-                  {p.brand && <span className="ta-stores">{p.brand}</span>}
+                  <span className="ta-name">Add “{query}”</span>
+                  <span className="ta-stores">free text</span>
                 </button>
-              ))}
-            </>
-          )}
-        </div>
-      )}
+                {matches.map((p) => (
+                  <button
+                    key={p.productId}
+                    type="button"
+                    className="typeahead-opt"
+                    onMouseDown={(e) => { e.preventDefault(); commit(p.displayName, p.productId) }}
+                  >
+                    <span className="ta-name">{p.displayName}</span>
+                    {p.brand && <span className="ta-stores">{p.brand}</span>}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="qty-stepper" data-testid="list-add-quantity">
+        <button
+          type="button"
+          className="qty-stepper-btn"
+          disabled={inputDisabled || quantity <= 1}
+          onClick={() => setQuantity((n) => Math.max(1, n - 1))}
+          aria-label="Decrease quantity"
+        >
+          <Minus size={13} />
+        </button>
+        <span className="qty-stepper-value tabular">{quantity}</span>
+        <button
+          type="button"
+          className="qty-stepper-btn"
+          disabled={inputDisabled}
+          onClick={() => setQuantity((n) => n + 1)}
+          aria-label="Increase quantity"
+        >
+          <Plus size={13} />
+        </button>
+      </div>
     </div>
   )
 }

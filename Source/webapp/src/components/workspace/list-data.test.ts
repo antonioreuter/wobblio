@@ -47,26 +47,26 @@ describe('canOptimize', () => {
 
 describe('fetch helpers', () => {
   it('fetchLists unwraps the lists envelope', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({ lists: [{ id: 'l-1', name: 'Groceries', itemCount: 2, createdAt: 'x' }] }))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({ lists: [{ id: 'l-1', name: 'Groceries', categoryId: 'cat-groceries', itemCount: 2, createdAt: 'x' }] }))
     const lists = await fetchLists()
     expect(lists).toHaveLength(1)
     expect(lists[0].name).toBe('Groceries')
   })
 
-  it('createList returns the new id and posts the name', async () => {
+  it('createList returns the new id and posts the name + categoryId', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({ id: 'l-9' }))
-    const id = await createList('Weekly')
+    const id = await createList('Weekly', 'cat-groceries')
     expect(id).toBe('l-9')
     expect(spy).toHaveBeenCalledWith('/api/lists', expect.objectContaining({ method: 'POST' }))
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string)
-    expect(body).toEqual({ name: 'Weekly' })
+    expect(body).toEqual({ name: 'Weekly', categoryId: 'cat-groceries' })
   })
 
-  it('addItem sends freeText + productId', async () => {
+  it('addItem sends freeText + productId + quantity (default 1)', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(ok({ id: 'i-1' }))
     await addItem('l-1', 'Milk', 'p-3')
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string)
-    expect(body).toEqual({ freeText: 'Milk', productId: 'p-3' })
+    expect(body).toEqual({ freeText: 'Milk', productId: 'p-3', quantity: 1 })
   })
 
   it('optimizeList returns the optimization result', async () => {
@@ -78,7 +78,7 @@ describe('fetch helpers', () => {
 
   it('throws the status code on a failed write', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(fail(409))
-    await expect(createList('x')).rejects.toThrow('409')
+    await expect(createList('x', 'cat-groceries')).rejects.toThrow('409')
   })
 
   it('patchItem and completeList resolve on success', async () => {

@@ -5,6 +5,7 @@
 export interface ListSummary {
   id: string
   name: string
+  categoryId: string
   itemCount: number
   createdAt: string
 }
@@ -14,6 +15,7 @@ export interface ListItem {
   freeText: string
   productId: string | null
   checked: boolean
+  quantity: number
   position: number
   updatedAt: string
 }
@@ -21,6 +23,9 @@ export interface ListItem {
 export interface ListDetail {
   id: string
   name: string
+  categoryId: string
+  regionCode: string | null
+  countryCode: string | null
   isActive: boolean
   createdAt: string
   completedAt: string | null
@@ -31,6 +36,18 @@ export interface ItemPatch {
   checked?: boolean
   freeText?: string
   productId?: string | null
+  quantity?: number
+}
+
+// A list is locked to exactly one of these macro categories at creation (§10b) —
+// item search only ever surfaces products under the chosen macro. Mirrors
+// core/domain/shoppingList.ts.
+export const SHOPPING_LIST_CATEGORY_IDS = ['cat-groceries', 'cat-personal-care'] as const
+export type ShoppingListCategoryId = (typeof SHOPPING_LIST_CATEGORY_IDS)[number]
+
+export const SHOPPING_LIST_CATEGORY_LABELS: Record<ShoppingListCategoryId, string> = {
+  'cat-groceries': 'Groceries',
+  'cat-personal-care': 'Drugstores',
 }
 
 // --- Optimizer (§6.5.3 split-route) result, mirrors core/domain/routeOptimizer ---
@@ -41,6 +58,8 @@ export interface StoreLine {
   productId: string
   displayName: string
   expectedPrice: number
+  quantity: number
+  lineTotal: number
   observationCount: number
   lastObservedOn: string | null
   confidence: Confidence
@@ -71,7 +90,7 @@ export const PREMIUM_ACTIVE_LISTS = 10
 export const activeListLimit = (role: string | undefined): number =>
   role === 'STANDARD' || !role ? STANDARD_ACTIVE_LISTS : PREMIUM_ACTIVE_LISTS
 
-// Optimizer is a Premium feature; the elevated operator roles get it too.
+// Optimizer + region override are Premium features; the elevated operator roles get them too.
 export const canOptimize = (role: string | undefined): boolean =>
   !!role && role !== 'STANDARD'
 
@@ -96,12 +115,12 @@ export async function fetchListDetail(id: string): Promise<ListDetail> {
   )) as ListDetail
 }
 
-export async function createList(name: string): Promise<string> {
+export async function createList(name: string, categoryId: string): Promise<string> {
   const data = (await jsonOrThrow(
     await fetch('/api/lists', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, categoryId }),
     }),
   )) as { id: string }
   return data.id
@@ -111,12 +130,13 @@ export async function addItem(
   listId: string,
   freeText: string,
   productId: string | null,
+  quantity = 1,
 ): Promise<string> {
   const data = (await jsonOrThrow(
     await fetch(`/api/lists/${listId}/items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ freeText, productId }),
+      body: JSON.stringify({ freeText, productId, quantity }),
     }),
   )) as { id: string }
   return data.id
@@ -141,8 +161,39 @@ export async function completeList(listId: string): Promise<void> {
   if (!res.ok) throw new Error(String(res.status))
 }
 
-export async function optimizeList(listId: string): Promise<OptimizationResult> {
+export async function optimizeList(listId: string, excludedMerchantIds: string[] = []): Promise<OptimizationResult> {
   return (await jsonOrThrow(
-    await fetch(`/api/lists/${listId}/optimize`, { method: 'POST' }),
+    await fetch(`/api/lists/${listId}/optimize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ excludedMerchantIds }),
+    }),
   )) as OptimizationResult
+}
+
+// Premium per-list region override (§10b/§10c). Both null clears it.
+export async function setListRegion(listId: string, regionCode: string | null, countryCode: string | null): Promise<void> {
+  const res = await fetch(`/api/lists/${listId}/region`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ regionCode, countryCode }),
+  })
+  if (!res.ok) throw new Error(String(res.status))
+}
+
+export interface IssuedListShare {
+  shareId: string
+  url: string
+  expiresAt: string
+}
+
+export async function createListShare(listId: string): Promise<IssuedListShare> {
+  return (await jsonOrThrow(
+    await fetch(`/api/lists/${listId}/share`, { method: 'POST' }),
+  )) as IssuedListShare
+}
+
+export async function revokeListShare(listId: string, shareId: string): Promise<void> {
+  const res = await fetch(`/api/lists/${listId}/share/${shareId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(String(res.status))
 }

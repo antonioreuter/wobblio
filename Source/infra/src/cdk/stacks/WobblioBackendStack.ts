@@ -223,6 +223,12 @@ export class WobblioBackendStack extends Stack {
       UPLOADS_BUCKET: storageStack.uploadsBucket.bucketName,
     });
 
+    // Public read + checkbox-toggle resolver for shared shopping-list links
+    // (§10b, /shared-lists/<token>). No Cognito auth — the unguessable token is
+    // the only credential; resolves under the list owner's RLS scope so a token
+    // exposes/touches only its one list (name + items; no pricing, no productId).
+    const shareShoppingListFn = makeLambda('share-shopping-list', 5);
+
     // ── SQS event source on ingestion worker ─────────────────────────────────
     ingestionWorkerFn.addEventSource(
       new SqsEventSource(ingestionQueue, {
@@ -303,6 +309,7 @@ export class WobblioBackendStack extends Stack {
     dbSecret.grantRead(cronDataRetentionFn);
     dbSecret.grantRead(waitlistStatusFn);
     dbSecret.grantRead(shareInvoiceFn);
+    dbSecret.grantRead(shareShoppingListFn);
 
     // Logs Insights: StartQuery is scoped to the worker log group; GetQueryResults and
     // StopQuery operate on an ephemeral queryId and do not support resource-level IAM,
@@ -332,7 +339,7 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
       ],
     });
-    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, shareInvoiceFn]
+    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, shareInvoiceFn, shareShoppingListFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
 
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
@@ -617,6 +624,19 @@ export class WobblioBackendStack extends Stack {
       authorizer: undefined,
     });
 
+    // Public shared-shopping-list resolver + checkbox toggle — token-gated, no
+    // Cognito (see shareShoppingListFn, §10b).
+    const sharedListResource = api.root.addResource('shared-lists').addResource('{token}');
+    const sharedListGetMethod = sharedListResource.addMethod('GET', new apigw.LambdaIntegration(shareShoppingListFn), {
+      authorizationType: apigw.AuthorizationType.NONE,
+      authorizer: undefined,
+    });
+    const sharedListItemResource = sharedListResource.addResource('items').addResource('{itemId}');
+    const sharedListItemMethod = sharedListItemResource.addMethod('PATCH', new apigw.LambdaIntegration(shareShoppingListFn), {
+      authorizationType: apigw.AuthorizationType.NONE,
+      authorizer: undefined,
+    });
+
     // Catch-all proxy for authenticated API routes — real routes added in later epics
     const proxyResource = api.root.addProxy({
       defaultIntegration: new apigw.LambdaIntegration(apiHandlerFn),
@@ -802,6 +822,7 @@ export class WobblioBackendStack extends Stack {
       apiHandlerFn, ingestionWorkerFn,
       cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn,
       cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, analyticsEventsFn, shareInvoiceFn,
+      shareShoppingListFn,
     ];
 
     // ── Lambda log retention ──────────────────────────────────────────────────
@@ -870,6 +891,12 @@ export class WobblioBackendStack extends Stack {
     ]);
     NagSuppressions.addResourceSuppressions(sharedInvoiceMethod, [
       { id: 'AwsSolutions-COG4', reason: 'The shared-invoice resolver is public by design; the unguessable share token is the credential' },
+    ]);
+    NagSuppressions.addResourceSuppressions(sharedListGetMethod, [
+      { id: 'AwsSolutions-COG4', reason: 'The shared-shopping-list resolver is public by design; the unguessable share token is the credential' },
+    ]);
+    NagSuppressions.addResourceSuppressions(sharedListItemMethod, [
+      { id: 'AwsSolutions-COG4', reason: 'The shared-shopping-list checkbox toggle is public by design; the unguessable share token is the credential' },
     ]);
 
     NagSuppressions.addResourceSuppressions(analyticsEventsQueue, [

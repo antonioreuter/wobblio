@@ -15,7 +15,12 @@ export class OptimizerService {
     private readonly contributorContext: IContributorContextRepository,
   ) {}
 
-  async optimize(userId: string, role: UserRole, listId: string): Promise<OptimizationResult> {
+  async optimize(
+    userId: string,
+    role: UserRole,
+    listId: string,
+    excludedMerchantIds: string[] = [],
+  ): Promise<OptimizationResult> {
     if (!hasPremiumAccess(role)) throw new PremiumRequiredError('route optimizer');
 
     const detail = await this.lists.getDetail(listId);
@@ -23,15 +28,26 @@ export class OptimizerService {
 
     const items = detail.items
       .filter(item => item.productId)
-      .map(item => ({ productId: item.productId as string, displayName: item.freeText }));
+      .map(item => ({ productId: item.productId as string, displayName: item.freeText, quantity: item.quantity }));
     const unresolved = detail.items.filter(item => !item.productId).map(item => item.freeText);
 
-    // No home region → fall back to the contributor's own country, never a fixed metro.
+    // List override (§10b Premium region override) wins; otherwise fall back to the
+    // contributor's own profile region, then country — never a fixed metro.
     const context = await this.contributorContext.getContext(userId);
-    const region = context.regionCode ?? context.countryCode;
+    const region = detail.regionCode ?? detail.countryCode ?? context.regionCode ?? context.countryCode;
     const matrix = await this.priceMatrix.build(items.map(item => item.productId), region);
     const config = await this.routing.get();
 
-    return optimizeRoute({ items, unresolved, matrix, config, today: new Date().toISOString().slice(0, 10) });
+    // §10c store removal: excluded merchants are dropped from the candidate set
+    // before the algorithm runs, so the existing baseline/cheapest-store logic
+    // naturally reallocates every affected item to the next-best remaining store.
+    const excluded = new Set(excludedMerchantIds);
+    const filteredMatrix = excluded.size === 0 ? matrix : {
+      ...matrix,
+      merchants: matrix.merchants.filter(m => !excluded.has(m.id)),
+      cells: matrix.cells.filter(c => !excluded.has(c.merchantId)),
+    };
+
+    return optimizeRoute({ items, unresolved, matrix: filteredMatrix, config, today: new Date().toISOString().slice(0, 10) });
   }
 }

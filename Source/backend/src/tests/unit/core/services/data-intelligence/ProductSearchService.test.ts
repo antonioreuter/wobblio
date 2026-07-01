@@ -27,7 +27,7 @@ describe('ProductSearchService', () => {
   it('trims the query and delegates with the default limit', async () => {
     const result = await sut.search('  melk  ');
     expect(result).toEqual([match]);
-    expect(products.search).toHaveBeenCalledWith('melk', 10, '', '');
+    expect(products.search).toHaveBeenCalledWith('melk', 10, '', '', undefined);
   });
 
   it('passes the merchant-signal fields straight through', async () => {
@@ -39,11 +39,16 @@ describe('ProductSearchService', () => {
 
   it('clamps the limit to the maximum', async () => {
     await sut.search('melk', 100);
-    expect(products.search).toHaveBeenCalledWith('melk', 25, '', '');
+    expect(products.search).toHaveBeenCalledWith('melk', 25, '', '', undefined);
   });
 
   it('forwards the region scope to the adapter', async () => {
     await sut.search('melk', 10, 'NL', 'NL-NB');
-    expect(products.search).toHaveBeenCalledWith('melk', 10, 'NL', 'NL-NB');
+    expect(products.search).toHaveBeenCalledWith('melk', 10, 'NL', 'NL-NB', undefined);
+  });
+
+  it('forwards the category filter to the adapter', async () => {
+    await sut.search('melk', 10, '', '', ['cat-groceries', 'cat-dairy']);
+    expect(products.search).toHaveBeenCalledWith('melk', 10, '', '', ['cat-groceries', 'cat-dairy']);
   });
 });

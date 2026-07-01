@@ -64,6 +64,41 @@ export async function proxyToBackend(
   })
 }
 
+// Public BFF proxy for token-gated, unauthenticated backend routes (e.g. shared
+// shopping lists, §10b) — no Cognito bearer token attached; the caller's own
+// share token in `path` is the credential. Mirrors proxyToBackend minus auth.
+export async function proxyToBackendPublic(
+  req: NextRequest,
+  path: string,
+  method: 'GET' | 'PATCH',
+): Promise<NextResponse> {
+  const apiBase = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL
+  const init: RequestInit = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  }
+  if (method === 'PATCH') init.body = await req.text()
+
+  let res: Response
+  try {
+    res = await fetch(`${apiBase}${path}`, init)
+  } catch (err) {
+    const timedOut = err instanceof Error && err.name === 'TimeoutError'
+    console.error('[api-proxy] public upstream request failed', { path, method, timedOut, error: errMessage(err) })
+    return NextResponse.json(
+      { message: timedOut ? 'Upstream backend timed out' : 'Upstream backend unavailable' },
+      { status: timedOut ? 504 : 502 },
+    )
+  }
+
+  const isNullBody = res.status === 204 || res.status === 205 || res.status === 304
+  return new NextResponse(isNullBody ? null : await res.text(), {
+    status: res.status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }

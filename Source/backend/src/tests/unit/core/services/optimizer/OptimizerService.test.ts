@@ -8,10 +8,11 @@ import type { IContributorContextRepository } from '@core/ports/data-intelligenc
 import { PremiumRequiredError, ListNotFoundError } from '@core/domain/errors';
 
 const detail: ListDetail = {
-  id: 'l1', name: 'Groceries', isActive: true, createdAt: '', completedAt: null,
+  id: 'l1', name: 'Groceries', categoryId: 'cat-groceries', regionCode: null, countryCode: null,
+  isActive: true, createdAt: '', completedAt: null,
   items: [
-    { id: 'i1', freeText: 'Milk', productId: 'p1', checked: false, position: 0, updatedAt: '' },
-    { id: 'i2', freeText: 'Birthday card', productId: null, checked: false, position: 1, updatedAt: '' },
+    { id: 'i1', freeText: 'Milk', productId: 'p1', checked: false, quantity: 2, position: 0, updatedAt: '' },
+    { id: 'i2', freeText: 'Birthday card', productId: null, checked: false, quantity: 1, position: 1, updatedAt: '' },
   ],
 };
 
@@ -25,9 +26,18 @@ describe('OptimizerService', () => {
   beforeEach(() => {
     lists = {
       countActive: vi.fn(), create: vi.fn(), listActive: vi.fn(), getDetail: vi.fn(),
-      addItem: vi.fn(), updateItem: vi.fn(), removeItem: vi.fn(), complete: vi.fn(),
+      addItem: vi.fn(), updateItem: vi.fn(), removeItem: vi.fn(), complete: vi.fn(), setRegion: vi.fn(),
     };
-    priceMatrix = { build: vi.fn().mockResolvedValue({ merchants: [{ id: 'A', name: 'AH' }], cells: [{ productId: 'p1', merchantId: 'A', price: 2, observationCount: 9, lastObservedOn: '2026-06-15' }], userAverages: {} }) };
+    priceMatrix = {
+      build: vi.fn().mockResolvedValue({
+        merchants: [{ id: 'A', name: 'AH' }, { id: 'B', name: 'Jumbo' }],
+        cells: [
+          { productId: 'p1', merchantId: 'A', price: 2, observationCount: 9, lastObservedOn: '2026-06-15' },
+          { productId: 'p1', merchantId: 'B', price: 1, observationCount: 9, lastObservedOn: '2026-06-15' },
+        ],
+        userAverages: {},
+      }),
+    };
     routing = { get: vi.fn().mockResolvedValue({ minSplitSaving: 5, maxStores: 3 }) };
     contributorContext = { getContext: vi.fn().mockResolvedValue({ optedOut: false, regionCode: 'NL-NB', countryCode: 'NL', trustScore: 50 }) };
     sut = new OptimizerService(lists, priceMatrix, routing, contributorContext);
@@ -51,6 +61,7 @@ describe('OptimizerService', () => {
     expect(priceMatrix.build).toHaveBeenCalledWith(['p1'], 'NL-NB');
     expect(result.unresolvedItems).toContain('Birthday card');
     expect(result.stores[0].lines[0].productId).toBe('p1');
+    expect(result.stores[0].lines[0].quantity).toBe(2);
   });
 
   it('falls back to the contributor country code when the context has no region', async () => {
@@ -60,5 +71,23 @@ describe('OptimizerService', () => {
     await sut.optimize('u1', 'PREMIUM', 'l1');
 
     expect(priceMatrix.build).toHaveBeenCalledWith(['p1'], 'NL');
+  });
+
+  it('prefers the list\'s Premium region override over the contributor context', async () => {
+    lists.getDetail.mockResolvedValue({ ...detail, regionCode: 'NL-ZH', countryCode: 'NL' });
+
+    await sut.optimize('u1', 'PREMIUM', 'l1');
+
+    expect(priceMatrix.build).toHaveBeenCalledWith(['p1'], 'NL-ZH');
+  });
+
+  it('drops excluded merchants from the candidate set before optimizing', async () => {
+    lists.getDetail.mockResolvedValue(detail);
+
+    const result = await sut.optimize('u1', 'PREMIUM', 'l1', ['B']);
+
+    // B (the cheaper store) is excluded, so the item must land on A.
+    expect(result.stores).toHaveLength(1);
+    expect(result.stores[0].merchantId).toBe('A');
   });
 });

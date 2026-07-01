@@ -31,6 +31,7 @@ export interface PriceMatrix {
 export interface OptimizerItem {
   productId: string;
   displayName: string;
+  quantity: number;
 }
 
 export interface OptimizeInput {
@@ -47,6 +48,8 @@ export interface StoreLine {
   productId: string;
   displayName: string;
   expectedPrice: number;
+  quantity: number;
+  lineTotal: number;
   observationCount: number;
   lastObservedOn: string | null;
   confidence: Confidence;
@@ -103,7 +106,8 @@ export function optimizeRoute(input: OptimizeInput): OptimizationResult {
   const ctx = buildCtx(matrix, input.today);
   const baseline = bestStore(matrix.merchants, priceable, ctx.priceAt);
   const assignments = priceable.map(it => assignCheapest(it, matrix, ctx.cellMap, baseline.merchantId));
-  const saving = round2(baseline.total - sum(assignments.map(a => a.price)));
+  const assignedTotal = sum(assignments.map((a, i) => a.price * priceable[i].quantity));
+  const saving = round2(baseline.total - assignedTotal);
 
   if (saving <= config.minSplitSaving) {
     return singleStore(baseline, priceable, ctx, unresolved, saving > 0 ? 'saving below split threshold' : 'no saving available');
@@ -142,7 +146,7 @@ function bestStore(
   const totals = merchants.map(m => ({
     merchantId: m.id,
     name: m.name,
-    total: sum(priceable.map(it => priceAt(it.productId, m.id))),
+    total: sum(priceable.map(it => priceAt(it.productId, m.id) * it.quantity)),
   }));
   return totals.reduce((a, b) => (b.total < a.total ? b : a));
 }
@@ -222,7 +226,7 @@ function groupSecondaries(
     // pin the group instead of crediting a phantom (near-zero) saving.
     const mainReal = ctx.realPriceAt(item.productId, mainId);
     if (mainReal === undefined) group.pinned = true;
-    else group.saving += mainReal - a.price;
+    else group.saving += (mainReal - a.price) * item.quantity;
     groups.set(a.merchantId, group);
   });
   return [...groups.values()];
@@ -265,15 +269,18 @@ function buildStore(
   ctx: Ctx,
 ): StoreSubList {
   const lines = items.map(it => buildLine(it, merchantId, ctx));
-  return { merchantId, name, isPrimary, subtotal: round2(sum(lines.map(l => l.expectedPrice))), lines };
+  return { merchantId, name, isPrimary, subtotal: round2(sum(lines.map(l => l.lineTotal))), lines };
 }
 
 function buildLine(item: OptimizerItem, merchantId: string, ctx: Ctx): StoreLine {
   const cell = ctx.cellMap.get(key(item.productId, merchantId)) ?? null;
+  const expectedPrice = round2(ctx.priceAt(item.productId, merchantId));
   return {
     productId: item.productId,
     displayName: item.displayName,
-    expectedPrice: round2(ctx.priceAt(item.productId, merchantId)),
+    expectedPrice,
+    quantity: item.quantity,
+    lineTotal: round2(expectedPrice * item.quantity),
     observationCount: cell?.observationCount ?? 0,
     lastObservedOn: cell?.lastObservedOn ?? null,
     confidence: confidenceOf(cell, ctx.today),

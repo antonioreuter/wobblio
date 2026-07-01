@@ -15,7 +15,7 @@ const cell = (productId: string, merchantId: string, price: number, obs = 8, on 
 });
 
 const cfg = (minSplitSaving: number, maxStores = 3): OptimizerConfig => ({ minSplitSaving, maxStores });
-const item = (productId: string, displayName = productId) => ({ productId, displayName });
+const item = (productId: string, displayName = productId, quantity = 1) => ({ productId, displayName, quantity });
 const TODAY = '2026-06-16';
 
 const run = (matrix: PriceMatrix, items: { productId: string; displayName: string }[], config: OptimizerConfig, unresolved: string[] = []) =>

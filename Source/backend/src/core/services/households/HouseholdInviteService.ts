@@ -3,6 +3,7 @@ import type { IHouseholdInviteRepository } from '../../ports/households/IHouseho
 import type { ISecureToken } from '../../ports/security/ISecureToken';
 import type { IKmsEncryption } from '../../ports/security/IKmsEncryption';
 import type { HouseholdCarryOverService } from './HouseholdCarryOverService';
+import { mintShareToken } from '../../domain/shareToken';
 import {
   HouseholdNotFoundError,
   NotHouseholdOwnerError,
@@ -11,7 +12,6 @@ import {
 } from '../../domain/errors';
 
 const INVITE_TTL_DAYS = 7;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface IssuedInvite {
   inviteId: string;
@@ -31,19 +31,16 @@ export class HouseholdInviteService {
   async createInvite(userId: string, householdId: string): Promise<IssuedInvite> {
     await this.requireOwner(userId, householdId);
 
-    const raw = this.token.generate();
-    const tokenEnc = await this.encryption.encrypt(raw);
-    const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * DAY_MS).toISOString();
-
+    const minted = await mintShareToken(this.token, this.encryption, INVITE_TTL_DAYS);
     const inviteId = await this.invites.create({
       householdId,
       createdByUserId: userId,
-      tokenHash: this.token.hash(raw),
-      tokenEnc,
-      expiresAt,
+      tokenHash: minted.tokenHash,
+      tokenEnc: minted.tokenEnc,
+      expiresAt: minted.expiresAt,
     });
 
-    return { inviteId, token: raw, expiresAt };
+    return { inviteId, token: minted.token, expiresAt: minted.expiresAt };
   }
 
   async revokeInvite(userId: string, householdId: string, inviteId: string): Promise<void> {

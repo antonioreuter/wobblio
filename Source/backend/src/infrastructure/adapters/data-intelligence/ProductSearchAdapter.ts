@@ -26,6 +26,7 @@ export class ProductSearchAdapter implements IProductSearch {
     limit: number,
     countryCode: string,
     regionCode: string,
+    categoryIds?: string[],
   ): Promise<ProductSearchResult[]> {
     const result = await this.client.query<ProductRow>(
       `SELECT p.id, p.display_name, p.brand, p.category_id, p.base_unit,
@@ -69,9 +70,10 @@ export class ProductSearchAdapter implements IProductSearch {
              )
            )
          )
+         AND ($5::text[] IS NULL OR p.category_id = ANY($5))
        ORDER BY similarity(p.display_name, $1) DESC, p.display_name
        LIMIT $2`,
-      [query, limit, countryCode, regionCode],
+      [query, limit, countryCode, regionCode, categoryIds ?? null],
     );
     return result.rows.map(row => ({
       productId: row.id,

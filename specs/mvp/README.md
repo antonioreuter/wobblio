@@ -28,7 +28,11 @@ Based on the v2.4 engineering & product specification. Files are numbered by bui
 | ⬜ Next | [07 — Core Ingestion Pipeline](./07-core-ingestion-pipeline.md) |
 | ⬜ | [08 — Data Intelligence Layer](./08-data-intelligence-layer.md) |
 | ⬜ | [09 — Households](./09-households.md) |
-| ⬜ | [10 — Budgets, Shopping Lists & Route Optimizer](./10-budgets-shopping-lists-optimizer.md) |
+| ⬜ | [10 — Budgets, Shopping Lists & Route Optimizer](./10-budgets-shopping-lists-optimizer.md) *(index — split into 10a–10d)* |
+| ✅ | &nbsp;&nbsp;↳ [10a — Budgets](./10-budgets-shopping-lists-optimizer/10a-budgets.md) |
+| 🔧 | &nbsp;&nbsp;↳ [10b — Shopping Lists](./10-budgets-shopping-lists-optimizer/10b-shopping-lists.md) *(refactor in progress)* |
+| 🔧 | &nbsp;&nbsp;↳ [10c — Split-Route Optimizer](./10-budgets-shopping-lists-optimizer/10c-split-route-optimizer.md) *(refactor in progress)* |
+| ✅ | &nbsp;&nbsp;↳ [10d — Weekly AI Savings Advisor](./10-budgets-shopping-lists-optimizer/10d-weekly-savings-advisor.md) |
 | ⬜ | [11 — Bill Splitting, FX & Reporting](./11-bill-splitting-fx-reporting.md) |
 | ⬜ | [12 — Admin Console](./12-admin-console.md) *(index — split into 12a–12g)* |
 | ⬜ | &nbsp;&nbsp;↳ [12a — Admin Foundation](./12a-admin-foundation.md) *(blocks 12b–12f)* |

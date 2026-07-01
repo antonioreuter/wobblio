@@ -1572,6 +1572,63 @@
   box-shadow: 0 6px 18px -4px rgba(37, 211, 102, 0.4);
 }
 
+/* ── Bill split dialog ─────────────────────────────────────── */
+.split-card { width: min(480px, 100%); max-height: 86vh; overflow-y: auto; }
+.split-participants { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 18px 0 4px; }
+.split-add-participant { display: flex; gap: 6px; }
+.split-add-participant .share-input { width: 160px; font-family: var(--font-body); font-size: 13px; }
+
+/* Shared pill shell — used on the standalone "You" <button> AND as the wrapper
+   <div> around a named participant's select/remove <button> pair. Kept as two
+   sibling buttons (not remove-nested-inside-select) so no element ever nests
+   interactive content inside another interactive element. */
+.split-chip {
+  display: inline-flex; align-items: center;
+  border-radius: 999px; border: 1px solid var(--glass-border); background: none;
+  font-size: 12.5px; font-weight: 600; color: var(--text-secondary);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.split-chip:hover { border-color: var(--text-secondary); }
+.split-chip.on { border-color: var(--brand); color: var(--brand); background: var(--brand-glow); }
+button.split-chip { gap: 6px; padding: 4px 10px 4px 4px; cursor: pointer; }
+.split-chip-select {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px 4px 4px; border: 0; background: none; cursor: pointer;
+  font: inherit; color: inherit;
+}
+.split-chip-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; margin-right: 6px; border: 0; background: none; padding: 0;
+  color: inherit; opacity: 0.6; cursor: pointer;
+}
+.split-chip-remove:hover { opacity: 1; }
+
+.split-section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 18px 0 8px; }
+.split-section-title { font-size: 11px; font-weight: 700; letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--text-muted); }
+.split-hint { font-size: 12px; color: var(--text-muted); }
+.split-hint strong { color: var(--brand); font-weight: 600; }
+.split-progress { font-size: 12px; color: var(--text-muted); margin: 4px 0 0; }
+
+.split-lines { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 16px; }
+.split-line { border: 1px solid var(--glass-border); border-radius: var(--radius-md); overflow: hidden; }
+.split-line-row {
+  width: 100%; display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px;
+  padding: 10px 12px; background: none; border: 0; cursor: pointer; text-align: left; font-size: 13px;
+  color: var(--text-primary);
+}
+.split-line-row:hover { background: var(--glass-highlight); }
+.split-line-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-line-amt { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.split-line-fraction {
+  font-size: 10.5px; font-weight: 700; color: var(--brand);
+  background: var(--brand-glow); border-radius: 999px; padding: 1px 5px;
+  position: relative; top: -10px; left: 14px;
+}
+.split-summary { display: flex; flex-direction: column; gap: 12px; margin: 8px 0 18px; }
+.split-item-row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--glass-border); font-size: 13px; }
+.split-item-name { color: var(--text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-item-amt { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+
 /* ==========================================================================
    Toast
    ========================================================================== */
@@ -2313,6 +2370,101 @@
   flex-direction: column;
   gap: 2px;
 }
+
+.premium-pill { margin-left: 8px; font-size: 10px; vertical-align: middle; }
+
+/* Store chip row — mirrors the bill-split "People" chips: avatar + name + remove */
+.store-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.store-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  background: var(--glass-highlight);
+}
+.store-chip-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.store-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.store-chip-remove:hover { background: var(--danger-glow); color: var(--danger); }
+
+.optimizer-progress { font-size: 12.5px; color: var(--text-muted); margin: -6px 0 0; }
+.store-line-qty { color: var(--text-muted); font-weight: 500; }
+
+/* Quantity stepper — shopping-list add row and per-item row */
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  padding: 2px;
+  flex-shrink: 0;
+}
+.qty-stepper-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.qty-stepper-btn:hover:not(:disabled) { background: var(--brand-glow); color: var(--brand); }
+.qty-stepper-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.qty-stepper-value { min-width: 16px; text-align: center; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.qty-stepper--sm { flex-shrink: 0; }
+.qty-stepper--sm .qty-stepper-btn { width: 20px; height: 20px; }
+
+.list-add-row { display: flex; align-items: center; gap: 10px; margin: 6px 0 14px; }
+.list-add-row .list-add { margin: 0; flex: 1; }
+
+/* Sticky share bar — WhatsApp deep link + copy-link, mirrors the bill-split bottom bar */
+.share-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.share-bar-whatsapp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: none;
+  background: #25d366;
+  color: #fff;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.share-bar-whatsapp:hover { filter: brightness(1.05); transform: scale(1.03); }
+.share-bar-whatsapp:disabled { opacity: 0.5; cursor: not-allowed; }
+.share-bar-copy { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 
 @media (max-width: 900px) {
   .list-layout { grid-template-columns: 1fr; }

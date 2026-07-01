@@ -276,6 +276,13 @@ export class InvalidShareError extends Error {
   }
 }
 
+export class InvalidListShareError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid shopping list share link: ${reason}`);
+    this.name = 'InvalidListShareError';
+  }
+}
+
 export class InvalidBudgetError extends Error {
   constructor(readonly reason: string) {
     super(`Invalid budget: ${reason}`);

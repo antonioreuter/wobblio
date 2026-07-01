@@ -2,10 +2,10 @@ import type { IInvoiceRepository } from '../../ports/ingestion/IInvoiceRepositor
 import type { IInvoiceShareRepository, ResolvedShare } from '../../ports/ingestion/IInvoiceShareRepository';
 import type { ISecureToken } from '../../ports/security/ISecureToken';
 import type { IKmsEncryption } from '../../ports/security/IKmsEncryption';
+import { mintShareToken } from '../../domain/shareToken';
 import { InvoiceNotFoundError, InvalidShareError } from '../../domain/errors';
 
 const SHARE_TTL_DAYS = 7;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface IssuedShare {
   shareId: string;
@@ -25,19 +25,16 @@ export class ShareInvoiceService {
     const invoice = await this.invoices.getDetail(invoiceId);
     if (!invoice) throw new InvoiceNotFoundError(invoiceId);
 
-    const raw = this.token.generate();
-    const tokenEnc = await this.encryption.encrypt(raw);
-    const expiresAt = new Date(Date.now() + SHARE_TTL_DAYS * DAY_MS).toISOString();
-
+    const minted = await mintShareToken(this.token, this.encryption, SHARE_TTL_DAYS);
     const shareId = await this.shares.create({
       invoiceId,
       createdByUserId: userId,
-      tokenHash: this.token.hash(raw),
-      tokenEnc,
-      expiresAt,
+      tokenHash: minted.tokenHash,
+      tokenEnc: minted.tokenEnc,
+      expiresAt: minted.expiresAt,
     });
 
-    return { shareId, token: raw, expiresAt };
+    return { shareId, token: minted.token, expiresAt: minted.expiresAt };
   }
 
   async resolveShare(rawToken: string): Promise<ResolvedShare> {
