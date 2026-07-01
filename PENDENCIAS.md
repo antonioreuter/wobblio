@@ -56,3 +56,9 @@ Household:
 
   
 - When sharing the link, add a button to share via whatsapp, like we do with the invoices.
+
+
+Domain:
+  - Check if the domain www.wobblio.com is already available.
+  - Create emails in SES based on our domain forwarding to an email in gmail support.wobblio@gmail.com 
+  - Create DNS records.
