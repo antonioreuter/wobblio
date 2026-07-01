@@ -1,6 +1,6 @@
 # 12f — Analytics Dashboards (AI-Spend + KPIs)
 
-**Epic 10 | Phase 5 | Parent: [12 — Admin Console](./12-admin-console.md)**
+**Epic 10 | Phase 5 | Parent: [12 — Admin Console](../12-admin-console.md)**
 
 Two read-only dashboards: AI token spend by model role, and product KPIs. Grouped because both
 read from `kpi_daily` and ship no mutations.
@@ -8,7 +8,7 @@ read from `kpi_daily` and ship no mutations.
 ## Dependencies
 
 - [12a — Admin Foundation](./12a-admin-foundation.md)
-- [15 — Observability, KPIs & Analytics](./15-observability-kpis-analytics.md)
+- [15 — Observability, KPIs & Analytics](../15-observability-kpis-analytics.md)
 
 ## Resolution — AI-Spend data source (spec/impl conflict)
 

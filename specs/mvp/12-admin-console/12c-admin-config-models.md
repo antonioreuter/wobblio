@@ -1,6 +1,6 @@
 # 12c — Config Editor & Model-Swap Matrix
 
-**Epic 10 | Phase 5 | Parent: [12 — Admin Console](./12-admin-console.md)**
+**Epic 10 | Phase 5 | Parent: [12 — Admin Console](../12-admin-console.md)**
 
 Live editing of tunable SSM parameters and AI model IDs. Grouped because both are
 get/put-against-SSM behind one shared config port.
@@ -8,7 +8,7 @@ get/put-against-SSM behind one shared config port.
 ## Dependencies
 
 - [12a — Admin Foundation](./12a-admin-foundation.md)
-- [08 — Data Intelligence Layer](./08-data-intelligence-layer.md) (model roles)
+- [08 — Data Intelligence Layer](../08-data-intelligence-layer.md) (model roles)
 
 ## Backend
 

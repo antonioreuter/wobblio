@@ -26,13 +26,13 @@ endpoints are new work.
 
 | Spec | Scope | Blocking | Status |
 |---|---|---|---|
-| [12a — Admin Foundation](./12a-admin-foundation.md) | Auth (`verifySessionJwt` + middleware role gate), `/admin/*` backend route family + per-endpoint ADMIN check, audit log | **Blocks 12b–12f** | ⬜ |
-| [12b — Waitlist Panel](./12b-admin-waitlist.md) | GET count/cap/queue + POST release | 12a | ⬜ |
-| [12c — Config & Model Matrix](./12c-admin-config-models.md) | SSM param editor + model-swap matrix (shared config port) | 12a | ⬜ |
-| [12d — DLQ Inspection & Replay](./12d-admin-dlq.md) | list/inspect/replay/delete + bulk (new DLQ reader port) | 12a, 07 | ⬜ |
-| [12e — Alias-Curation Queue](./12e-admin-curation.md) | approve/merge/reject merchant+product (new ranking) | 12a, 08 | ⬜ |
-| [12f — Analytics Dashboards](./12f-admin-analytics.md) | AI-Spend + KPI dashboards (read `kpi_daily`) | 12a, 15 | ⬜ |
-| [12g — Admin Deployment (CDK)](./12g-admin-deployment.md) | CloudFront + Route53 + WAF for `admin.wobblio.com` | 12a | ⬜ |
+| [12a — Admin Foundation](./12-admin-console/12a-admin-foundation.md) | Auth (`verifySessionJwt` + middleware role gate), `/admin/*` backend route family + per-endpoint ADMIN check, audit log | **Blocks 12b–12f** | ⬜ |
+| [12b — Waitlist Panel](./12-admin-console/12b-admin-waitlist.md) | GET count/cap/queue + POST release | 12a | ⬜ |
+| [12c — Config & Model Matrix](./12-admin-console/12c-admin-config-models.md) | SSM param editor + model-swap matrix (shared config port) | 12a | ⬜ |
+| [12d — DLQ Inspection & Replay](./12-admin-console/12d-admin-dlq.md) | list/inspect/replay/delete + bulk (new DLQ reader port) | 12a, 07 | ⬜ |
+| [12e — Alias-Curation Queue](./12-admin-console/12e-admin-curation.md) | approve/merge/reject merchant+product (new ranking) | 12a, 08 | ⬜ |
+| [12f — Analytics Dashboards](./12-admin-console/12f-admin-analytics.md) | AI-Spend + KPI dashboards (read `kpi_daily`) | 12a, 15 | ⬜ |
+| [12g — Admin Deployment (CDK)](./12-admin-console/12g-admin-deployment.md) | CloudFront + Route53 + WAF for `admin.wobblio.com` | 12a | ⬜ |
 
 ## Cross-epic dependencies
 

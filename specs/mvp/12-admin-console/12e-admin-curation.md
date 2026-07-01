@@ -1,6 +1,6 @@
 # 12e — Alias-Curation Queue
 
-**Epic 10 | Phase 5 | Parent: [12 — Admin Console](./12-admin-console.md)**
+**Epic 10 | Phase 5 | Parent: [12 — Admin Console](../12-admin-console.md)**
 
 Operator review of PROVISIONAL merchants and products: approve, merge, or reject. **Gaps:** the
 catalog adapters are create-only (no status flip / merge), and there is no "how many tenants are
@@ -10,7 +10,7 @@ waiting" ranking. Both are added here, honoring invariant #8 (catalog quorum) an
 ## Dependencies
 
 - [12a — Admin Foundation](./12a-admin-foundation.md)
-- [08 — Data Intelligence Layer](./08-data-intelligence-layer.md) (canonicalization, quorum)
+- [08 — Data Intelligence Layer](../08-data-intelligence-layer.md) (canonicalization, quorum)
 - Appendix A of the v2.4 spec — **canonical** for catalog promotion conflicts.
 
 ## Backend

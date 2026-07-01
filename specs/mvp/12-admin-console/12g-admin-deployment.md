@@ -1,6 +1,6 @@
 # 12g — Admin Deployment (CDK)
 
-**Epic 10 | Phase 5 | Parent: [12 — Admin Console](./12-admin-console.md)**
+**Epic 10 | Phase 5 | Parent: [12 — Admin Console](../12-admin-console.md)**
 
 Stand up `admin.wobblio.com` as a separate, locked-down distribution. Independent of 12b–12f —
 those run locally (`:3001`) until this lands; deploy last.
@@ -8,7 +8,7 @@ those run locally (`:3001`) until this lands; deploy last.
 ## Dependencies
 
 - [12a — Admin Foundation](./12a-admin-foundation.md) (the app being deployed)
-- [02b — Deployment & Hosting](./02b-deployment-hosting.md) (webapp OpenNext SSR precedent)
+- [02b — Deployment & Hosting](../02b-deployment-hosting.md) (webapp OpenNext SSR precedent)
 - `.claude/rules/serverless-iac-architect.md`
 
 ## Infrastructure

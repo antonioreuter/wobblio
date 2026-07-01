@@ -1,6 +1,6 @@
 # 12d — DLQ Inspection & Replay
 
-**Epic 10 | Phase 5 | Parent: [12 — Admin Console](./12-admin-console.md)**
+**Epic 10 | Phase 5 | Parent: [12 — Admin Console](../12-admin-console.md)**
 
 Inspect, replay, and discard messages in the ingestion DLQ. **Gap:** the codebase has no SQS
 *read* path today — only `SqsIngestionQueueAdapter` (write). This sub-spec adds the reader.
@@ -8,7 +8,7 @@ Inspect, replay, and discard messages in the ingestion DLQ. **Gap:** the codebas
 ## Dependencies
 
 - [12a — Admin Foundation](./12a-admin-foundation.md)
-- [07 — Core Ingestion Pipeline](./07-core-ingestion-pipeline.md) (DLQ, `maxReceiveCount=3`)
+- [07 — Core Ingestion Pipeline](../07-core-ingestion-pipeline.md) (DLQ, `maxReceiveCount=3`)
 
 ## Backend
 

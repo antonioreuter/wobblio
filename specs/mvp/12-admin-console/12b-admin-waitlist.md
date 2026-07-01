@@ -1,6 +1,6 @@
 # 12b — Waitlist Panel
 
-**Epic 10 | Phase 5 | Parent: [12 — Admin Console](./12-admin-console.md)**
+**Epic 10 | Phase 5 | Parent: [12 — Admin Console](../12-admin-console.md)**
 
 Admin view of the waitlist guardrail (§2.5) and a manual FIFO release control. Smallest slice —
 mostly an HTTP wrapper over logic that already exists as a cron.
@@ -8,7 +8,7 @@ mostly an HTTP wrapper over logic that already exists as a cron.
 ## Dependencies
 
 - [12a — Admin Foundation](./12a-admin-foundation.md) (route family, role gate, audit log)
-- [04 — Authentication & Waitlist](./04-authentication-waitlist.md)
+- [04 — Authentication & Waitlist](../04-authentication-waitlist.md)
 
 ## Backend
 

@@ -1,6 +1,6 @@
 # 12a — Admin Foundation
 
-**Epic 10 | Phase 5 | Parent: [12 — Admin Console](./12-admin-console.md)**
+**Epic 10 | Phase 5 | Parent: [12 — Admin Console](../12-admin-console.md)**
 
 Blocking foundation for the admin console: real session auth + role gate on the admin app, a
 backend `/admin/*` route family with per-endpoint ADMIN enforcement, and an audit log for every
@@ -8,9 +8,9 @@ admin mutation. **12b–12f depend on this.**
 
 ## Dependencies
 
-- [12 — Admin Console](./12-admin-console.md) (shared access-control rules)
-- [04 — Authentication & Waitlist](./04-authentication-waitlist.md) (Cognito, `/me/profile`)
-- [02 — Infrastructure, Database & RLS](./02-infrastructure-database-rls.md)
+- [12 — Admin Console](../12-admin-console.md) (shared access-control rules)
+- [04 — Authentication & Waitlist](../04-authentication-waitlist.md) (Cognito, `/me/profile`)
+- [02 — Infrastructure, Database & RLS](../02-infrastructure-database-rls.md)
 
 ## Decision — admin app auth
 
