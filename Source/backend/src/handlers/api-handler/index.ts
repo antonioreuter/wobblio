@@ -65,6 +65,7 @@ import { handleNotificationsRoute } from './notificationRoutes';
 import { handleListsRoute } from './listRoutes';
 import { handleProductsRoute } from './productRoutes';
 import { handlePriceTrendsRoute } from './priceTrendRoutes';
+import { handleSplitsRoute } from './splitRoutes';
 import { handleAdminRoute } from './adminRoutes';
 
 export const handler = async (
@@ -357,6 +358,8 @@ async function handleInvoicesRoute(
   if (method === 'POST' && feedbackMatch) return handleRecordFeedback(db, user, feedbackMatch[1], event, log);
 
   if (method === 'POST' && path === '/invoices/presign') return handlePresign(db, user, event, log);
+
+  if (/^\/invoices\/[^/]+\/splits/.test(path)) return handleSplitsRoute(db, user, path, method, event, log);
 
   const detailMatch = path.match(/^\/invoices\/([^/]+)$/);
   if (method === 'GET' && detailMatch) return handleInvoiceDetail(db, user, detailMatch[1]);

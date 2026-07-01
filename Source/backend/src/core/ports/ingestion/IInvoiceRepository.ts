@@ -67,6 +67,11 @@ export interface PersistParsedInvoice {
   transactionDate: string;
   currency: string;
   total: number;
+  // The invoice total converted to the tenant's home currency at the transaction-date ECB rate
+  // (§11 FX), plus the effective from→home rate preserved forever for historical honesty. Both
+  // null when no rate was available (ingestion never fails on FX — reports fall back to `total`).
+  totalHomeCurrency: number | null;
+  fxRateUsed: number | null;
   categoryId: string | null;
   searchTags: string[];
   // Free-text receipt city for invoice search — never a vocabulary tag, never a price
@@ -154,6 +159,10 @@ export interface InvoiceDetailLine {
   categoryName: string | null;
   // 0..1 parse confidence; the review screen ambers a low-confidence line (16e).
   confidence: number;
+  // Structural flags (§11 splitting): discount / deposit-fee lines are never assignable — they
+  // form the proportionally-allocated fee pool rather than a splittable item.
+  isDiscount: boolean;
+  isDepositOrFee: boolean;
 }
 
 export interface InvoiceDetail extends InvoiceListItem {

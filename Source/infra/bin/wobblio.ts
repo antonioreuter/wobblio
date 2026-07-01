@@ -72,6 +72,7 @@ if (config.isLocal) {
     dbStack,
     authStack,
     storageStack,
+    observabilityStack: obsStack,
   });
   backendStack.addDependency(dbStack);
   backendStack.addDependency(authStack);

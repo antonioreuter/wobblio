@@ -10,12 +10,14 @@ import type { IPriceObservationStore } from '../../ports/data-intelligence/IPric
 import type { IContributorContextRepository } from '../../ports/data-intelligence/IContributorContextRepository';
 import type { IRegionReference } from '../../ports/data-intelligence/IRegionReference';
 import type { IUploadLimitsProvider } from '../../ports/quota/IUploadLimitsProvider';
+import type { IFxRateRepository } from '../../ports/fx/IFxRateRepository';
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
 import type { VisionParseService } from './VisionParseService';
 import type { InvoiceStatus, ParsedReceipt } from '../../domain/ingestion';
 import type { FailureReasonCode } from '../../domain/failureReasons';
 import { ExtractionPreparer } from './ExtractionPreparer';
 import { InvoiceFinalizer, type ExtractionResult, type ExtractOutcome } from './InvoiceFinalizer';
+import { CurrencyHarmonizationService } from '../fx/CurrencyHarmonizationService';
 import { OcrParserTool } from './agentic/tools/OcrParserTool';
 import type { ResolvedIngestionLocation } from '../../domain/region';
 
@@ -57,12 +59,15 @@ export class IngestionService {
     contributorContext: IContributorContextRepository,
     regionReference: IRegionReference,
     uploadLimits: IUploadLimitsProvider,
+    fxRates: IFxRateRepository,
   ) {
     this.preparer = new ExtractionPreparer(
       tenantContext, ledger, fileStorage, invoiceRepo, contributorContext, regionReference, uploadLimits,
       new OcrParserTool(visionParser, documentParser),
     );
-    this.finalizer = new InvoiceFinalizer(invoiceRepo, priceObservationStore, ledger);
+    this.finalizer = new InvoiceFinalizer(
+      invoiceRepo, priceObservationStore, ledger, new CurrencyHarmonizationService(fxRates),
+    );
   }
 
   async process(message: IngestionMessage): Promise<IngestionOutcome> {

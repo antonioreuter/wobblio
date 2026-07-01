@@ -5,6 +5,8 @@ import { AppUserRepositoryAdapter } from '@infrastructure/adapters/identity/AppU
 import { TenantContextAdapter } from '@infrastructure/adapters/identity/TenantContextAdapter';
 import { InvoiceRepositoryAdapter } from '@infrastructure/adapters/ingestion/InvoiceRepositoryAdapter';
 import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
+import { FxRateRepositoryAdapter } from '@infrastructure/adapters/fx/FxRateRepositoryAdapter';
+import { CurrencyHarmonizationService } from '@core/services/fx/CurrencyHarmonizationService';
 import type { PoolClient } from 'pg';
 
 const hashOf = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -20,6 +22,7 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
   });
 
   afterAll(async () => {
+    await pool.query(`DELETE FROM fx_rate WHERE quote IN ('USD', 'GBP')`);
     await pool.end();
   });
 
@@ -112,7 +115,8 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
       await repo.persistParsed({
         invoiceId, merchantId: null, merchantProvisional: false,
         transactionDate: '2026-06-10',
-        currency: 'EUR', total: 4.0, categoryId: null, searchTags: ['weekly-groceries'],
+        currency: 'EUR', total: 4.0, totalHomeCurrency: 4.0, fxRateUsed: 1,
+        categoryId: null, searchTags: ['weekly-groceries'],
         status: 'PARSED', priceEmissionBlocked: false,
         location: { countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'PROFILE' },
         lines: [{
@@ -142,7 +146,8 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
       await repo.persistParsed({
         invoiceId, merchantId: null, merchantProvisional: false,
         transactionDate: '2026-06-10',
-        currency: 'EUR', total: 5.0, categoryId: null, searchTags: ['weekly-groceries'],
+        currency: 'EUR', total: 5.0, totalHomeCurrency: 5.0, fxRateUsed: 1,
+        categoryId: null, searchTags: ['weekly-groceries'],
         status: 'PARSED', priceEmissionBlocked: false,
         location: { countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'PROFILE' },
         lines: [{
@@ -159,5 +164,61 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
     expect(detail?.lines).toHaveLength(1);
     expect(detail?.lines[0]).toMatchObject({ rawText: 'Melk', lineTotal: 5.0 });
     expect(detail?.imageS3Key).toContain(sha);
+  });
+
+  // §11 FX end-to-end: a non-EUR receipt for a EUR-home user must persist a harmonized
+  // total_home_currency + fx_rate_used, crossed via the transaction-date ECB rate. This
+  // exercises the real FxRateRepositoryAdapter + CurrencyHarmonizationService that both
+  // pipelines run inside InvoiceFinalizer, then reads the columns straight from Postgres.
+  it('harmonizes a non-EUR invoice total into the home currency at the transaction-date rate', async () => {
+    const txDate = '2026-06-15';
+    const fxRepo = new FxRateRepositoryAdapter(pool);
+    // 1 EUR = 1.08 USD, 1 EUR = 0.85 GBP on the transaction date.
+    await fxRepo.upsertDaily(txDate, 'EUR', [{ quote: 'USD', rate: 1.08 }, { quote: 'GBP', rate: 0.85 }]);
+
+    const harmonizer = new CurrencyHarmonizationService(fxRepo);
+    // USD receipt, EUR home: fxRateUsed = rate(EUR→EUR) / rate(EUR→USD) = 1 / 1.08.
+    const eurHome = await harmonizer.harmonize(21.6, 'USD', 'EUR', txDate);
+    expect(eurHome.fxRateUsed).toBeCloseTo(1 / 1.08, 8);
+    expect(eurHome.totalHomeCurrency).toBeCloseTo(20.0, 2);
+
+    // USD receipt, GBP home crosses via EUR: rate(EUR→GBP) / rate(EUR→USD) = 0.85 / 1.08.
+    const gbpHome = await harmonizer.harmonize(21.6, 'USD', 'GBP', txDate);
+    expect(gbpHome.fxRateUsed).toBeCloseTo(0.85 / 1.08, 8);
+    expect(gbpHome.totalHomeCurrency).toBeCloseTo(17.0, 2);
+
+    const tenantId = await provisionTenant();
+    const sha = hashOf(randomUUID());
+    const persisted = await withTenant(tenantId, async (db) => {
+      const repo = new InvoiceRepositoryAdapter(db);
+      const invoiceId = await repo.createPending({
+        tenantId, uploadedByUserId: tenantId, householdId: null, quotaPooled: false,
+        imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
+      });
+      await repo.persistParsed({
+        invoiceId, merchantId: null, merchantProvisional: false,
+        transactionDate: txDate,
+        currency: 'USD', total: 21.6,
+        totalHomeCurrency: eurHome.totalHomeCurrency, fxRateUsed: eurHome.fxRateUsed,
+        categoryId: null, searchTags: ['travel'],
+        status: 'PARSED', priceEmissionBlocked: false,
+        location: { countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED', source: 'PROFILE' },
+        lines: [{
+          rawText: 'Coffee', lineIndex: 0, productId: null, productProvisional: false, categoryId: null,
+          quantity: 1, packQuantity: null,
+          baseUnit: null, unitPrice: 21.6, normalizedUnitPrice: null, lineTotal: 21.6,
+          isDiscount: false, isDepositOrFee: false, confidence: 0.9,
+        }],
+      });
+      const row = await db.query<{ total_home_currency: string | null; fx_rate_used: string | null }>(
+        `SELECT total_home_currency, fx_rate_used FROM invoice WHERE id = $1`,
+        [invoiceId],
+      );
+      return row.rows[0];
+    });
+
+    expect(persisted?.total_home_currency).not.toBeNull();
+    expect(Number(persisted?.total_home_currency)).toBeCloseTo(20.0, 2);
+    expect(Number(persisted?.fx_rate_used)).toBeCloseTo(1 / 1.08, 8);
   });
 });

@@ -9,6 +9,7 @@ interface ContextRow {
   region_code: string;
   country_code: string;
   trust_score: number;
+  home_currency: string;
 }
 
 // Reads the contributor's de-identification context. app_user is RLS-scoped
@@ -19,7 +20,7 @@ export class ContributorContextRepositoryAdapter implements IContributorContextR
 
   async getContext(tenantId: string): Promise<ContributorContext> {
     const result = await this.client.query<ContextRow>(
-      `SELECT u.price_contribution_optout, u.region_code, u.country_code,
+      `SELECT u.price_contribution_optout, u.region_code, u.country_code, u.home_currency,
               COALESCE(t.trust_score, $2) AS trust_score
        FROM app_user u
        LEFT JOIN tenant_trust t ON t.tenant_id = u.id
@@ -27,12 +28,13 @@ export class ContributorContextRepositoryAdapter implements IContributorContextR
       [tenantId, DEFAULT_TRUST_SCORE],
     );
     const row = result.rows[0];
-    if (!row) return { optedOut: true, regionCode: null, countryCode: 'NL', trustScore: 0 };
+    if (!row) return { optedOut: true, regionCode: null, countryCode: 'NL', trustScore: 0, homeCurrency: 'EUR' };
     return {
       optedOut: row.price_contribution_optout,
       regionCode: row.region_code,
       countryCode: row.country_code,
       trustScore: row.trust_score,
+      homeCurrency: row.home_currency,
     };
   }
 }

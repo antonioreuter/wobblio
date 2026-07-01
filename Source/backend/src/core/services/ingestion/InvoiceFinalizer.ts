@@ -1,6 +1,7 @@
 import type { IIngestionLedger } from '../../ports/ingestion/IIngestionLedger';
 import type { IInvoiceRepository, PersistedLine } from '../../ports/ingestion/IInvoiceRepository';
 import type { IPriceObservationStore } from '../../ports/data-intelligence/IPriceObservationStore';
+import type { CurrencyHarmonizationService } from '../fx/CurrencyHarmonizationService';
 import type { MerchantResolution } from '../../ports/data-intelligence/IMerchantResolver';
 import type { NormalizedLine } from '../../ports/data-intelligence/IProductNormalizer';
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
@@ -44,6 +45,7 @@ export class InvoiceFinalizer {
     private readonly invoiceRepo: IInvoiceRepository,
     private readonly priceObservationStore: IPriceObservationStore,
     private readonly ledger: IIngestionLedger,
+    private readonly harmonizer: CurrencyHarmonizationService,
   ) {}
 
   async finalize(input: FinalizeInput): Promise<IngestionOutcome> {
@@ -80,6 +82,15 @@ export class InvoiceFinalizer {
       isSuspectedDuplicate,
     });
 
+    // §11 FX: harmonize the printed total into the tenant's home currency at the transaction-date
+    // rate. Never fails ingestion — a missing rate persists null and reports fall back to `total`.
+    const harmonized = await this.harmonizer.harmonize(
+      receipt.total,
+      receipt.currency,
+      context.homeCurrency ?? 'EUR',
+      receipt.transactionDate,
+    );
+
     await this.invoiceRepo.persistParsed({
       invoiceId: message.invoiceId,
       merchantId: merchant.merchantId,
@@ -87,6 +98,8 @@ export class InvoiceFinalizer {
       transactionDate: receipt.transactionDate,
       currency: receipt.currency,
       total: receipt.total,
+      totalHomeCurrency: harmonized.totalHomeCurrency,
+      fxRateUsed: harmonized.fxRateUsed,
       categoryId,
       searchTags: tags,
       searchCity: receipt.location?.city ?? null,

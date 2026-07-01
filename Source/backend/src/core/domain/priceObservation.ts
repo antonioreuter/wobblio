@@ -11,6 +11,10 @@ export interface ContributorContext {
   regionCode: string | null; // ISO 3166-2, contributor home region
   countryCode: string; // ISO 3166-1 alpha-2
   trustScore: number;
+  // The tenant's home currency (app_user.home_currency), used only for FX harmonization at
+  // finalization (§11) — never emitted to the de-identified store. Optional so the emit-side
+  // context literal need not carry it. Defaults to EUR when absent.
+  homeCurrency?: string;
 }
 
 export interface ObservationLine {

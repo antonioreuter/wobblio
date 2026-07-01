@@ -8,6 +8,8 @@ import { ProductCatalogAdapter } from '@infrastructure/adapters/data-intelligenc
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
 import { ContributorContextRepositoryAdapter } from '@infrastructure/adapters/data-intelligence/ContributorContextRepositoryAdapter';
 import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligence/RegionReferenceAdapter';
+import { FxRateRepositoryAdapter } from '@infrastructure/adapters/fx/FxRateRepositoryAdapter';
+import { CurrencyHarmonizationService } from '@core/services/fx/CurrencyHarmonizationService';
 import { MeteringBedrockConverse } from '@core/services/ai/MeteringBedrockConverse';
 import { MeteringBedrockEmbedder } from '@core/services/ai/MeteringBedrockEmbedder';
 import type { IBedrockConverse } from '@core/ports/ai/IBedrockConverse';
@@ -94,6 +96,7 @@ function buildLegacy(client: PoolClient, deps: EvalDeps, meter: TokenMeter): Ing
     new ContributorContextRepositoryAdapter(client),
     new RegionReferenceAdapter(client),
     uploadLimits(),
+    new FxRateRepositoryAdapter(client),
   );
 }
 
@@ -126,6 +129,7 @@ function buildAgentic(client: PoolClient, deps: EvalDeps, meter: TokenMeter): Ag
     new InvoiceRepositoryAdapter(client),
     new PriceObservationStoreAdapter(client),
     new IngestionLedgerAdapter(client),
+    new CurrencyHarmonizationService(new FxRateRepositoryAdapter(client)),
   );
   return new AgenticIngestionService(preparer, coordinator, finalizer);
 }

@@ -112,6 +112,7 @@ describe('IngestionService', () => {
       documentParser as unknown as VisionParseService,
       merchantResolver, productNormalizer, classifier, tagGenerator, invoiceRepo,
       priceObservationStore, contributorContext, regionReference, uploadLimits,
+      { upsertDaily: vi.fn(), latestOnOrBefore: vi.fn().mockResolvedValue(1) },
     );
   });
 

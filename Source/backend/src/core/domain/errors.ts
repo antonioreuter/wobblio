@@ -91,6 +91,20 @@ export class InvoiceNotFoundError extends Error {
   }
 }
 
+export class BillSplitNotFoundError extends Error {
+  constructor(readonly splitId: string) {
+    super(`Bill split not found: ${splitId}`);
+    this.name = 'BillSplitNotFoundError';
+  }
+}
+
+export class InvalidSplitError extends Error {
+  constructor(reason: string) {
+    super(`Invalid bill split: ${reason}`);
+    this.name = 'InvalidSplitError';
+  }
+}
+
 export class InvoiceNotDeletableError extends Error {
   constructor(readonly invoiceId: string, readonly status: string) {
     super(`Invoice ${invoiceId} cannot be deleted in status ${status}`);

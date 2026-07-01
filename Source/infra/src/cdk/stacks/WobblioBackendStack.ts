@@ -12,6 +12,8 @@ import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as ses from 'aws-cdk-lib/aws-ses';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as location from 'aws-cdk-lib/aws-location';
@@ -23,6 +25,7 @@ import { configParamName } from '../config/appConfig';
 import { WobblioDbStack } from './WobblioDbStack';
 import { WobblioAuthStack } from './WobblioAuthStack';
 import { WobblioStorageStack } from './WobblioStorageStack';
+import { WobblioObservabilityStack } from './WobblioObservabilityStack';
 import { applyWobblioTags } from '../utils/tagging';
 
 interface WobblioBackendStackProps extends StackProps {
@@ -30,13 +33,14 @@ interface WobblioBackendStackProps extends StackProps {
   dbStack: WobblioDbStack;
   authStack: WobblioAuthStack;
   storageStack: WobblioStorageStack;
+  observabilityStack: WobblioObservabilityStack;
 }
 
 export class WobblioBackendStack extends Stack {
   constructor(scope: Construct, id: string, props: WobblioBackendStackProps) {
     super(scope, id, props);
 
-    const { config, dbStack, authStack, storageStack } = props;
+    const { config, dbStack, authStack, storageStack, observabilityStack } = props;
 
     // ── Shared DB connection env vars (resolved from SSM at deploy time) ─────
     const dbHost      = ssm.StringParameter.valueForStringParameter(this, '/shared/db/endpoint');
@@ -700,11 +704,36 @@ export class WobblioBackendStack extends Stack {
       cronBudgetResetFn,
     );
 
+    // Daily at 00:00 UTC (§11): fetch the previous day's ECB reference rates. Enabled in every
+    // stage — dev needs fx_rate populated or currency harmonization at ingestion resolves to null.
     makeCron(
       'FxRateFetchCron',
-      events.Schedule.cron({ minute: '5', hour: '6' }),
+      events.Schedule.cron({ minute: '0', hour: '0' }),
       cronFxRateFetchFn,
+      true,
     );
+
+    // §11 fallback alarm: the cron logs `fx_fetch_fallback` (error) when every ECB retry fails and
+    // yesterday's stored rates stand in. A log-metric filter (no EMF — consistent with the
+    // project's log-based telemetry) drives an alarm to the ops SNS topic.
+    const fxFallbackMetric = new logs.MetricFilter(this, 'FxRateFallbackMetricFilter', {
+      logGroup: logs.LogGroup.fromLogGroupName(
+        this, 'FxRateFetchLogGroup', `/aws/lambda/${cronFxRateFetchFn.functionName}`,
+      ),
+      filterPattern: logs.FilterPattern.literal('{ $.msg = "fx_fetch_fallback" }'),
+      metricNamespace: `Wobblio/${config.stage}`,
+      metricName: 'FxRateFetchFallback',
+      metricValue: '1',
+      defaultValue: 0,
+    });
+    new cloudwatch.Alarm(this, 'FxRateFetchFallbackAlarm', {
+      metric: fxFallbackMetric.metric({ period: Duration.days(1), statistic: 'Sum' }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      alarmDescription: 'ECB FX fetch failed after retries; reference rates are stale (§11).',
+    }).addAlarmAction(new cwActions.SnsAction(observabilityStack.opsTopic));
 
     makeCron(
       'WaitlistReleaseCron',

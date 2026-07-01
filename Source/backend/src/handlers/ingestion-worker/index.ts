@@ -14,6 +14,7 @@ import { ProductCatalogAdapter } from '@infrastructure/adapters/data-intelligenc
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
 import { ContributorContextRepositoryAdapter } from '@infrastructure/adapters/data-intelligence/ContributorContextRepositoryAdapter';
 import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligence/RegionReferenceAdapter';
+import { FxRateRepositoryAdapter } from '@infrastructure/adapters/fx/FxRateRepositoryAdapter';
 import { VisionParseService } from '@core/services/ingestion/VisionParseService';
 import { MerchantResolver } from '@core/services/data-intelligence/MerchantResolver';
 import { ProductNormalizer } from '@core/services/data-intelligence/ProductNormalizer';
@@ -69,6 +70,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       new ContributorContextRepositoryAdapter(client),
       new RegionReferenceAdapter(client),
       uploadLimits,
+      new FxRateRepositoryAdapter(client),
     );
   };
 

@@ -180,6 +180,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
              search_tags = $8, status = $9, location_country_code = $10,
              location_region_code = $11, location_status = $12, location_source = $13,
              price_emission_blocked = $14, search_city = $15,
+             total_home_currency = $16, fx_rate_used = $17,
              failure_reason_code = NULL, system_fault_reason = NULL, blocked_at = NULL
        WHERE id = $1`,
       [
@@ -188,6 +189,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
         input.searchTags, input.status, input.location.countryCode,
         input.location.regionCode, input.location.status, input.location.source,
         input.priceEmissionBlocked, input.searchCity,
+        input.totalHomeCurrency, input.fxRateUsed,
       ],
     );
 
@@ -400,9 +402,10 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     );
     if (!head.rows[0]) return null;
 
-    const lines = await this.client.query<{ id: string; raw_text: string; product_id: string | null; quantity: string; unit_price: string | null; line_total: string; category_name: string | null; confidence: string }>(
+    const lines = await this.client.query<{ id: string; raw_text: string; product_id: string | null; quantity: string; unit_price: string | null; line_total: string; category_name: string | null; confidence: string; is_discount: boolean; is_deposit_or_fee: boolean }>(
       `SELECT il.id, il.raw_text, il.product_id, il.quantity::text, il.unit_price::text,
-              il.line_total::text, pc.name AS category_name, il.confidence::text AS confidence
+              il.line_total::text, pc.name AS category_name, il.confidence::text AS confidence,
+              il.is_discount, il.is_deposit_or_fee
        FROM invoice_line il LEFT JOIN product_category pc ON pc.id = il.category_id
        WHERE il.invoice_id = $1 ORDER BY il.line_index`,
       [invoiceId],
@@ -417,6 +420,8 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       lineTotal: parseFloat(l.line_total),
       categoryName: l.category_name,
       confidence: parseFloat(l.confidence),
+      isDiscount: l.is_discount,
+      isDepositOrFee: l.is_deposit_or_fee,
     }));
 
     return {
