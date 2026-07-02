@@ -27,6 +27,7 @@ describe('ProfileService', () => {
       promoteToPremium: vi.fn(),
       getProfile: vi.fn(),
       completeOnboarding: vi.fn(),
+      setPriceContributionOptout: vi.fn(),
     };
     mockRegionRef = {
       listCountries: vi.fn(),

@@ -3,14 +3,18 @@ import {
   HeadObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import type { IS3FileStorage, PresignedPost } from '@core/ports/ingestion/IS3FileStorage';
+import type { IArchiveUploader } from '@core/ports/gdpr/IArchiveUploader';
 
 const MAX_TTL_SECONDS = 300; // hard invariant #10
 
-export class S3FileStorageAdapter implements IS3FileStorage {
+// Also implements IArchiveUploader (putObject) — the §14 export worker depends on that narrow
+// port, not the full ingestion-flow IS3FileStorage, even though this one class backs both.
+export class S3FileStorageAdapter implements IS3FileStorage, IArchiveUploader {
   private readonly client: S3Client;
 
   constructor(region: string, private readonly bucket: string) {
@@ -68,6 +72,12 @@ export class S3FileStorageAdapter implements IS3FileStorage {
 
   async deleteObject(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  async putObject(key: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: bytes, ContentType: contentType }),
+    );
   }
 }
 

@@ -50,6 +50,7 @@ describe('BillingService', () => {
       promoteToPremium: vi.fn(),
       getProfile: vi.fn(),
       completeOnboarding: vi.fn(),
+      setPriceContributionOptout: vi.fn(),
     };
     sut = new BillingService(gateway, whitelist, paymentRepo, archive, userRepo, URLS);
   });

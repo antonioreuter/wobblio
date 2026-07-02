@@ -106,6 +106,30 @@ export class WobblioBackendStack extends Stack {
       },
     });
 
+    // §14 GDPR data export (Art. 20): user-triggered, not scheduled — a dedicated queue/worker
+    // rather than folding into cron-data-retention's dispatcher.
+    const exportDlq = new sqs.Queue(this, 'ExportDlq', {
+      queueName: config.resourceName('export-dlq'),
+      retentionPeriod: Duration.days(14),
+      encryption: sqs.QueueEncryption.KMS,
+      encryptionMasterKey: dbStack.kmsKey,
+      enforceSSL: true,
+    });
+
+    const exportQueue = new sqs.Queue(this, 'ExportQueue', {
+      queueName: config.resourceName('export'),
+      // Must stay >= the export-worker Lambda timeout (90s) so a message isn't redelivered
+      // while still being processed.
+      visibilityTimeout: Duration.seconds(120),
+      encryption: sqs.QueueEncryption.KMS,
+      encryptionMasterKey: dbStack.kmsKey,
+      enforceSSL: true,
+      deadLetterQueue: {
+        queue: exportDlq,
+        maxReceiveCount: 3,
+      },
+    });
+
     // ── Lambda functions ──────────────────────────────────────────────────────
     // Lambdas run outside VPC — shared-infra DB SG allows off-VPC access (interim MVP posture).
     // VPC placement + custom SG is the target posture and will be added when traffic warrants it.
@@ -186,6 +210,14 @@ export class WobblioBackendStack extends Stack {
       UPLOADS_BUCKET: storageStack.uploadsBucket.bucketName,
     }, 120);
 
+    // §14 GDPR data export worker: builds the ZIP (JSON+CSV per table + receipts/) and
+    // uploads it to the exports bucket. 90s covers a heavy multi-year household export.
+    const exportWorkerFn = makeLambda('export-worker', 2, {
+      UPLOADS_BUCKET: storageStack.uploadsBucket.bucketName,
+      EXPORTS_BUCKET: storageStack.exportsBucket.bucketName,
+      SES_FROM_ADDRESS: 'noreply@wobblio.com',
+    }, 90);
+
     const cronBudgetResetFn    = makeLambda('cron-budget-reset', 2, { ANALYTICS_BUCKET: storageStack.analyticsBucket.bucketName });
     const cronFxRateFetchFn    = makeLambda('cron-fx-rate-fetch', 2);
     const cronWaitlistReleaseFn = makeLambda('cron-waitlist-release', 2);
@@ -238,6 +270,15 @@ export class WobblioBackendStack extends Stack {
       }),
     );
 
+    // ── SQS event source on export worker (§14) ──────────────────────────────
+    exportWorkerFn.addEventSource(
+      new SqsEventSource(exportQueue, {
+        batchSize: 1,
+        maxConcurrency: 2,
+        reportBatchItemFailures: true,
+      }),
+    );
+
     // ── IAM grants (least-privilege) ──────────────────────────────────────────
     // api-handler PUTs (presign), reads (HeadObject on confirm + presignGet on
     // detail view), and deletes (delete invoice) uploaded receipts.
@@ -252,6 +293,13 @@ export class WobblioBackendStack extends Stack {
 
     ingestionQueue.grantSendMessages(apiHandlerFn);
     ingestionQueue.grantConsumeMessages(ingestionWorkerFn);
+
+    // §14 GDPR export worker: reads receipt images from uploads, writes the ZIP to exports.
+    storageStack.uploadsBucket.grantRead(exportWorkerFn);
+    storageStack.exportsBucket.grantReadWrite(exportWorkerFn);
+    exportQueue.grantSendMessages(apiHandlerFn);
+    exportQueue.grantConsumeMessages(exportWorkerFn);
+    apiHandlerFn.addEnvironment('EXPORT_QUEUE_URL', exportQueue.queueUrl);
 
     // Admin DLQ panel (admin-console 05): the api-handler reads + deletes DLQ
     // messages and replays them onto the main queue (send grant above). No
@@ -309,6 +357,7 @@ export class WobblioBackendStack extends Stack {
     dbStack.kmsKey.grantEncryptDecrypt(ingestionWorkerFn);
     dbStack.kmsKey.grantEncryptDecrypt(waitlistStatusFn);
     dbStack.kmsKey.grantEncryptDecrypt(analyticsEventsFn);
+    dbStack.kmsKey.grantEncryptDecrypt(exportWorkerFn);
 
     analyticsEventsQueue.grantSendMessages(analyticsEventsFn);
 
@@ -329,6 +378,7 @@ export class WobblioBackendStack extends Stack {
     dbSecret.grantRead(waitlistStatusFn);
     dbSecret.grantRead(shareInvoiceFn);
     dbSecret.grantRead(shareShoppingListFn);
+    dbSecret.grantRead(exportWorkerFn);
 
     // Logs Insights: StartQuery is scoped to the worker log group; GetQueryResults and
     // StopQuery operate on an ephemeral queryId and do not support resource-level IAM,
@@ -358,7 +408,7 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
       ],
     });
-    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, shareInvoiceFn, shareShoppingListFn]
+    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, shareInvoiceFn, shareShoppingListFn, exportWorkerFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
 
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
@@ -572,6 +622,33 @@ export class WobblioBackendStack extends Stack {
       }),
     );
     cronWaitlistReleaseFn.addEnvironment('SES_FROM_ADDRESS', 'noreply@wobblio.com');
+
+    // SES + SNS: export-worker sends the export-ready email + push (§14). Same
+    // account-scoped identity wildcard and push platform-app pattern as ingestion-worker.
+    exportWorkerFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+        resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`],
+      }),
+    );
+    exportWorkerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+      resources: [
+        configParamArn('push/fcm_platform_arn'),
+        configParamArn('push/apns_platform_arn'),
+      ],
+    }));
+    exportWorkerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['sns:CreatePlatformEndpoint', 'sns:Publish'],
+      resources: snsPushResources,
+    }));
+    NagSuppressions.addResourceSuppressions(exportWorkerFn, [
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'SNS platform applications + their device endpoints are created out-of-band (cannot be made via CloudFormation); their ARNs are not known at synth, so the grant is scoped to this account+region\'s app/* and endpoint/* only',
+        appliesTo: snsPushResources.map((r) => `Resource::${r}`),
+      },
+    ], true);
 
     // Ingestion worker invokes the vision/auxiliary/embedder models (ids from SSM).
     grantBedrockInference(ingestionWorkerFn);
@@ -840,7 +917,7 @@ export class WobblioBackendStack extends Stack {
     });
 
     const allLambdas = [
-      apiHandlerFn, ingestionWorkerFn,
+      apiHandlerFn, ingestionWorkerFn, exportWorkerFn,
       cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn,
       cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, analyticsEventsFn, shareInvoiceFn,
       shareShoppingListFn,

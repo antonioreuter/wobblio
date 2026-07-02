@@ -67,6 +67,7 @@ import { handleProductsRoute } from './productRoutes';
 import { handlePriceTrendsRoute } from './priceTrendRoutes';
 import { handleSplitsRoute } from './splitRoutes';
 import { handleAdminRoute } from './adminRoutes';
+import { handleGdprRoute } from './gdprRoutes';
 
 export const handler = async (
   event: APIGatewayProxyEvent,
@@ -209,6 +210,8 @@ async function handleMeRoute(
   if (path === '/me/advisor' && method === 'GET') return handleAdvisorCard(db, user);
   if (path === '/me/stats/top-merchant' && method === 'GET') return handleTopMerchant(db, user);
   if (path === '/me/device-token' && method === 'POST') return handleRegisterDeviceToken(db, user, event, log);
+  if (path === '/me/price-contribution-optout' && method === 'PUT') return handlePriceContributionOptout(db, user, event, log);
+  if (path.startsWith('/me/export')) return handleGdprRoute(db, user, path, method, event);
 
   if (path !== '/me/profile') {
     return json(404, { message: 'Not Found' });
@@ -266,6 +269,24 @@ async function handleRegisterDeviceToken(
   );
   log.info('device token registered', { userId: user.id, platform });
   return json(200, { deviceTokenId });
+}
+
+// Post-onboarding toggle for the §6.5/§14 price-contribution opt-out (default false, set at
+// onboarding). Suppresses future observation emission only — no retroactive deletion (§14).
+async function handlePriceContributionOptout(
+  db: PoolClient,
+  user: AppUser,
+  event: APIGatewayProxyEvent,
+  log: LambdaLogger,
+): Promise<APIGatewayProxyResult> {
+  const body = parseJsonBody(event.body);
+  if (typeof body.optout !== 'boolean') return json(400, { message: 'optout must be a boolean' });
+
+  await withTenantTx(db, user.id, () =>
+    new AppUserRepositoryAdapter(db).setPriceContributionOptout(user.id, body.optout as boolean),
+  );
+  log.info('price contribution optout updated', { userId: user.id, optout: body.optout });
+  return json(204, {});
 }
 
 // Reference data for onboarding and budget configuration. Regions are the

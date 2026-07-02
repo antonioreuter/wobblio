@@ -120,4 +120,11 @@ export class AppUserRepositoryAdapter implements IAppUserRepository {
       [userId, stripeCustomerId],
     );
   }
+
+  async setPriceContributionOptout(userId: string, optout: boolean): Promise<void> {
+    await this.pool.query(
+      'UPDATE app_user SET price_contribution_optout = $2 WHERE id = $1',
+      [userId, optout],
+    );
+  }
 }

@@ -20,7 +20,7 @@ describe('WaitlistReleaseService', () => {
     mockCounter = { tryClaimSlot: vi.fn(), getCurrentCount: vi.fn() };
     mockCap = { getMaxFreeUsersCap: vi.fn() };
     mockWaitlist = { getWaitlistedBatch: vi.fn(), activateUsers: vi.fn(), getWaitlistCount: vi.fn() };
-    mockEmail = { sendWaitlistRelease: vi.fn() };
+    mockEmail = { sendWaitlistRelease: vi.fn(), sendExportReady: vi.fn() };
     sut = new WaitlistReleaseService(mockCounter, mockCap, mockWaitlist, mockEmail);
   });
 

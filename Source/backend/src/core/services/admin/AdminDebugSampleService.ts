@@ -3,6 +3,7 @@ import type { IS3FileStorage } from '../../ports/ingestion/IS3FileStorage';
 import type { IZipArchiver } from '../../ports/admin/IZipArchiver';
 import type { IAdminAuditLog, AdminActor } from '../../ports/admin/IAdminAuditLog';
 import { attachmentFormatFromKey } from '../../domain/uploadFormat';
+import { fetchBytesTolerantly } from '../../domain/tolerantFetch';
 
 // At most this many sample images per distinct root cause (§08 GDPR minimisation).
 const MAX_SAMPLES_PER_REASON = 2;
@@ -35,17 +36,16 @@ export class AdminDebugSampleService {
 
     // Fetch server-side; tolerate a missing object (e.g. already purged) so one gone image
     // doesn't fail the whole sample. Names are assigned after, so they stay contiguous.
-    const fetched = await Promise.allSettled(
-      matches.map((inv) => this.fileStorage.getObjectBytes(inv.imageS3Key)),
+    const fetched = await fetchBytesTolerantly(
+      matches,
+      (inv) => inv.imageS3Key,
+      (key) => this.fileStorage.getObjectBytes(key),
     );
-    const entries = matches
-      .map((inv, i) => ({ inv, result: fetched[i] }))
-      .filter((x): x is { inv: typeof x.inv; result: PromiseFulfilledResult<Uint8Array> } => x.result.status === 'fulfilled')
-      .map(({ inv, result }, index) => ({
-        // Opaque name — index + the file's format extension only, no key/path/tenant.
-        name: `sample-${index + 1}.${attachmentFormatFromKey(inv.imageS3Key)}`,
-        bytes: result.value,
-      }));
+    const entries = fetched.map(({ ref, bytes }, index) => ({
+      // Opaque name — index + the file's format extension only, no key/path/tenant.
+      name: `sample-${index + 1}.${attachmentFormatFromKey(ref.imageS3Key)}`,
+      bytes,
+    }));
 
     const zip = await this.zipper.archive(entries);
 

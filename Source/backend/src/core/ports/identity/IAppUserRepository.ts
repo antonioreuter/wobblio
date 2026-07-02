@@ -35,6 +35,7 @@ export interface IAppUserRepository {
   findByCognitoSub(cognitoSub: string): Promise<AppUser | null>;
   insertUser(cognitoSub: string, email: string, status: UserStatus, profile?: UserProfile): Promise<string>;
   promoteToPremium(userId: string, stripeCustomerId: string): Promise<void>;
+  setPriceContributionOptout(userId: string, optout: boolean): Promise<void>;
   getProfile(cognitoSub: string): Promise<OnboardingProfile | null>;
   completeOnboarding(cognitoSub: string, input: OnboardingInput): Promise<void>;
 }

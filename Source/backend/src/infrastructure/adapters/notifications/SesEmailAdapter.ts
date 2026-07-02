@@ -34,4 +34,30 @@ export class SesEmailAdapter implements IEmailSender {
       }),
     );
   }
+
+  // §14 export-ready notice — deliberately carries no download link (decision: the download
+  // endpoint always mints a fresh short-lived URL per click, never a static emailed one).
+  async sendExportReady(toAddress: string): Promise<void> {
+    await this.client.send(
+      new SendEmailCommand({
+        FromEmailAddress: this.fromAddress,
+        Destination: { ToAddresses: [toAddress] },
+        Content: {
+          Simple: {
+            Subject: { Data: 'Your Wobblio data export is ready' },
+            Body: {
+              Text: {
+                Data: [
+                  'Your requested data export has finished and is ready to download.',
+                  'Open the Wobblio app or website and go to Settings to download it.',
+                  '',
+                  'The Wobblio team',
+                ].join('\n'),
+              },
+            },
+          },
+        },
+      }),
+    );
+  }
 }

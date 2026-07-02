@@ -358,3 +358,19 @@ export class MergeNotAllowedError extends Error {
     this.name = 'MergeNotAllowedError';
   }
 }
+
+// §14 GDPR export — a tenant already has a pending/processing/completed export request within
+// the 24h window (FAILED requests don't count, so a crashed export doesn't lock out retry).
+export class ExportRateLimitedError extends Error {
+  constructor() {
+    super('An export request was already made in the last 24 hours');
+    this.name = 'ExportRateLimitedError';
+  }
+}
+
+export class DataRequestNotFoundError extends Error {
+  constructor(readonly requestId: string) {
+    super(`Data request not found: ${requestId}`);
+    this.name = 'DataRequestNotFoundError';
+  }
+}
