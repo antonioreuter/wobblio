@@ -265,6 +265,25 @@ export class WobblioBackendStack extends Stack {
     // queue depth, and reads its error-rate metrics. Resource-scoped where the action
     // allows; '*' only for actions that do not support resource-level IAM.
     apiHandlerFn.addEnvironment('INGESTION_WORKER_FUNCTION_NAME', ingestionWorkerFn.functionName);
+
+    // Admin Troubleshooting page — Agentic Pipeline section: the agentic worker's function/log
+    // group name is deterministic (config.resourceName), unlike its queue URLs, which live in a
+    // different stack (WobblioDataAiPipelineStack) deployed after this one and are read from SSM
+    // at request time instead (see adminTroubleshootingRoutes.ts).
+    const agenticWorkerFunctionName = config.resourceName('agentic-worker');
+    const agenticWorkerLogGroupName = `/aws/lambda/${agenticWorkerFunctionName}`;
+    apiHandlerFn.addEnvironment('AGENTIC_WORKER_LOG_GROUP', agenticWorkerLogGroupName);
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['sqs:GetQueueAttributes'],
+      resources: [
+        `arn:aws:sqs:${this.region}:${this.account}:${config.resourceName('agentic')}`,
+        `arn:aws:sqs:${this.region}:${this.account}:${config.resourceName('agentic-dlq')}`,
+      ],
+    }));
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['logs:StartQuery'],
+      resources: [`arn:aws:logs:${this.region}:${this.account}:log-group:${agenticWorkerLogGroupName}:*`],
+    }));
     ingestionQueue.grant(apiHandlerFn, 'sqs:GetQueueAttributes');
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['logs:StartQuery'],
@@ -430,14 +449,16 @@ export class WobblioBackendStack extends Stack {
     //   aws ssm put-parameter --type String --name /wobblio/config/<stage>/push/apns_platform_arn --value <APNS_APP_ARN>
 
     // SSM: dynamic queue routing (Non-Functional 01/04) — api-handler reads the agentic
-    // pipeline feature flag and the agentic queue URL (exported by WobblioDataAiPipelineStack)
-    // at confirm time to pick the legacy vs agentic queue. Single batched GetParameters; both
-    // enumerated (no wildcard) so cdk-nag IAM5 stays clean. Missing params fail-safe to legacy.
+    // pipeline feature flag and the agentic queue/DLQ URLs (exported by
+    // WobblioDataAiPipelineStack) at confirm time (routing) and on-demand (admin Troubleshooting
+    // page's Agentic Pipeline section). Single batched GetParameters; all enumerated (no
+    // wildcard) so cdk-nag IAM5 stays clean. Missing params fail-safe to legacy/empty.
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParameters'],
       resources: [
         configParamArn('features/agentic_pipeline_enabled'),
         configParamArn('queues/agentic_url'),
+        configParamArn('queues/agentic_dlq_url'),
       ],
     }));
 

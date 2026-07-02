@@ -48,7 +48,7 @@ describe('AgenticIngestionService', () => {
     preparer.prepare.mockResolvedValue({ kind: 'ready', receipt: RECEIPT, location: LOCATION, context: CONTEXT });
     const outcome = await service.process(MESSAGE);
 
-    expect(coordinator.extract).toHaveBeenCalledWith(RECEIPT, LOCATION);
+    expect(coordinator.extract).toHaveBeenCalledWith(RECEIPT, LOCATION, MESSAGE.invoiceId);
     expect(finalizer.finalize).toHaveBeenCalledWith({ message: MESSAGE, context: CONTEXT, ...EXTRACTION });
     expect(outcome).toEqual({ handled: true, status: 'PARSED' });
   });

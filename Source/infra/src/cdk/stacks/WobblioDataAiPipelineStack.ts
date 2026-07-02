@@ -166,13 +166,19 @@ export class WobblioDataAiPipelineStack extends Stack {
       resources: bedrockResources,
     }));
 
-    // ── Cross-stack export: agentic queue URL for the routing adapter (04) ────────
-    // Written into the stage-scoped config namespace so the backend's stageConfig reads it
-    // without a hard CDK dependency from WobblioBackendStack onto this stack.
+    // ── Cross-stack export: agentic queue/DLQ URLs ───────────────────────────────
+    // Written into the stage-scoped config namespace so the backend (routing adapter, 04, and
+    // the admin Troubleshooting page) reads them without a hard CDK dependency from
+    // WobblioBackendStack onto this stack (WobblioBackendStack is instantiated first).
     new ssm.StringParameter(this, 'WobblioAgenticQueueUrlParam', {
       parameterName: configParamName(config.stage, 'queues/agentic_url'),
       stringValue: agenticQueue.queueUrl,
       description: 'URL of the agentic ingestion queue (consumed by the dynamic routing adapter, 04)',
+    });
+    new ssm.StringParameter(this, 'WobblioAgenticDlqUrlParam', {
+      parameterName: configParamName(config.stage, 'queues/agentic_dlq_url'),
+      stringValue: agenticDlq.queueUrl,
+      description: 'URL of the agentic DLQ (consumed by the admin Troubleshooting page)',
     });
 
     // ── Log retention ─────────────────────────────────────────────────────────────

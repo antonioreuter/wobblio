@@ -1,9 +1,11 @@
+import { AgenticPipelineSection } from './agentic-pipeline-section'
 import { QueueHealthSection } from './queue-health-section'
 import { LogLevelSection } from './log-level-section'
 import { LogsSection } from './logs-section'
 import { DlqSection } from './dlq-section'
 
 const SECTION_LINKS = [
+  { id: 'agentic', label: 'Agentic Pipeline' },
   { id: 'health', label: 'Queue Health' },
   { id: 'loglevel', label: 'Log Level' },
   { id: 'logs', label: 'Ingestion Logs' },
@@ -33,6 +35,8 @@ export default function TroubleshootingPage() {
         </nav>
       </header>
 
+      <AgenticPipelineSection />
+      <div className="h-px bg-line" />
       <QueueHealthSection />
       <div className="h-px bg-line" />
       <LogLevelSection />

@@ -25,6 +25,7 @@ import { AgenticIngestionService } from '@core/services/ingestion/AgenticIngesti
 import { ExtractionPreparer } from '@core/services/ingestion/ExtractionPreparer';
 import { InvoiceFinalizer } from '@core/services/ingestion/InvoiceFinalizer';
 import { InvoiceCoordinator } from '@core/services/ingestion/agentic/InvoiceCoordinator';
+import { MockAgenticStageInstrumentationAdapter } from '@infrastructure/adapters/observability/MockAgenticStageInstrumentationAdapter';
 import { OcrParserTool } from '@core/services/ingestion/agentic/tools/OcrParserTool';
 import { MerchantResolverTool } from '@core/services/ingestion/agentic/tools/MerchantResolverTool';
 import { ProductNormalizerTool } from '@core/services/ingestion/agentic/tools/ProductNormalizerTool';
@@ -124,6 +125,7 @@ function buildAgentic(client: PoolClient, deps: EvalDeps, meter: TokenMeter): Ag
     new ProductNormalizerTool(new ProductNormalizer(productCatalog, embedder, converse, deps.modelIds.auxiliary)),
     new InvoiceClassifierTool(new InvoiceClassifier(merchantCatalog, converse, deps.modelIds.auxiliary)),
     new SearchTagGeneratorTool(new TagGenerator()),
+    new MockAgenticStageInstrumentationAdapter(),
   );
   const finalizer = new InvoiceFinalizer(
     new InvoiceRepositoryAdapter(client),

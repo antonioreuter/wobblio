@@ -25,6 +25,7 @@ import { ExtractionPreparer } from '@core/services/ingestion/ExtractionPreparer'
 import { InvoiceFinalizer } from '@core/services/ingestion/InvoiceFinalizer';
 import { AgenticIngestionService } from '@core/services/ingestion/AgenticIngestionService';
 import { InvoiceCoordinator } from '@core/services/ingestion/agentic/InvoiceCoordinator';
+import { StructuredLogAgenticStageInstrumentation } from '@infrastructure/adapters/observability/StructuredLogAgenticStageInstrumentation';
 import { OcrParserTool } from '@core/services/ingestion/agentic/tools/OcrParserTool';
 import { MerchantResolverTool } from '@core/services/ingestion/agentic/tools/MerchantResolverTool';
 import { ProductNormalizerTool } from '@core/services/ingestion/agentic/tools/ProductNormalizerTool';
@@ -55,6 +56,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   const converse = new BedrockConverseAdapter(REGION);
   const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
   const uploadLimits = new SsmUploadQuotaAdapter(REGION);
+  const stageInstrumentation = new StructuredLogAgenticStageInstrumentation();
 
   const buildService = (client: PoolClient, meter: TokenMeter): AgenticIngestionService => {
     const meteredConverse = new MeteringBedrockConverse(converse, meter);
@@ -81,6 +83,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       new ProductNormalizerTool(new ProductNormalizer(productCatalog, meteredEmbedder, meteredConverse, auxiliaryModelId)),
       new InvoiceClassifierTool(new InvoiceClassifier(merchantCatalog, meteredConverse, auxiliaryModelId)),
       new SearchTagGeneratorTool(new TagGenerator()),
+      stageInstrumentation,
     );
     const finalizer = new InvoiceFinalizer(
       new InvoiceRepositoryAdapter(client),
