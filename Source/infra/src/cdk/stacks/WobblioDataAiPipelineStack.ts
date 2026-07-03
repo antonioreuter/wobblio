@@ -143,14 +143,17 @@ export class WobblioDataAiPipelineStack extends Stack {
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`],
     }));
 
-    // SSM: swappable model IDs, tag vocabulary, and pipeline feature flags the agent reads
-    // at runtime — scoped to the three config sub-trees per spec §3 (stage-scoped).
+    // SSM: swappable model IDs, tag vocabulary, pipeline feature flags, and upload quotas
+    // the agent reads at runtime — scoped to the four config sub-trees per spec §3
+    // (stage-scoped). quotas/* was missing: assertUploadWithinLimits reads
+    // quotas/household_uploads_per_week, which AccessDenied'd every agentic-routed message.
     agenticWorkerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParameters'],
       resources: [
         configParamArn('models/*'),
         configParamArn('tags/*'),
         configParamArn('features/*'),
+        configParamArn('quotas/*'),
       ],
     }));
 
@@ -217,11 +220,12 @@ export class WobblioDataAiPipelineStack extends Stack {
       },
       {
         id: 'AwsSolutions-IAM5',
-        reason: 'Scoped SSM config sub-trees (models/tags/features) are read all-or-nothing per role; model/tag/flag keys are runtime values that cannot be enumerated at synth time',
+        reason: 'Scoped SSM config sub-trees (models/tags/features/quotas) are read all-or-nothing per role; model/tag/flag/quota keys are runtime values that cannot be enumerated at synth time',
         appliesTo: [
           `Resource::${configParamArn('models/*')}`,
           `Resource::${configParamArn('tags/*')}`,
           `Resource::${configParamArn('features/*')}`,
+          `Resource::${configParamArn('quotas/*')}`,
         ],
       },
     ], true);
