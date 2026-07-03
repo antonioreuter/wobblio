@@ -46,6 +46,10 @@ class DioApiClient implements IApiClient {
       _send(() => _dio.put<Object?>(path, data: body));
 
   @override
+  Future<ApiResponse> patch(String path, {Object? body}) =>
+      _send(() => _dio.patch<Object?>(path, data: body));
+
+  @override
   Future<ApiResponse> delete(String path, {Object? body}) =>
       _send(() => _dio.delete<Object?>(path, data: body));
 

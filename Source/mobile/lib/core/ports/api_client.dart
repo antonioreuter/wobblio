@@ -40,6 +40,10 @@ abstract class IApiClient {
 
   Future<ApiResponse> put(String path, {Object? body});
 
+  /// Added for the shopping-list item/region routes (18c), which the backend
+  /// only matches on `PATCH` (partial updates) — `PUT` would 404.
+  Future<ApiResponse> patch(String path, {Object? body});
+
   Future<ApiResponse> delete(String path, {Object? body});
 
   Future<ApiResponse> postMultipart(

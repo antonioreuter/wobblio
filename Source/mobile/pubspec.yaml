@@ -24,7 +24,10 @@ dependencies:
   file_picker: ^8.1.4              # PDF document pick — multipage path (16c)
   crypto: ^3.0.5                   # SHA-256 dedup key over the final upload bytes (16c)
   google_fonts: ^8.1.0              # Outfit + Inter, matching the webapp's Google Fonts CDN load (17a)
-  lucide_icons: ^0.257.0            # Lucide glyph set, matching the webapp's icon language (17a)
+  flutter_lucide: ^1.11.0            # Lucide glyph set, matching the webapp's icon language (17a) — lucide_icons is abandoned and incompatible with Flutter's final IconData
+  share_plus: ^10.1.4               # native OS share sheet for a receipt's share link (18b)
+  shared_preferences: ^2.3.3        # split-id cache for the non-idempotent POST /invoices/{id}/splits (18h)
+  fl_chart: ^0.69.2                 # price-trend line chart on the Reports screen (18e)
 
 dev_dependencies:
   flutter_test:

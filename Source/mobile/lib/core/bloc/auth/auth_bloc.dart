@@ -35,7 +35,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthLogoutRequested>(_onLogout);
     on<AuthSessionExpired>(_onSessionExpired);
 
-    _expirySub = onSessionExpired.listen((_) => add(const AuthSessionExpired()));
+    _expirySub =
+        onSessionExpired.listen((_) => add(const AuthSessionExpired()));
   }
 
   final ICognitoAuthenticator _authenticator;
@@ -85,7 +86,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     } on ApiException {
       // Signed in at Cognito but the profile read failed — surface it and let
       // the user retry; the written tokens let the next attempt bootstrap.
-      emit(const AuthSignedOut(error: 'Signed in, but could not load your profile. Try again.'));
+      emit(const AuthSignedOut(
+          error: 'Signed in, but could not load your profile. Try again.',),);
     }
   }
 

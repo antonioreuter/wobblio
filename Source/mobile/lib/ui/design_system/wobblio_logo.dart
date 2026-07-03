@@ -27,10 +27,16 @@ class WobblioLogo extends StatelessWidget {
         const SizedBox(width: 10),
         Text.rich(
           TextSpan(
-            style: AppTypography.display(size: size * 0.62, weight: FontWeight.w800),
+            style: AppTypography.display(
+                size: size * 0.62, weight: FontWeight.w800,),
             children: [
               const TextSpan(text: 'wobbl'),
-              TextSpan(text: 'io', style: AppTypography.display(size: size * 0.62, weight: FontWeight.w800, color: AppColors.brand)),
+              TextSpan(
+                  text: 'io',
+                  style: AppTypography.display(
+                      size: size * 0.62,
+                      weight: FontWeight.w800,
+                      color: AppColors.brand,),),
             ],
           ),
         ),
@@ -50,8 +56,9 @@ class _LogoPainter extends CustomPainter {
       ..strokeWidth = 3.5 * ((sx + sy) / 2)
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      ..shader = const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF0D9488)])
-          .createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+      ..shader =
+          const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF0D9488)])
+              .createShader(Rect.fromLTWH(0, 0, size.width, size.height));
 
     // M 6 22 C 10 22, 14 6, 20 6 C 24 6, 26 18, 32 14 L 42 14
     final path1 = Path()

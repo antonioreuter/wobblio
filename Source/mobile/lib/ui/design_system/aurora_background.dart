@@ -14,14 +14,17 @@ class AuroraBackground extends StatefulWidget {
   State<AuroraBackground> createState() => _AuroraBackgroundState();
 }
 
-class _AuroraBackgroundState extends State<AuroraBackground> with SingleTickerProviderStateMixin {
+class _AuroraBackgroundState extends State<AuroraBackground>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(seconds: 16));
-    final reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    _controller =
+        AnimationController(vsync: this, duration: const Duration(seconds: 16));
+    final reduceMotion = WidgetsBinding
+        .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     if (!reduceMotion) _controller.repeat(reverse: true);
   }
 
@@ -48,7 +51,9 @@ class _AuroraBackgroundState extends State<AuroraBackground> with SingleTickerPr
                   height: 650,
                   driftY: t * 30,
                   scale: 1 + t * 0.1,
-                  gradient: const RadialGradient(colors: [Color(0x266366F1), Colors.transparent], radius: 0.65),
+                  gradient: const RadialGradient(
+                      colors: [Color(0x266366F1), Colors.transparent],
+                      radius: 0.65,),
                 ),
                 _blob(
                   bottom: -50 + t * -30,
@@ -57,7 +62,9 @@ class _AuroraBackgroundState extends State<AuroraBackground> with SingleTickerPr
                   height: 500,
                   driftY: 0,
                   scale: 1,
-                  gradient: const RadialGradient(colors: [Color(0x1F0D9488), Colors.transparent], radius: 0.65),
+                  gradient: const RadialGradient(
+                      colors: [Color(0x1F0D9488), Colors.transparent],
+                      radius: 0.65,),
                 ),
                 _blob(
                   width: 700,
@@ -65,7 +72,9 @@ class _AuroraBackgroundState extends State<AuroraBackground> with SingleTickerPr
                   driftY: 0,
                   scale: 1,
                   centered: true,
-                  gradient: const RadialGradient(colors: [Color(0x14F43F5E), Colors.transparent], radius: 0.65),
+                  gradient: const RadialGradient(
+                      colors: [Color(0x14F43F5E), Colors.transparent],
+                      radius: 0.65,),
                 ),
               ],
             );
@@ -100,7 +109,9 @@ class _AuroraBackgroundState extends State<AuroraBackground> with SingleTickerPr
     );
     if (centered) {
       return Positioned.fill(
-        child: Align(alignment: Alignment.center, child: Transform.translate(offset: Offset(0, driftY), child: blob)),
+        child: Align(
+            alignment: Alignment.center,
+            child: Transform.translate(offset: Offset(0, driftY), child: blob),),
       );
     }
     return Positioned(

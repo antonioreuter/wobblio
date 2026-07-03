@@ -7,7 +7,11 @@ enum WobblioBadgeTone { primary, success, warning, danger }
 /// Ports `Badge.tsx`: a small uppercase pill, tone-tinted glow background +
 /// matching text + a faint tone-colored border.
 class WobblioBadge extends StatelessWidget {
-  const WobblioBadge({super.key, required this.label, this.tone = WobblioBadgeTone.primary, this.icon});
+  const WobblioBadge(
+      {super.key,
+      required this.label,
+      this.tone = WobblioBadgeTone.primary,
+      this.icon,});
 
   final String label;
   final WobblioBadgeTone tone;
@@ -29,7 +33,10 @@ class WobblioBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (icon != null) ...[Icon(icon, size: 12, color: fg), const SizedBox(width: 6)],
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: fg),
+            const SizedBox(width: 6),
+          ],
           Text(
             label.toUpperCase(),
             style: AppTypography.overline(color: fg, weight: FontWeight.w600),
@@ -40,9 +47,25 @@ class WobblioBadge extends StatelessWidget {
   }
 
   (Color, Color, Color) _colors() => switch (tone) {
-        WobblioBadgeTone.primary => (AppColors.brandGlow, AppColors.brand, AppColors.brandBorder),
-        WobblioBadgeTone.success => (AppColors.successGlow, AppColors.success, AppColors.successBorder),
-        WobblioBadgeTone.warning => (AppColors.warningGlow, AppColors.warning, AppColors.warningBorder),
-        WobblioBadgeTone.danger => (AppColors.dangerGlow, AppColors.danger, AppColors.dangerBorder),
+        WobblioBadgeTone.primary => (
+            AppColors.brandGlow,
+            AppColors.brand,
+            AppColors.brandBorder
+          ),
+        WobblioBadgeTone.success => (
+            AppColors.successGlow,
+            AppColors.success,
+            AppColors.successBorder
+          ),
+        WobblioBadgeTone.warning => (
+            AppColors.warningGlow,
+            AppColors.warning,
+            AppColors.warningBorder
+          ),
+        WobblioBadgeTone.danger => (
+            AppColors.dangerGlow,
+            AppColors.danger,
+            AppColors.dangerBorder
+          ),
       };
 }

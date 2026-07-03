@@ -7,8 +7,10 @@ import 'package:wobblio/core/ingestion/invoice_status.dart';
 import 'package:wobblio/core/ingestion/invoice_summary.dart';
 import 'package:wobblio/core/ingestion/usage_summary.dart';
 import 'package:wobblio/main.dart';
+import 'package:wobblio/ui/account/account_screen.dart';
 import 'package:wobblio/ui/capture/capture_screen.dart';
 import 'package:wobblio/ui/format.dart';
+import 'package:wobblio/ui/notifications/notifications_screen.dart';
 import 'package:wobblio/ui/review/review_screen.dart';
 import 'package:wobblio/ui/theme/app_theme.dart';
 
@@ -46,7 +48,12 @@ class _DashboardView extends StatelessWidget {
       key: const Key('dashboard-screen'),
       appBar: AppBar(
         title: const Text('Receipts'),
-        actions: const [_UsagePill(), SizedBox(width: 12)],
+        actions: const [
+          _UsagePill(),
+          _NotificationsButton(),
+          _AccountButton(),
+          SizedBox(width: 4),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('capture-fab'),
@@ -222,7 +229,8 @@ class _InvoiceCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Text(formatMoney(invoice.currency, invoice.total), style: AppTheme.money),
+                  Text(formatMoney(invoice.currency, invoice.total),
+                      style: AppTheme.money,),
                 ],
               ),
               const SizedBox(height: 8),
@@ -365,6 +373,43 @@ class _UsagePill extends StatelessWidget {
           key: const Key('usage-pill'),
           style: Theme.of(context).textTheme.labelSmall,
         ),
+      ),
+    );
+  }
+}
+
+/// Net-new notifications entry point (18g) — pushes [NotificationsScreen].
+/// No unread-count badge in this slice (deferred, see
+/// `specs/mvp/18-mobile-navigation-and-lists/18g-notifications.md`).
+class _NotificationsButton extends StatelessWidget {
+  const _NotificationsButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      key: const Key('dashboard-notifications-button'),
+      tooltip: 'Notifications',
+      icon: const Icon(Icons.notifications_none),
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+      ),
+    );
+  }
+}
+
+/// Net-new profile entry point (18f) — pushes [AccountScreen]. Not a
+/// relocation of any existing action; the usage pill stays put.
+class _AccountButton extends StatelessWidget {
+  const _AccountButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      key: const Key('dashboard-account-button'),
+      tooltip: 'Account',
+      icon: const Icon(Icons.account_circle_outlined),
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AccountScreen()),
       ),
     );
   }

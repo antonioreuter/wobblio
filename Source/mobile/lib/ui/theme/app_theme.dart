@@ -24,7 +24,8 @@ class AppTheme {
       error: AppColors.danger,
     );
 
-    final base = GoogleFonts.interTextTheme(ThemeData(brightness: Brightness.dark).textTheme);
+    final base = GoogleFonts.interTextTheme(
+        ThemeData(brightness: Brightness.dark).textTheme,);
 
     return ThemeData(
       useMaterial3: true,
@@ -43,6 +44,8 @@ class AppTheme {
   /// columns of currency align (a hard webapp rule). Existing screens
   /// (pre-`17b`–`17e`) use this as a plain style; call [AppTypography.display]
   /// directly wherever a custom size/color is needed.
-  static TextStyle get money =>
-      AppTypography.display(size: AppTypography.textMd, weight: FontWeight.w700, tabularNumbers: true);
+  static TextStyle get money => AppTypography.display(
+      size: AppTypography.textMd,
+      weight: FontWeight.w700,
+      tabularNumbers: true,);
 }

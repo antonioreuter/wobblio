@@ -28,7 +28,8 @@ class WobblioTag extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: selected ? AppColors.brandGlow : AppColors.glassHighlight,
-        border: Border.all(color: selected ? AppColors.brandBorder : AppColors.glassBorder),
+        border: Border.all(
+            color: selected ? AppColors.brandBorder : AppColors.glassBorder,),
         borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
       ),
       child: Row(
@@ -47,7 +48,10 @@ class WobblioTag extends StatelessWidget {
               onTap: onRemove,
               child: Text(
                 '×',
-                style: AppTypography.body(size: 13, weight: FontWeight.w700, color: AppColors.textSecondary),
+                style: AppTypography.body(
+                    size: 13,
+                    weight: FontWeight.w700,
+                    color: AppColors.textSecondary,),
               ),
             ),
           ],

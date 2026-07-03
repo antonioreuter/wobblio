@@ -15,11 +15,13 @@ class HttpProductSearchRepository implements IProductSearchRepository {
     if (data is! Map || data['products'] is! List) return const [];
     return (data['products'] as List)
         .whereType<Map<String, dynamic>>()
-        .map((p) => ProductMatch(
-              productId: p['productId'] as String,
-              displayName: (p['displayName'] as String?) ?? '',
-              brand: p['brand'] as String?,
-            ),)
+        .map(
+          (p) => ProductMatch(
+            productId: p['productId'] as String,
+            displayName: (p['displayName'] as String?) ?? '',
+            brand: p['brand'] as String?,
+          ),
+        )
         .toList();
   }
 }

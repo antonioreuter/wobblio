@@ -42,7 +42,8 @@ class AppColors {
   static const brand = indigo500;
   static const brandGlow = Color(0x406366F1); // rgba(99,102,241,0.25)
   static const brandHover = indigo600;
-  static const brandBorder = Color(0x336366F1); // rgba(99,102,241,0.2) — badge/tag border
+  static const brandBorder =
+      Color(0x336366F1); // rgba(99,102,241,0.2) — badge/tag border
 
   static const success = teal600;
   static const successGlow = Color(0x260D9488); // rgba(13,148,136,0.15)
@@ -111,7 +112,8 @@ class AppTypography {
   static const text3xl = 32.0; // metric value
   static const text4xl = 42.0; // section title
 
-  static const trackingWide = 0.05; // em — multiply by font size for letterSpacing
+  static const trackingWide =
+      0.05; // em — multiply by font size for letterSpacing
 
   /// Display face (Outfit) at [size]/[weight]/[color], optionally tabular-nums
   /// for money and other aligned figures.
@@ -126,7 +128,8 @@ class AppTypography {
       fontWeight: weight,
       color: color,
       letterSpacing: -0.02 * size,
-      fontFeatures: tabularNumbers ? const [FontFeature.tabularFigures()] : null,
+      fontFeatures:
+          tabularNumbers ? const [FontFeature.tabularFigures()] : null,
     );
   }
 

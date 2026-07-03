@@ -21,7 +21,8 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
         _products = products,
         super(const ReviewState()) {
     on<ReviewStarted>(_onStarted);
-    on<ReviewDateEdited>((e, emit) => emit(state.copyWith(transactionDate: e.dateIso)));
+    on<ReviewDateEdited>(
+        (e, emit) => emit(state.copyWith(transactionDate: e.dateIso)),);
     on<ReviewTotalEdited>((e, emit) => emit(state.copyWith(total: e.total)));
     on<ReviewLineEdited>(_onLineEdited);
     on<ReviewProductSearched>(_onProductSearched);
@@ -35,34 +36,41 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
   // Bumped per search so a slower earlier response can't overwrite newer results.
   int _searchGen = 0;
 
-  Future<void> _onStarted(ReviewStarted event, Emitter<ReviewState> emit) async {
+  Future<void> _onStarted(
+      ReviewStarted event, Emitter<ReviewState> emit,) async {
     emit(state.copyWith(status: ReviewStatus.loading));
     try {
       final detail = await _review.getDetail(event.invoiceId);
-      emit(state.copyWith(
-        status: ReviewStatus.ready,
-        invoiceId: detail.id,
-        merchant: detail.merchant,
-        currency: detail.currency,
-        imageUrl: detail.imageUrl,
-        rawStatus: detail.status,
-        transactionDate: detail.transactionDate,
-        total: detail.total,
-        lines: detail.lines,
-      ),);
+      emit(
+        state.copyWith(
+          status: ReviewStatus.ready,
+          invoiceId: detail.id,
+          merchant: detail.merchant,
+          currency: detail.currency,
+          imageUrl: detail.imageUrl,
+          rawStatus: detail.status,
+          transactionDate: detail.transactionDate,
+          total: detail.total,
+          lines: detail.lines,
+        ),
+      );
     } catch (_) {
-      emit(state.copyWith(status: ReviewStatus.failure, notice: 'Couldn’t load this receipt.'));
+      emit(state.copyWith(
+          status: ReviewStatus.failure, notice: 'Couldn’t load this receipt.',),);
     }
   }
 
   void _onLineEdited(ReviewLineEdited event, Emitter<ReviewState> emit) {
     final lines = [
-      for (final line in state.lines) line.id == event.line.id ? event.line : line,
+      for (final line in state.lines)
+        line.id == event.line.id ? event.line : line,
     ];
-    emit(state.copyWith(lines: lines, dirtyLineIds: {...state.dirtyLineIds, event.line.id}));
+    emit(state.copyWith(
+        lines: lines, dirtyLineIds: {...state.dirtyLineIds, event.line.id},),);
   }
 
-  Future<void> _onProductSearched(ReviewProductSearched event, Emitter<ReviewState> emit) async {
+  Future<void> _onProductSearched(
+      ReviewProductSearched event, Emitter<ReviewState> emit,) async {
     final query = event.query.trim();
     final gen = ++_searchGen;
     if (query.length < 2) {
@@ -81,23 +89,29 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
     }
   }
 
-  Future<void> _onConfirmed(ReviewConfirmed event, Emitter<ReviewState> emit) async {
+  Future<void> _onConfirmed(
+      ReviewConfirmed event, Emitter<ReviewState> emit,) async {
     emit(state.copyWith(status: ReviewStatus.submitting, notice: null));
     try {
       await _review.correct(state.invoiceId, _correction());
       emit(state.copyWith(status: ReviewStatus.success));
     } catch (_) {
-      emit(state.copyWith(status: ReviewStatus.ready, notice: 'Couldn’t save — please try again.'));
+      emit(state.copyWith(
+          status: ReviewStatus.ready,
+          notice: 'Couldn’t save — please try again.',),);
     }
   }
 
-  Future<void> _onDiscarded(ReviewDiscarded event, Emitter<ReviewState> emit) async {
+  Future<void> _onDiscarded(
+      ReviewDiscarded event, Emitter<ReviewState> emit,) async {
     emit(state.copyWith(status: ReviewStatus.submitting, notice: null));
     try {
       await _review.discard(state.invoiceId);
       emit(state.copyWith(status: ReviewStatus.discarded));
     } catch (_) {
-      emit(state.copyWith(status: ReviewStatus.ready, notice: 'Couldn’t discard — please try again.'));
+      emit(state.copyWith(
+          status: ReviewStatus.ready,
+          notice: 'Couldn’t discard — please try again.',),);
     }
   }
 

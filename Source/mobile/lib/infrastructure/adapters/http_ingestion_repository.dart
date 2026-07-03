@@ -61,14 +61,18 @@ class HttpIngestionRepository implements IIngestionRepository {
   PresignTicket _parseTicket(Object? data) {
     if (data is! Map) {
       throw const UploadException(
-          UploadErrorCode.failed, 'Malformed presign response.',);
+        UploadErrorCode.failed,
+        'Malformed presign response.',
+      );
     }
     final invoiceId = data['invoiceId'];
     final url = data['url'];
     final fields = data['fields'];
     if (invoiceId is! String || url is! String || fields is! Map) {
       throw const UploadException(
-          UploadErrorCode.failed, 'Malformed presign response.',);
+        UploadErrorCode.failed,
+        'Malformed presign response.',
+      );
     }
     return PresignTicket(
       invoiceId: invoiceId,

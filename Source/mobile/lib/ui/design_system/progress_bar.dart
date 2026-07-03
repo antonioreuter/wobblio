@@ -10,7 +10,12 @@ enum ProgressTone { success, warning, danger }
 /// [animate] is set, skipped under `MediaQuery.disableAnimations` (this app's
 /// equivalent of the web's `prefers-reduced-motion`).
 class ProgressBar extends StatefulWidget {
-  const ProgressBar({super.key, required this.value, this.tone, this.showThreshold = true, this.animate = false});
+  const ProgressBar(
+      {super.key,
+      required this.value,
+      this.tone,
+      this.showThreshold = true,
+      this.animate = false,});
 
   final double value;
   final ProgressTone? tone;
@@ -28,7 +33,8 @@ class _ProgressBarState extends State<ProgressBar> {
   @override
   void initState() {
     super.initState();
-    _reduceMotion = WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    _reduceMotion = WidgetsBinding
+        .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     final pct = widget.value.clamp(0, 100).toDouble();
     if (widget.animate && !_reduceMotion) {
       _target = 0;
@@ -55,7 +61,9 @@ class _ProgressBarState extends State<ProgressBar> {
   @override
   Widget build(BuildContext context) {
     final pct = widget.value.clamp(0, 100).toDouble();
-    final auto = pct >= 85 ? ProgressTone.danger : (pct >= 75 ? ProgressTone.warning : ProgressTone.success);
+    final auto = pct >= 85
+        ? ProgressTone.danger
+        : (pct >= 75 ? ProgressTone.warning : ProgressTone.success);
     final fill = _colorFor(widget.tone ?? auto);
 
     return Semantics(
@@ -64,21 +72,29 @@ class _ProgressBarState extends State<ProgressBar> {
         builder: (context, constraints) {
           return Container(
             height: 8,
-            decoration: BoxDecoration(color: AppColors.glassBorder, borderRadius: BorderRadius.circular(AppSpacing.radiusPill)),
+            decoration: BoxDecoration(
+                color: AppColors.glassBorder,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusPill),),
             clipBehavior: Clip.antiAlias,
             child: Stack(
               children: [
                 AnimatedContainer(
-                  duration: _reduceMotion ? Duration.zero : const Duration(milliseconds: 800),
+                  duration: _reduceMotion
+                      ? Duration.zero
+                      : const Duration(milliseconds: 800),
                   width: constraints.maxWidth * (_target / 100),
-                  decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(AppSpacing.radiusPill)),
+                  decoration: BoxDecoration(
+                      color: fill,
+                      borderRadius:
+                          BorderRadius.circular(AppSpacing.radiusPill),),
                 ),
                 if (widget.showThreshold)
                   Positioned(
                     left: constraints.maxWidth * 0.85,
                     top: 0,
                     bottom: 0,
-                    child: Container(width: 1.5, color: Colors.white.withValues(alpha: 0.3)),
+                    child: Container(
+                        width: 1.5, color: Colors.white.withValues(alpha: 0.3),),
                   ),
               ],
             ),

@@ -22,7 +22,8 @@ class AppAuthCognitoAuthenticator implements ICognitoAuthenticator {
 
   AuthorizationServiceConfiguration get _config =>
       const AuthorizationServiceConfiguration(
-        authorizationEndpoint: 'https://${AppConfig.cognitoDomain}/oauth2/authorize',
+        authorizationEndpoint:
+            'https://${AppConfig.cognitoDomain}/oauth2/authorize',
         tokenEndpoint: 'https://${AppConfig.cognitoDomain}/oauth2/token',
         endSessionEndpoint: 'https://${AppConfig.cognitoDomain}/logout',
       );

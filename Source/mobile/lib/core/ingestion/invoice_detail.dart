@@ -13,6 +13,8 @@ class InvoiceLineDetail extends Equatable {
     required this.lineTotal,
     required this.categoryName,
     required this.confidence,
+    this.isDiscount = false,
+    this.isDepositOrFee = false,
   });
 
   final String id;
@@ -23,13 +25,20 @@ class InvoiceLineDetail extends Equatable {
   final double lineTotal;
   final String? categoryName;
   final double confidence;
+  // Additive (18h — Split Bill excludes these lines from assignment; the
+  // pre-confirm Review screen that originally defined this model doesn't
+  // read them, so they default to false rather than becoming required
+  // everywhere).
+  final bool isDiscount;
+  final bool isDepositOrFee;
 
   InvoiceLineDetail copyWith({
     String? productId,
     double? quantity,
     double? unitPrice,
     double? lineTotal,
-  }) => InvoiceLineDetail(
+  }) =>
+      InvoiceLineDetail(
         id: id,
         rawText: rawText,
         productId: productId ?? this.productId,
@@ -38,14 +47,31 @@ class InvoiceLineDetail extends Equatable {
         lineTotal: lineTotal ?? this.lineTotal,
         categoryName: categoryName,
         confidence: confidence,
+        isDiscount: isDiscount,
+        isDepositOrFee: isDepositOrFee,
       );
 
   @override
-  List<Object?> get props =>
-      [id, rawText, productId, quantity, unitPrice, lineTotal, categoryName, confidence];
+  List<Object?> get props => [
+        id,
+        rawText,
+        productId,
+        quantity,
+        unitPrice,
+        lineTotal,
+        categoryName,
+        confidence,
+        isDiscount,
+        isDepositOrFee,
+      ];
 }
 
 /// The full review payload for one invoice: zoomable photo + editable fields.
+///
+/// [locationLabel] and [feedbackVerdict] are additive (18b — read-only Invoice
+/// Detail screen needs them for its info rows/feedback row; the pre-confirm
+/// Review screen that originally defined this model doesn't read them, so
+/// they default to null rather than becoming required everywhere).
 class InvoiceDetail extends Equatable {
   const InvoiceDetail({
     required this.id,
@@ -56,20 +82,46 @@ class InvoiceDetail extends Equatable {
     required this.currency,
     required this.imageUrl,
     required this.lines,
+    this.locationLabel,
+    this.feedbackVerdict,
   });
 
   final String id;
   final String merchant;
-  final String status; // raw backend status (PARSED / NEEDS_REVIEW / SUSPECTED_DUPLICATE / …)
+  final String
+      status; // raw backend status (PARSED / NEEDS_REVIEW / SUSPECTED_DUPLICATE / …)
   final String? transactionDate; // ISO yyyy-MM-dd
   final double? total;
   final String currency;
   final String? imageUrl; // presigned GET (≤300s)
   final List<InvoiceLineDetail> lines;
+  final String? locationLabel; // e.g. "North Brabant, Netherlands"
+  final String? feedbackVerdict; // 'UP' | 'DOWN' | null, raw backend value
 
   bool get isSuspectedDuplicate => status == 'SUSPECTED_DUPLICATE';
 
   @override
-  List<Object?> get props =>
-      [id, merchant, status, transactionDate, total, currency, imageUrl, lines];
+  List<Object?> get props => [
+        id,
+        merchant,
+        status,
+        transactionDate,
+        total,
+        currency,
+        imageUrl,
+        lines,
+        locationLabel,
+        feedbackVerdict,
+      ];
+}
+
+/// A time-limited public link to share an invoice (`POST /invoices/{id}/share`).
+class ShareLink extends Equatable {
+  const ShareLink({required this.url, required this.expiresAt});
+
+  final String url;
+  final String expiresAt; // ISO timestamp
+
+  @override
+  List<Object?> get props => [url, expiresAt];
 }

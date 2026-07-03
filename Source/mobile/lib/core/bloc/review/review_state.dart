@@ -61,8 +61,9 @@ class ReviewState extends Equatable {
       currency: currency ?? this.currency,
       imageUrl: imageUrl ?? this.imageUrl,
       rawStatus: rawStatus ?? this.rawStatus,
-      transactionDate:
-          transactionDate == _unset ? this.transactionDate : transactionDate as String?,
+      transactionDate: transactionDate == _unset
+          ? this.transactionDate
+          : transactionDate as String?,
       total: total == _unset ? this.total : total as double?,
       lines: lines ?? this.lines,
       dirtyLineIds: dirtyLineIds ?? this.dirtyLineIds,

@@ -65,7 +65,9 @@ class ImageCompressUploadPreparer implements IUploadPreparer {
     );
     if (out.isEmpty) {
       throw const UploadException(
-          UploadErrorCode.failed, 'Image processing failed.',);
+        UploadErrorCode.failed,
+        'Image processing failed.',
+      );
     }
     return out;
   }

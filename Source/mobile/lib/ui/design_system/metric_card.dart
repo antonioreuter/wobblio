@@ -8,7 +8,12 @@ enum MetricTone { neutral, success, warning, danger }
 /// Ports `MetricCard.tsx`: a glass card with a muted uppercase label, a large
 /// tabular-nums Outfit value, and an optional tone-colored delta line.
 class MetricCard extends StatelessWidget {
-  const MetricCard({super.key, required this.label, required this.value, this.delta, this.tone = MetricTone.neutral});
+  const MetricCard(
+      {super.key,
+      required this.label,
+      required this.value,
+      this.delta,
+      this.tone = MetricTone.neutral,});
 
   final String label;
   final String value;
@@ -25,10 +30,15 @@ class MetricCard extends StatelessWidget {
         children: [
           Text(label.toUpperCase(), style: AppTypography.overline()),
           const SizedBox(height: 6),
-          Text(value, style: AppTypography.display(size: AppTypography.text3xl, weight: FontWeight.w800, tabularNumbers: true)),
+          Text(value,
+              style: AppTypography.display(
+                  size: AppTypography.text3xl,
+                  weight: FontWeight.w800,
+                  tabularNumbers: true,),),
           if (delta != null) ...[
             const SizedBox(height: 4),
-            Text(delta!, style: AppTypography.body(size: 13, color: _toneColor())),
+            Text(delta!,
+                style: AppTypography.body(size: 13, color: _toneColor()),),
           ],
         ],
       ),

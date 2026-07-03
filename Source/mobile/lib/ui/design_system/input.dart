@@ -16,6 +16,7 @@ class WobblioInput extends StatefulWidget {
     this.onTap,
     this.keyboardType,
     this.onChanged,
+    this.onSubmitted,
     this.autofocus = false,
   });
 
@@ -27,6 +28,10 @@ class WobblioInput extends StatefulWidget {
   final VoidCallback? onTap;
   final TextInputType? keyboardType;
   final ValueChanged<String>? onChanged;
+
+  /// Fires on the keyboard's submit action (e.g. Enter) — lets a caller like
+  /// Split Bill's "Add a person" field submit without a separate button tap.
+  final ValueChanged<String>? onSubmitted;
   final bool autofocus;
 
   @override
@@ -59,7 +64,9 @@ class _WobblioInputState extends State<WobblioInput> {
         Container(
           height: AppSpacing.controlHeight,
           decoration: BoxDecoration(
-            color: widget.flagged ? AppColors.warning.withValues(alpha: 0.04) : AppColors.glassHighlight,
+            color: widget.flagged
+                ? AppColors.warning.withValues(alpha: 0.04)
+                : AppColors.glassHighlight,
             borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
             border: widget.flagged
                 ? const Border(
@@ -70,7 +77,12 @@ class _WobblioInputState extends State<WobblioInput> {
                   )
                 : Border.all(color: borderColor),
             boxShadow: !widget.flagged && _focused
-                ? [const BoxShadow(color: AppColors.brandGlow, blurRadius: 0, spreadRadius: 3)]
+                ? [
+                    const BoxShadow(
+                        color: AppColors.brandGlow,
+                        blurRadius: 0,
+                        spreadRadius: 3,),
+                  ]
                 : null,
           ),
           child: Row(
@@ -90,9 +102,11 @@ class _WobblioInputState extends State<WobblioInput> {
                     onTap: widget.onTap,
                     keyboardType: widget.keyboardType,
                     onChanged: widget.onChanged,
+                    onSubmitted: widget.onSubmitted,
                     autofocus: widget.autofocus,
                     style: AppTypography.body(size: AppTypography.textMd),
-                    decoration: const InputDecoration(border: InputBorder.none, isDense: true),
+                    decoration: const InputDecoration(
+                        border: InputBorder.none, isDense: true,),
                   ),
                 ),
               ),

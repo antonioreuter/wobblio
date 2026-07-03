@@ -34,9 +34,11 @@ class _ReviewView extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocConsumer<ReviewBloc, ReviewState>(
       listenWhen: (prev, curr) =>
-          prev.status != curr.status || (curr.notice != null && prev.notice != curr.notice),
+          prev.status != curr.status ||
+          (curr.notice != null && prev.notice != curr.notice),
       listener: (context, state) {
-        if (state.status == ReviewStatus.success || state.status == ReviewStatus.discarded) {
+        if (state.status == ReviewStatus.success ||
+            state.status == ReviewStatus.discarded) {
           Navigator.of(context).pop(true);
           return;
         }
@@ -51,8 +53,10 @@ class _ReviewView extends StatelessWidget {
           key: const Key('review-screen'),
           appBar: AppBar(title: const Text('Review receipt')),
           body: switch (state.status) {
-            ReviewStatus.loading => const Center(child: CircularProgressIndicator()),
-            ReviewStatus.failure => const Center(child: Text('Couldn’t load this receipt')),
+            ReviewStatus.loading =>
+              const Center(child: CircularProgressIndicator()),
+            ReviewStatus.failure =>
+              const Center(child: Text('Couldn’t load this receipt')),
             _ => _ReviewBody(state: state),
           },
         );
@@ -91,7 +95,9 @@ class _ReviewBody extends StatelessWidget {
                           color: AppColors.textMuted,
                         ),
                         loadingBuilder: (context, child, progress) =>
-                            progress == null ? child : const CircularProgressIndicator(),
+                            progress == null
+                                ? child
+                                : const CircularProgressIndicator(),
                       ),
                     ),
                   ),
@@ -112,7 +118,9 @@ class _ReviewBody extends StatelessWidget {
               _FieldTile(
                 key: const Key('review-total'),
                 label: 'Total',
-                value: state.total == null ? 'Add total' : formatMoney(state.currency, state.total!),
+                value: state.total == null
+                    ? 'Add total'
+                    : formatMoney(state.currency, state.total!),
                 onTap: busy ? null : () => _editTotal(context, state),
               ),
               const Padding(
@@ -129,16 +137,26 @@ class _ReviewBody extends StatelessWidget {
               if (state.isSuspectedDuplicate)
                 OutlinedButton.icon(
                   key: const Key('review-discard'),
-                  onPressed: busy ? null : () => context.read<ReviewBloc>().add(const ReviewDiscarded()),
+                  onPressed: busy
+                      ? null
+                      : () => context
+                          .read<ReviewBloc>()
+                          .add(const ReviewDiscarded()),
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('Discard duplicate'),
                 ),
               const SizedBox(height: 8),
               FilledButton(
                 key: const Key('review-confirm'),
-                onPressed: busy ? null : () => context.read<ReviewBloc>().add(const ReviewConfirmed()),
+                onPressed: busy
+                    ? null
+                    : () =>
+                        context.read<ReviewBloc>().add(const ReviewConfirmed()),
                 child: busy
-                    ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),)
                     : const Text('Confirm'),
               ),
             ],
@@ -150,7 +168,8 @@ class _ReviewBody extends StatelessWidget {
 
   Future<void> _pickDate(BuildContext context, ReviewState state) async {
     final bloc = context.read<ReviewBloc>();
-    final initial = DateTime.tryParse(state.transactionDate ?? '') ?? DateTime.now();
+    final initial =
+        DateTime.tryParse(state.transactionDate ?? '') ?? DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -184,7 +203,11 @@ class _ReviewBody extends StatelessWidget {
 }
 
 class _FieldTile extends StatelessWidget {
-  const _FieldTile({super.key, required this.label, required this.value, required this.onTap});
+  const _FieldTile(
+      {super.key,
+      required this.label,
+      required this.value,
+      required this.onTap,});
 
   final String label;
   final String value;
@@ -204,7 +227,8 @@ class _FieldTile extends StatelessWidget {
 }
 
 class _LineTile extends StatelessWidget {
-  const _LineTile({required this.line, required this.currency, required this.onTap});
+  const _LineTile(
+      {required this.line, required this.currency, required this.onTap,});
 
   final InvoiceLineDetail line;
   final String currency;
@@ -222,7 +246,8 @@ class _LineTile extends StatelessWidget {
             : const Icon(Icons.check_circle_outline, color: AppColors.success),
         title: Text(line.rawText, maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: low ? const Text('Low confidence — please check') : null,
-        trailing: Text(formatMoney(currency, line.lineTotal), style: AppTheme.money),
+        trailing:
+            Text(formatMoney(currency, line.lineTotal), style: AppTheme.money),
         onTap: onTap,
       ),
     );
@@ -250,7 +275,9 @@ class _LineEditorSheetState extends State<_LineEditorSheet> {
   void initState() {
     super.initState();
     _quantity = TextEditingController(text: _fmt(widget.line.quantity));
-    _unitPrice = TextEditingController(text: widget.line.unitPrice == null ? '' : _fmt(widget.line.unitPrice!));
+    _unitPrice = TextEditingController(
+        text:
+            widget.line.unitPrice == null ? '' : _fmt(widget.line.unitPrice!),);
     _lineTotal = TextEditingController(text: _fmt(widget.line.lineTotal));
     _productId = widget.line.productId;
   }
@@ -267,7 +294,8 @@ class _LineEditorSheetState extends State<_LineEditorSheet> {
     final edited = widget.line.copyWith(
       productId: _productId,
       quantity: double.tryParse(_quantity.text) ?? widget.line.quantity,
-      unitPrice: _unitPrice.text.isEmpty ? null : double.tryParse(_unitPrice.text),
+      unitPrice:
+          _unitPrice.text.isEmpty ? null : double.tryParse(_unitPrice.text),
       lineTotal: double.tryParse(_lineTotal.text) ?? widget.line.lineTotal,
     );
     Navigator.of(context).pop(edited);
@@ -287,14 +315,19 @@ class _LineEditorSheetState extends State<_LineEditorSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(widget.line.rawText, style: Theme.of(context).textTheme.bodyLarge),
+            Text(widget.line.rawText,
+                style: Theme.of(context).textTheme.bodyLarge,),
             const SizedBox(height: 12),
             TextField(
               key: const Key('line-product-search'),
-              decoration: const InputDecoration(labelText: 'Match a product', prefixIcon: Icon(Icons.search)),
-              onChanged: (q) => context.read<ReviewBloc>().add(ReviewProductSearched(q)),
+              decoration: const InputDecoration(
+                  labelText: 'Match a product', prefixIcon: Icon(Icons.search),),
+              onChanged: (q) =>
+                  context.read<ReviewBloc>().add(ReviewProductSearched(q)),
             ),
-            _ProductResults(onPick: (m) => setState(() => _productId = m.productId), selectedId: _productId),
+            _ProductResults(
+                onPick: (m) => setState(() => _productId = m.productId),
+                selectedId: _productId,),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -323,7 +356,8 @@ class _LineEditorSheetState extends State<_LineEditorSheet> {
         decoration: InputDecoration(labelText: label),
       );
 
-  static String _fmt(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+  static String _fmt(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
 }
 
 class _ProductResults extends StatelessWidget {
@@ -335,10 +369,12 @@ class _ProductResults extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<ReviewBloc, ReviewState>(
-      buildWhen: (p, c) => p.searchResults != c.searchResults || p.searching != c.searching,
+      buildWhen: (p, c) =>
+          p.searchResults != c.searchResults || p.searching != c.searching,
       builder: (context, state) {
         if (state.searching) {
-          return const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator());
+          return const Padding(
+              padding: EdgeInsets.all(12), child: LinearProgressIndicator(),);
         }
         if (state.searchResults.isEmpty) return const SizedBox(height: 8);
         return ConstrainedBox(
@@ -350,7 +386,9 @@ class _ProductResults extends StatelessWidget {
                 ListTile(
                   dense: true,
                   title: Text(m.label),
-                  trailing: m.productId == selectedId ? const Icon(Icons.check, color: AppColors.success) : null,
+                  trailing: m.productId == selectedId
+                      ? const Icon(Icons.check, color: AppColors.success)
+                      : null,
                   onTap: () => onPick(m),
                 ),
             ],
@@ -361,7 +399,8 @@ class _ProductResults extends StatelessWidget {
   }
 }
 
-Future<double?> _numberDialog(BuildContext context, String label, double? initial) {
+Future<double?> _numberDialog(
+    BuildContext context, String label, double? initial,) {
   final controller = TextEditingController(text: initial?.toString() ?? '');
   return showDialog<double>(
     context: context,
@@ -373,9 +412,12 @@ Future<double?> _numberDialog(BuildContext context, String label, double? initia
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+        TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),),
         FilledButton(
-          onPressed: () => Navigator.of(ctx).pop(double.tryParse(controller.text)),
+          onPressed: () =>
+              Navigator.of(ctx).pop(double.tryParse(controller.text)),
           child: const Text('Save'),
         ),
       ],

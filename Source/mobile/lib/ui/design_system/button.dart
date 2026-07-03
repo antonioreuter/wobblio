@@ -36,7 +36,9 @@ class WobblioButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final disabled = onPressed == null || busy;
-    final fontSize = size == WobblioButtonSize.lg ? AppTypography.textLg : AppTypography.textMd;
+    final fontSize = size == WobblioButtonSize.lg
+        ? AppTypography.textLg
+        : AppTypography.textMd;
     final verticalPadding = size == WobblioButtonSize.lg ? 14.0 : 11.0;
     final fg = foregroundColor ?? _defaultForeground();
 
@@ -50,9 +52,17 @@ class WobblioButton extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2, color: fg),
           )
         else ...[
-          if (iconLeft != null) ...[Icon(iconLeft, size: fontSize, color: fg), const SizedBox(width: 8)],
-          Text(label, style: AppTypography.body(size: fontSize, weight: FontWeight.w600, color: fg)),
-          if (iconRight != null) ...[const SizedBox(width: 8), Icon(iconRight, size: fontSize, color: fg)],
+          if (iconLeft != null) ...[
+            Icon(iconLeft, size: fontSize, color: fg),
+            const SizedBox(width: 8),
+          ],
+          Text(label,
+              style: AppTypography.body(
+                  size: fontSize, weight: FontWeight.w600, color: fg,),),
+          if (iconRight != null) ...[
+            const SizedBox(width: 8),
+            Icon(iconRight, size: fontSize, color: fg),
+          ],
         ],
       ],
     );
@@ -63,11 +73,19 @@ class WobblioButton extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
           boxShadow: variant == WobblioButtonVariant.primary
-              ? const [BoxShadow(color: AppColors.brandGlow, blurRadius: 20, spreadRadius: -2, offset: Offset(0, 4))]
+              ? const [
+                  BoxShadow(
+                      color: AppColors.brandGlow,
+                      blurRadius: 20,
+                      spreadRadius: -2,
+                      offset: Offset(0, 4),),
+                ]
               : null,
         ),
         child: Material(
-          color: variant == WobblioButtonVariant.primary ? AppColors.brand : Colors.transparent,
+          color: variant == WobblioButtonVariant.primary
+              ? AppColors.brand
+              : Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
             side: variant == WobblioButtonVariant.outline
@@ -79,7 +97,8 @@ class WobblioButton extends StatelessWidget {
             onTap: disabled ? null : onPressed,
             borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: verticalPadding),
+              padding: EdgeInsets.symmetric(
+                  horizontal: 24, vertical: verticalPadding,),
               child: Center(widthFactor: 1, child: content),
             ),
           ),

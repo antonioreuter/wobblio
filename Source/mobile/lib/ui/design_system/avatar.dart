@@ -5,7 +5,8 @@ import 'package:wobblio/ui/design_system/tokens.dart';
 /// Ports `Avatar.tsx`: a circle with initials, brand gradient by default or a
 /// flat [background] override.
 class Avatar extends StatelessWidget {
-  const Avatar({super.key, required this.initials, this.size = 36, this.background});
+  const Avatar(
+      {super.key, required this.initials, this.size = 36, this.background,});
 
   final String initials;
   final double size;
@@ -24,7 +25,8 @@ class Avatar extends StatelessWidget {
       ),
       child: Text(
         initials,
-        style: AppTypography.display(size: size * 0.36, weight: FontWeight.w700, color: Colors.white),
+        style: AppTypography.display(
+            size: size * 0.36, weight: FontWeight.w700, color: Colors.white,),
       ),
     );
   }

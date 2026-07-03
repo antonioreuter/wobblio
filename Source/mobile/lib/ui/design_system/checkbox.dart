@@ -5,7 +5,8 @@ import 'package:wobblio/ui/design_system/tokens.dart';
 /// Ports `Checkbox.tsx`: a 20×20 box, brand fill + white check when checked,
 /// transparent + hairline border when not, with an optional trailing label.
 class WobblioCheckbox extends StatelessWidget {
-  const WobblioCheckbox({super.key, required this.value, required this.onChanged, this.label});
+  const WobblioCheckbox(
+      {super.key, required this.value, required this.onChanged, this.label,});
 
   final bool value;
   final ValueChanged<bool>? onChanged;
@@ -29,15 +30,22 @@ class WobblioCheckbox extends StatelessWidget {
               decoration: BoxDecoration(
                 color: value ? AppColors.brand : Colors.transparent,
                 borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-                border: Border.all(color: value ? AppColors.brand : AppColors.glassBorder),
+                border: Border.all(
+                    color: value ? AppColors.brand : AppColors.glassBorder,),
               ),
               child: value
-                  ? const Text('✓', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700))
+                  ? const Text('✓',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,),)
                   : null,
             ),
             if (label != null) ...[
               const SizedBox(width: 12),
-              Flexible(child: Text(label!, style: AppTypography.body(size: AppTypography.textMd))),
+              Flexible(
+                  child: Text(label!,
+                      style: AppTypography.body(size: AppTypography.textMd),),),
             ],
           ],
         ),

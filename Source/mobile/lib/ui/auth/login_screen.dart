@@ -44,8 +44,9 @@ class LoginScreen extends StatelessWidget {
                   width: double.infinity,
                   child: FilledButton(
                     key: const Key('login-button'),
-                    onPressed: () =>
-                        context.read<AuthBloc>().add(const AuthLoginRequested()),
+                    onPressed: () => context
+                        .read<AuthBloc>()
+                        .add(const AuthLoginRequested()),
                     child: const Text('Sign in'),
                   ),
                 ),

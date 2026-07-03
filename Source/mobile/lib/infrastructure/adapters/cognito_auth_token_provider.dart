@@ -49,13 +49,11 @@ class CognitoAuthTokenProvider implements IAuthTokenProvider {
 
   /// Dedupes concurrent refreshes: parallel in-flight requests share one grant.
   Future<AuthTokens> _refreshOnce(String refreshToken) {
-    return _inFlightRefresh ??= _authenticator
-        .refresh(refreshToken)
-        .then((tokens) async {
-          await _store.write(tokens);
-          return tokens;
-        })
-        .whenComplete(() => _inFlightRefresh = null);
+    return _inFlightRefresh ??=
+        _authenticator.refresh(refreshToken).then((tokens) async {
+      await _store.write(tokens);
+      return tokens;
+    }).whenComplete(() => _inFlightRefresh = null);
   }
 
   Future<void> dispose() => _sessionExpired.close();

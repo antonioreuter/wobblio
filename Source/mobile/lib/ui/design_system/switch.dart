@@ -6,7 +6,8 @@ import 'package:wobblio/ui/design_system/tokens.dart';
 /// when off, white thumb. Built as a plain widget rather than themed via
 /// `SwitchThemeData` so the on/off colors match the web tokens exactly.
 class WobblioSwitch extends StatelessWidget {
-  const WobblioSwitch({super.key, required this.value, required this.onChanged});
+  const WobblioSwitch(
+      {super.key, required this.value, required this.onChanged,});
 
   final bool value;
   final ValueChanged<bool>? onChanged;
@@ -33,7 +34,8 @@ class WobblioSwitch extends StatelessWidget {
             child: Container(
               width: 18,
               height: 18,
-              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+              decoration: const BoxDecoration(
+                  color: Colors.white, shape: BoxShape.circle,),
             ),
           ),
         ),

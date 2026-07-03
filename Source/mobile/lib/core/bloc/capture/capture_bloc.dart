@@ -49,15 +49,21 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
   final IIngestionRepository _ingestion;
 
   Future<void> _onCamera(
-          CaptureFromCameraRequested event, Emitter<CaptureState> emit,) =>
+    CaptureFromCameraRequested event,
+    Emitter<CaptureState> emit,
+  ) =>
       _run(emit, _camera.capture, _preparer.prepareImage);
 
   Future<void> _onGallery(
-          CaptureFromGalleryRequested event, Emitter<CaptureState> emit,) =>
+    CaptureFromGalleryRequested event,
+    Emitter<CaptureState> emit,
+  ) =>
       _run(emit, _gallery.pickImage, _preparer.prepareImage);
 
   Future<void> _onDocument(
-          CaptureDocumentRequested event, Emitter<CaptureState> emit,) =>
+    CaptureDocumentRequested event,
+    Emitter<CaptureState> emit,
+  ) =>
       _run(emit, _documents.pickPdf, _preparer.preparePdf);
 
   Future<void> _run(
@@ -85,8 +91,12 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
     } catch (_) {
       // Picker/native failures (denied permission, decode error) never reach the
       // user as a crash — surface a retryable generic failure.
-      emit(const CaptureFailure(
-          UploadErrorCode.failed, 'Something went wrong. Please try again.',),);
+      emit(
+        const CaptureFailure(
+          UploadErrorCode.failed,
+          'Something went wrong. Please try again.',
+        ),
+      );
     }
   }
 }

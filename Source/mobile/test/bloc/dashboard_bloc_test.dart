@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:wobblio/core/bloc/dashboard/dashboard_bloc.dart';
 import 'package:wobblio/core/ingestion/feedback_verdict.dart';
+import 'package:wobblio/core/ingestion/invoice_detail.dart';
 import 'package:wobblio/core/ingestion/invoice_summary.dart';
 import 'package:wobblio/core/ingestion/usage_summary.dart';
 import 'package:wobblio/core/ports/invoice_repository.dart';
@@ -62,6 +63,17 @@ class _FakeInvoices implements IInvoiceRepository {
     }
     if (feedbackError) throw Exception('boom');
   }
+
+  // Not exercised by DashboardBloc tests (18b territory) — unimplemented stubs
+  // are enough to satisfy the interface here.
+  @override
+  Future<InvoiceDetail> getDetail(String invoiceId) => throw UnimplementedError();
+
+  @override
+  Future<void> delete(String invoiceId) => throw UnimplementedError();
+
+  @override
+  Future<ShareLink> createShare(String invoiceId) => throw UnimplementedError();
 }
 
 class _FakeUsage implements IUsageRepository {
