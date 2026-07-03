@@ -29,6 +29,31 @@ const _monthAbbrev = [
   'Dec',
 ];
 
+/// Formats a `YYYY-MM-DD` date (or any ISO timestamp) as a short `"d MMM"`
+/// label (e.g. `"12 Jun"`) for the recent-invoices ledger rows. Falls back to
+/// the raw input if it can't be parsed (display-only, never throws).
+String formatShortDate(String isoDate) {
+  final parsed = DateTime.tryParse(isoDate);
+  if (parsed == null) return isoDate;
+  return '${parsed.day} ${_monthAbbrev[parsed.month - 1]}';
+}
+
+/// Formats a `YYYY-MM-DD` date as a medium `"d MMM yyyy"` label (e.g.
+/// `"11 Jun 2026"`) for the Invoice Detail info rows. Falls back to the raw
+/// input if unparsable (display-only, never throws).
+String formatMediumDate(String isoDate) {
+  final parsed = DateTime.tryParse(isoDate);
+  if (parsed == null) return isoDate;
+  return '${parsed.day} ${_monthAbbrev[parsed.month - 1]} ${parsed.year}';
+}
+
+/// Formats a line-item quantity for the `"×N"` column: a whole number drops the
+/// decimal (`2.0 → "2"`), a fractional weight keeps it (`0.5 → "0.5"`).
+String formatQuantity(double quantity) {
+  if (quantity == quantity.roundToDouble()) return quantity.toInt().toString();
+  return quantity.toString();
+}
+
 /// Formats an ISO timestamp as a short relative label for notification rows:
 /// `"Xm"`/`"Xh"` under a day old, `"1d"` for exactly one day, a weekday
 /// abbreviation (`"Mon"`) from two days up to a week old, and a short

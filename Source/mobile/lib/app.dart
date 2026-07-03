@@ -26,15 +26,20 @@ class WobblioApp extends StatelessWidget {
         theme: AppTheme.dark,
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.dark,
-        home: const ColoredBox(
+        // Mount the aurora behind the Navigator (not just the first route) so it
+        // shows through on EVERY screen — pushed routes like Invoice Detail and
+        // Account included. As `home` it sat below pushed routes, which paint
+        // flat black over it; via `builder` it's behind the whole route stack.
+        builder: (context, child) => ColoredBox(
           color: AppColors.background,
           child: Stack(
             children: [
-              Positioned.fill(child: AuroraBackground()),
-              AuthGate(),
+              const Positioned.fill(child: AuroraBackground()),
+              if (child != null) Positioned.fill(child: child),
             ],
           ),
         ),
+        home: const AuthGate(),
       ),
     );
   }

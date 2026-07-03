@@ -100,6 +100,18 @@ describe('ExportWorkerService', () => {
     expect(requests.claimForProcessing).toHaveBeenCalledWith('req-1');
   });
 
+  it('writes a header-less CSV (just the newline) for a table with zero rows', async () => {
+    dataSource.listBudgets.mockResolvedValue([]);
+
+    await sut.run('req-1', 'tenant-1');
+
+    const entries: ArchiveEntry[] = zipper.archive.mock.calls[0][0];
+    const budgetsCsv = entries.find((e) => e.name === 'budgets.csv')!;
+    expect(new TextDecoder().decode(budgetsCsv.bytes)).toBe('');
+    const budgetsJson = entries.find((e) => e.name === 'budgets.json')!;
+    expect(JSON.parse(new TextDecoder().decode(budgetsJson.bytes))).toEqual([]);
+  });
+
   it('builds all 5 table entries plus receipts, uploads the zip, and marks completed', async () => {
     const result = await sut.run('req-1', 'tenant-1');
 

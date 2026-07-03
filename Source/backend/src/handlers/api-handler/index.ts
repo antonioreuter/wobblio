@@ -20,6 +20,8 @@ import { ContributorContextRepositoryAdapter } from '@infrastructure/adapters/da
 import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-intelligence/PriceObservationStoreAdapter';
 import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
 import { WeeklyAdvisorRepositoryAdapter } from '@infrastructure/adapters/ai/WeeklyAdvisorRepositoryAdapter';
+import { PersonalInflationQueryAdapter } from '@infrastructure/adapters/data-intelligence/PersonalInflationQueryAdapter';
+import { computePersonalInflation } from '@core/domain/personalInflation';
 import { S3FileStorageAdapter } from '@infrastructure/adapters/ingestion/S3FileStorageAdapter';
 import { SqsInvoiceIngestionQueueAdapter } from '@infrastructure/adapters/ingestion/SqsInvoiceIngestionQueueAdapter';
 import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
@@ -209,6 +211,7 @@ async function handleMeRoute(
   if (path === '/me/usage' && method === 'GET') return handleUsage(db, user);
   if (path === '/me/advisor' && method === 'GET') return handleAdvisorCard(db, user);
   if (path === '/me/stats/top-merchant' && method === 'GET') return handleTopMerchant(db, user);
+  if (path === '/me/insights/inflation' && method === 'GET') return handleInflationInsight(db, user);
   if (path === '/me/device-token' && method === 'POST') return handleRegisterDeviceToken(db, user, event, log);
   if (path === '/me/price-contribution-optout' && method === 'PUT') return handlePriceContributionOptout(db, user, event, log);
   if (path.startsWith('/me/export')) return handleGdprRoute(db, user, path, method, event);
@@ -323,6 +326,21 @@ async function handleTopMerchant(db: PoolClient, user: AppUser): Promise<APIGate
     new InvoiceRepositoryAdapter(db).getTopMerchantsThisMonth(3),
   );
   return json(200, { merchants });
+}
+
+// Personal inflation number for the Home "inflation pulse" card: the caller's matched-basket price
+// change over the trailing quarter vs the one before. Regional index and switch-shop savings are
+// not computed yet — returned null so the client renders an honest "building" state, never a fake 0.
+async function handleInflationInsight(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
+  const result = await withTenantTx(db, user.id, async () =>
+    computePersonalInflation(await new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: 90 })),
+  );
+  return json(200, {
+    personalInflationPct: result.personalInflationPct,
+    basketSize: result.basketSize,
+    regionInflationPct: null,
+    savedBySwitching: null,
+  });
 }
 
 async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {

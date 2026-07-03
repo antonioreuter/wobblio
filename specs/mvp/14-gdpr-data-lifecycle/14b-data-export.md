@@ -81,6 +81,10 @@ New `exportDlq` + `exportQueue` (KMS, mirrors `ingestionQueue`), `exportWorkerFn
 90s timeout), SQS event source, grants (`uploadsBucket.grantRead`, `exportsBucket.grantReadWrite`,
 queue send/consume, KMS, DB secret), `EXPORT_QUEUE_URL` env on the api-handler.
 
+**Update 2026-07-03:** the Settings-page request/poll/download UI now exists in the webapp
+(`Source/webapp/src/app/(app)/settings/page.tsx`) — previously this slice was backend-only. See
+[00-handoff.md](./00-handoff.md#settings-page-ui-webapp--done-2026-07-03).
+
 ## Out of scope (belongs to later slices / not this pass)
 
 - Any change to account deletion (14c/14d).

@@ -32,6 +32,7 @@ class AppColors {
   static const glassBorder = Color(0x12FFFFFF); // rgba(255,255,255,0.07)
   static const glassHoverBorder = Color(0x406366F1); // rgba(99,102,241,0.25)
   static const glassHighlight = Color(0x05FFFFFF); // rgba(255,255,255,0.02)
+  static const navBg = Color(0xD9090C15); // --nav-bg rgba(9,12,21,0.85)
 
   // ---- Semantic text --------------------------------------------------------
   static const textPrimary = white50;

@@ -36,6 +36,7 @@ class _ShoppingListView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('shopping-list-screen'),
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: BlocConsumer<ShoppingListBloc, ShoppingListState>(
           listenWhen: (prev, curr) =>

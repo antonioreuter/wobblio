@@ -42,6 +42,7 @@ describe('ProfileService', () => {
       const profile: OnboardingProfile = {
         fullName: 'Ada Lovelace', country: 'NL', language: 'nl', currency: 'EUR',
         birthdate: '1990-12-10', onboarded: true, role: 'STANDARD', status: 'ACTIVE',
+        priceContributionOptout: false,
       };
       mockUserRepo.getProfile.mockResolvedValue(profile);
 

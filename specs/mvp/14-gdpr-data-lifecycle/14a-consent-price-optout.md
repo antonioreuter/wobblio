@@ -32,7 +32,14 @@ The only real gap: no endpoint let a signed-up user flip the opt-out **after** o
 
 ## Out of scope (belongs to 14e)
 
-- `/privacy` page copy, the settings-page toggle UI, processor inventory disclosure text.
+- `/privacy` page copy, processor inventory disclosure text.
+
+**Update 2026-07-03:** the settings-page toggle UI was originally deferred to 14e, but shipped ahead
+of it as part of a webapp Settings-page build (`Source/webapp/src/app/(app)/settings/page.tsx`) —
+see [00-handoff.md](./00-handoff.md#settings-page-ui-webapp--done-2026-07-03). It required one
+additive backend fix: `GET /me/profile` now also returns `price_contribution_optout` (it didn't
+before, even though the column and the `PUT` write path already existed) so the toggle can render
+its current state.
 
 ## Checklist
 

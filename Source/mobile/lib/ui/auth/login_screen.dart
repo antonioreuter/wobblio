@@ -18,6 +18,7 @@ class LoginScreen extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       key: const Key('login-screen'),
+      backgroundColor: Colors.transparent,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),

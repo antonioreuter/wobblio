@@ -101,6 +101,38 @@ describe('AppUserRepositoryAdapter', () => {
     });
   });
 
+  describe('getProfile', () => {
+    it('maps the price_contribution_optout column to priceContributionOptout', async () => {
+      mockPool.query.mockResolvedValue({
+        rows: [{
+          full_name: 'Ada Lovelace',
+          country_code: 'NL',
+          region_code: 'NL-NB',
+          language: 'nl',
+          home_currency: 'EUR',
+          birthdate: '1990-12-10',
+          onboarded: true,
+          role: 'STANDARD',
+          status: 'ACTIVE',
+          price_contribution_optout: true,
+        }],
+      });
+
+      const profile = await adapter.getProfile('sub-123');
+
+      expect(mockPool.query).toHaveBeenCalledWith('SELECT * FROM get_user_profile($1)', ['sub-123']);
+      expect(profile?.priceContributionOptout).toBe(true);
+    });
+
+    it('returns null when no row is found', async () => {
+      mockPool.query.mockResolvedValue({ rows: [] });
+
+      const profile = await adapter.getProfile('unknown-sub');
+
+      expect(profile).toBeNull();
+    });
+  });
+
   describe('promoteToPremium', () => {
     it('updates role to PREMIUM, sets the stripe customer id, and lifts WAITLIST status', async () => {
       mockPool.query.mockResolvedValue({ rowCount: 1, rows: [] });

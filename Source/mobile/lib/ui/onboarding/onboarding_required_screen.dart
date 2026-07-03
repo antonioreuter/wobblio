@@ -15,6 +15,7 @@ class OnboardingRequiredScreen extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       key: const Key('onboarding-required-screen'),
+      backgroundColor: Colors.transparent,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),

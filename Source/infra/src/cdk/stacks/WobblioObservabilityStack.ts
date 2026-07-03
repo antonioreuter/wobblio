@@ -65,19 +65,24 @@ export class WobblioObservabilityStack extends Stack {
     });
 
     // ── Cost Anomaly Detection (alert >€10/day) ───────────────────────────────
-    const anomalyMonitor = new ce.CfnAnomalyMonitor(this, 'CostAnomalyMonitor', {
-      monitorName: `wobblio-anomaly-${config.stage}`,
-      monitorType: 'DIMENSIONAL',
-      monitorDimension: 'SERVICE',
-    });
-
-    new ce.CfnAnomalySubscription(this, 'CostAnomalySubscription', {
-      subscriptionName: `wobblio-anomaly-sub-${config.stage}`,
-      monitorArnList: [anomalyMonitor.attrMonitorArn],
-      subscribers: [{ address: opsEmail, type: 'EMAIL' }],
-      threshold: 10,
-      frequency: 'DAILY',
-    });
+    // TEMPORARILY REMOVED (2026-07-02): the monitor CFN believed existed
+    // (arn:aws:ce::837511507441:anomalymonitor/3578d128-acda-4e61-a8ec-cb547e7c0b96)
+    // was gone from AWS (deleted out-of-band), so GetAtt MonitorArn failed on every
+    // deploy. Deploying once with this removed clears the phantom CFN resource
+    // record; restore this block and deploy again to recreate it fresh.
+    // const anomalyMonitor = new ce.CfnAnomalyMonitor(this, 'CostAnomalyMonitor', {
+    //   monitorName: `wobblio-anomaly-${config.stage}`,
+    //   monitorType: 'DIMENSIONAL',
+    //   monitorDimension: 'SERVICE',
+    // });
+    //
+    // new ce.CfnAnomalySubscription(this, 'CostAnomalySubscription', {
+    //   subscriptionName: `wobblio-anomaly-sub-${config.stage}`,
+    //   monitorArnList: [anomalyMonitor.attrMonitorArn],
+    //   subscribers: [{ address: opsEmail, type: 'EMAIL' }],
+    //   threshold: 10,
+    //   frequency: 'DAILY',
+    // });
 
     // ── cdk-nag suppressions ──────────────────────────────────────────────────
 

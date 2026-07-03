@@ -50,6 +50,11 @@ describe('TroubleshootingService', () => {
         expect.objectContaining({ minLevel: 'error', search: 'inv-42' }),
       );
     });
+
+    it('treats an omitted search as no filter', async () => {
+      await sut.queryLogs({ minLevel: 'error' });
+      expect(logs.query).toHaveBeenCalledWith(expect.objectContaining({ search: null }));
+    });
   });
 
   describe('setLogLevel', () => {
@@ -82,12 +87,24 @@ describe('TroubleshootingService', () => {
       await sut.setLogLevel(ACTOR, 'info');
       expect(control.setLogLevel).toHaveBeenCalledWith('info', null);
     });
+
+    it('defaults an omitted debug ttl to 60 minutes', async () => {
+      await sut.setLogLevel(ACTOR, 'debug');
+      const expiresAt = control.setLogLevel.mock.calls[0][1] as Date;
+      const minutes = Math.round((expiresAt.getTime() - Date.now()) / 60000);
+      expect(minutes).toBe(60);
+    });
   });
 
   describe('passthrough reads', () => {
     it('clamps the metric window', async () => {
       await sut.getErrorSeries(9999);
       expect(metrics.getErrorSeries).toHaveBeenCalledWith(48);
+    });
+
+    it('clamps a non-finite metric window down to the minimum', async () => {
+      await sut.getErrorSeries(NaN);
+      expect(metrics.getErrorSeries).toHaveBeenCalledWith(1);
     });
 
     it('delegates queue health and log level', async () => {

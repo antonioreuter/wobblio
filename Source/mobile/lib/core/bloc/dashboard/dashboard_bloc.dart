@@ -4,8 +4,10 @@ import 'package:equatable/equatable.dart';
 import 'package:wobblio/core/ingestion/feedback_verdict.dart';
 import 'package:wobblio/core/ingestion/invoice_summary.dart';
 import 'package:wobblio/core/ingestion/usage_summary.dart';
+import 'package:wobblio/core/ports/insights_repository.dart';
 import 'package:wobblio/core/ports/invoice_repository.dart';
 import 'package:wobblio/core/ports/usage_repository.dart';
+import 'package:wobblio/core/reports/inflation_insight.dart';
 
 part 'dashboard_event.dart';
 part 'dashboard_state.dart';
@@ -17,10 +19,12 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
   DashboardBloc({
     required IInvoiceRepository invoices,
     required IUsageRepository usage,
+    required IInsightsRepository insights,
     List<Duration> pollSchedule = _defaultSchedule,
     int maxPollAttempts = _defaultMaxPollAttempts,
   })  : _invoices = invoices,
         _usage = usage,
+        _insights = insights,
         _pollSchedule = pollSchedule,
         _maxPollAttempts = maxPollAttempts,
         super(const DashboardState()) {
@@ -33,6 +37,7 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
 
   final IInvoiceRepository _invoices;
   final IUsageRepository _usage;
+  final IInsightsRepository _insights;
   final List<Duration> _pollSchedule;
   final int _maxPollAttempts;
 
@@ -60,11 +65,13 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
     try {
       final invoices = await _invoices.list();
       final usage = await _safeUsage();
+      final inflation = await _safeInflation();
       emit(
         state.copyWith(
           status: DashboardStatus.ready,
           invoices: invoices,
           usage: usage,
+          inflation: inflation,
         ),
       );
       _schedulePollIfNeeded(invoices);
@@ -86,11 +93,13 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
     try {
       final invoices = await _invoices.list();
       final usage = await _safeUsage();
+      final inflation = await _safeInflation();
       emit(
         state.copyWith(
           status: DashboardStatus.ready,
           invoices: invoices,
           usage: usage,
+          inflation: inflation,
           isRefreshing: false,
         ),
       );
@@ -177,6 +186,14 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
       return await _usage.fetch();
     } catch (_) {
       return null; // usage is supplementary — never fail the list load over it
+    }
+  }
+
+  Future<InflationInsight?> _safeInflation() async {
+    try {
+      return await _insights.fetchInflation();
+    } catch (_) {
+      return null; // the inflation card is supplementary — never fail the load over it
     }
   }
 

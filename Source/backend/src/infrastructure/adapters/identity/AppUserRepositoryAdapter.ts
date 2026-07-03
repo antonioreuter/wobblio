@@ -27,6 +27,7 @@ interface DbProfileRow {
   onboarded: boolean;
   role: string;
   status: string;
+  price_contribution_optout: boolean;
 }
 
 export class AppUserRepositoryAdapter implements IAppUserRepository {
@@ -90,6 +91,7 @@ export class AppUserRepositoryAdapter implements IAppUserRepository {
       onboarded: row.onboarded,
       role: row.role as OnboardingProfile['role'],
       status: row.status as OnboardingProfile['status'],
+      priceContributionOptout: row.price_contribution_optout,
     };
   }
 

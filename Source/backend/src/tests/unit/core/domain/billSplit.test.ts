@@ -73,6 +73,38 @@ describe('computeSplitSummary', () => {
     expect(s.grandTotal).toBe(5);
   });
 
+  it('ignores an assignment whose lineId matches no product line, and gives a wholly-unassigned line entirely to the owner', () => {
+    const lines = [product('L1', 10), product('L2', 5)];
+    const assignments: SplitAssignment[] = [
+      { lineId: 'L1', participantName: 'Alice', fraction: 1 },
+      { lineId: 'BOGUS', participantName: 'Ghost', fraction: 1 }, // no matching product line
+      // L2 has no assignment at all — owner must absorb it via the "no entry" (?? 0) default,
+      // not the partial-fraction path already covered by other tests.
+    ];
+    const s = computeSplitSummary(lines, assignments, 15); // no fees
+
+    expect(find(s, 'Ghost')).toBeUndefined();
+    expect(find(s, 'Alice')).toMatchObject({ subtotal: 10, fees: 0, total: 10 });
+    expect(find(s, 'You')).toMatchObject({ subtotal: 5, fees: 0, total: 5 });
+  });
+
+  it('reconciles onto a later (not first) participant when it is the largest', () => {
+    const lines = [product('L1', 7), product('L2', 11), product('L3', 13)];
+    const s = computeSplitSummary(
+      lines,
+      [
+        { lineId: 'L1', participantName: 'A', fraction: 1 },
+        { lineId: 'L2', participantName: 'B', fraction: 1 },
+        { lineId: 'L3', participantName: 'C', fraction: 1 },
+      ],
+      31.01, // feePool 0.01 rounds to 0.00 for every share; the 0.01 residual lands on C (largest)
+    );
+
+    expect(find(s, 'A')).toMatchObject({ total: 7 });
+    expect(find(s, 'B')).toMatchObject({ total: 11 });
+    expect(find(s, 'C')).toMatchObject({ subtotal: 13, fees: 0.01, total: 13.01 });
+  });
+
   it('reconciles a rounding residual onto the largest share so parts sum to the printed total', () => {
     const lines = [product('L1', 10), product('L2', 10), product('L3', 10)];
     const s = computeSplitSummary(

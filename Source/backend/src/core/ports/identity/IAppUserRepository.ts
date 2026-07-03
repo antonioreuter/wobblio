@@ -29,6 +29,7 @@ export interface OnboardingProfile extends UserProfile {
   onboarded: boolean;
   role: UserRole;
   status: UserStatus;
+  priceContributionOptout: boolean;
 }
 
 export interface IAppUserRepository {

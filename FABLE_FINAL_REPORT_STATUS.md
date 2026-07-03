@@ -1,0 +1,13 @@
+The findings that matter most, in order:
+
+1. Billing is a mock (P1). Epic 05 is marked ✅ Done in the README, but the only gateway is MockBillingGatewayAdapter — no Stripe SDK, no webhook endpoint or signature verification, and no downgrade path: BillingService only handles checkout.session.completed, so a canceled subscription keeps PREMIUM forever. Checkout is gated by an undocumented SSM email whitelist. → specs/mvp/05-billing-stripe/05a-real-stripe-gateway.md
+2. Invariant #11 (GDPR two-phase deletion) is not implemented — 14a/14b are done (uncommitted), 14c/14d not started. Export, opt-out, and S3 lifecycles are in place; deletion is the highest open compliance item.
+3. Push delivers to zero devices. 16f backend is live and pushing to SNS, but 16g (client registration) was never built — mobile has no device-token call anywhere.
+4. Invariants #5/#6 no longer match reality — the audited admin role-change endpoint is a code-acknowledged "invariant #5 deviation" CLAUDE.md never absorbed, and #6 still cites the superseded invoice-count matrix instead of the credit model. The other nine invariants I verified enforced, with file:line evidence in the report (presign 300s clamp, k≥3+quarantine gate, RLS GUC, ledger idempotency, XML+retry prompts, etc.).
+5. Spec 13 contradicts invariant #10 (says 30-minute presign; code correctly enforces 300s), and three real controls are unbuilt: WAF on API Gateway (only the admin CloudFront has one), MFA for admins (pool is OPTIONAL), CSP headers.
+6. Admin console spec adjudication: specs/mvp/admin-console/00–08 is authoritative (it shipped with the implementation); 12-admin-console/12a–12g is a never-built earlier draft to archive; 12-admin-console.md is a stale index with dead links — consolidation spec written.
+7. Feedback loop is half-built: only the thumbs verdict is stored; model_ids_snapshot, reasons, and encrypted free-text were never implemented, which makes the model-swap comparison story unfulfillable.
+
+Also noteworthy: the working tree is currently red on one gate — all 849 unit tests pass but branch coverage is 98.35% vs the 99% threshold (BillSplitService.ts:60).
+
+Deliverables: specs/fixes/00-audit-report.md (index: findings by epic, fix-spec table by priority, 8 delight-feature proposals built on the price-observation moat, admin improvements) and specs/fixes/00-project-knowledge.md (standalone bootstrap: verified invariant enforcement points, true build status, every landmine, locked decisions). Fix specs: 01–05 under specs/fixes/ (invariant amendments, docs realignment, [ADMIN] incident workflows, [ADMIN] safety rails, mobile parity), plus epic-local 05a, 07a–07c, 13a, admin-console/09, and non-functional/01-data-ai-pipeline/08 (PDF cost truth).

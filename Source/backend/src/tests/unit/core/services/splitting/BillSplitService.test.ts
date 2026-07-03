@@ -5,9 +5,13 @@ import type { IBillSplitRepository } from '@core/ports/splitting/IBillSplitRepos
 import type { IKmsEncryption } from '@core/ports/security/IKmsEncryption';
 import { InvoiceNotFoundError, BillSplitNotFoundError, InvalidSplitError } from '@core/domain/errors';
 
-const detail = (lines: Partial<InvoiceDetail['lines'][number]>[]): InvoiceDetail =>
+const detail = (
+  lines: Partial<InvoiceDetail['lines'][number]>[],
+  overrides: Partial<Pick<InvoiceDetail, 'merchantName' | 'transactionDate' | 'total' | 'currency'>> = {},
+): InvoiceDetail =>
   ({
     id: 'inv-1', merchantName: 'Jumbo', transactionDate: '2026-06-10', total: 20, currency: 'EUR',
+    ...overrides,
     lines: lines.map((l, i) => ({
       id: l.id ?? `L${i}`, rawText: l.rawText ?? 'Item', productId: null, quantity: l.quantity ?? 1,
       unitPrice: null, lineTotal: l.lineTotal ?? 10, categoryName: null, confidence: 0.9,
@@ -84,6 +88,24 @@ describe('BillSplitService', () => {
     expect(splits.upsertAssignment).not.toHaveBeenCalled();
   });
 
+  it('treats a missing participant name as empty (optional-chaining safety net)', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    await expect(sut.assignLine('split-1', 'L1', undefined as unknown as string, 1)).rejects.toBeInstanceOf(InvalidSplitError);
+    expect(splits.upsertAssignment).not.toHaveBeenCalled();
+  });
+
+  it('removes an assignment for a known split', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    await sut.removeAssignment('split-1', 'L1');
+    expect(splits.removeAssignment).toHaveBeenCalledWith('split-1', 'L1');
+  });
+
+  it('throws InvoiceNotFoundError if the invoice is gone by the time a line is assigned', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    invoices.getDetail.mockResolvedValue(null);
+    await expect(sut.assignLine('split-1', 'L1', 'Alice', 1)).rejects.toBeInstanceOf(InvoiceNotFoundError);
+  });
+
   it('throws BillSplitNotFoundError for an unknown split', async () => {
     splits.getMeta.mockResolvedValue(null);
     await expect(sut.assignLine('ghost', 'L1', 'Alice', 1)).rejects.toBeInstanceOf(BillSplitNotFoundError);
@@ -122,5 +144,38 @@ describe('BillSplitService', () => {
     expect(text).toContain('Alice: €20.00');
     expect(text).toContain('• Pizza ×1 — €20.00');
     expect(text).toContain('Total: €20.00');
+  });
+
+  it('defaults a null invoice total to 0 in the summary grand total', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', lineTotal: 0 }], { total: null }));
+    splits.listAssignments.mockResolvedValue([]);
+
+    const summary = await sut.summary('split-1');
+    expect(summary.grandTotal).toBe(0);
+  });
+
+  it('falls back to the plain amount (no symbol) when currency has no known mapping', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', rawText: 'Pizza', lineTotal: 20 }], { currency: null }));
+    splits.listAssignments.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', fraction: 1 }]);
+    encryption.decrypt.mockResolvedValue('Alice');
+
+    const { text } = await sut.whatsAppExport('split-1');
+    expect(text).toContain('Alice: 20.00');
+    expect(text).not.toContain('€');
+  });
+
+  it('falls back to "Receipt" and no date in the header when both are missing', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    invoices.getDetail.mockResolvedValue(
+      detail([{ id: 'L1', lineTotal: 20 }], { merchantName: null, transactionDate: null }),
+    );
+    splits.listAssignments.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', fraction: 1 }]);
+    encryption.decrypt.mockResolvedValue('Alice');
+
+    const { text } = await sut.whatsAppExport('split-1');
+    expect(text).toContain('🧾 Receipt');
+    expect(text).not.toContain('2026');
   });
 });

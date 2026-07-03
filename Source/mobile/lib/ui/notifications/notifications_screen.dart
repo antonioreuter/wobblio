@@ -6,6 +6,7 @@ import 'package:wobblio/core/notifications/app_notification.dart';
 import 'package:wobblio/main.dart';
 import 'package:wobblio/ui/design_system/glass_container.dart';
 import 'package:wobblio/ui/design_system/tokens.dart';
+import 'package:wobblio/ui/design_system/wobblio_header.dart';
 import 'package:wobblio/ui/format.dart';
 
 /// Notifications screen (18g): "Mark all read" (hidden once nothing is
@@ -31,7 +32,11 @@ class _NotificationsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('notifications-screen'),
-      appBar: AppBar(title: const Text('Notifications')),
+      backgroundColor: Colors.transparent,
+      appBar: WobblioHeaderBar(
+        title: 'Notifications',
+        onBack: () => Navigator.of(context).maybePop(),
+      ),
       body: SafeArea(
         child: BlocConsumer<NotificationBloc, NotificationState>(
           listenWhen: (prev, curr) =>

@@ -10,6 +10,7 @@ import 'package:wobblio/ui/design_system/badge.dart';
 import 'package:wobblio/ui/design_system/button.dart';
 import 'package:wobblio/ui/design_system/glass_container.dart';
 import 'package:wobblio/ui/design_system/merchant_icon.dart';
+import 'package:wobblio/ui/design_system/wobblio_header.dart';
 import 'package:wobblio/ui/design_system/tokens.dart';
 import 'package:wobblio/ui/format.dart';
 import 'package:wobblio/ui/split_bill/split_bill_screen.dart';
@@ -41,7 +42,11 @@ class _InvoiceDetailView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('invoice-detail-screen'),
-      appBar: AppBar(title: const Text('Invoice')),
+      backgroundColor: Colors.transparent,
+      appBar: WobblioHeaderBar(
+        title: 'Invoice',
+        onBack: () => Navigator.of(context).maybePop(),
+      ),
       body: BlocConsumer<InvoiceDetailBloc, InvoiceDetailState>(
         listenWhen: (prev, curr) =>
             (curr.notice != null && prev.notice != curr.notice) || curr.deleted,
@@ -190,7 +195,8 @@ class _HeaderCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   detail.merchant,
-                  style: AppTypography.display(size: AppTypography.textXl),
+                  style: AppTypography.display(
+                      size: 16, weight: FontWeight.w700,),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -209,7 +215,7 @@ class _HeaderCard extends StatelessWidget {
               Text(
                 formatMoney(detail.currency, detail.total ?? 0),
                 style: AppTypography.display(
-                    size: AppTypography.text3xl,
+                    size: 26,
                     weight: FontWeight.w800,
                     tabularNumbers: true,),
               ),
@@ -236,7 +242,8 @@ class _InfoRows extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rows = <(String, String)>[
-      if (detail.transactionDate != null) ('Date', detail.transactionDate!),
+      if (detail.transactionDate != null)
+        ('Date', formatMediumDate(detail.transactionDate!)),
       if (detail.locationLabel != null) ('Location', detail.locationLabel!),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
@@ -246,10 +253,14 @@ class _InfoRows extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 10),
             decoration: BoxDecoration(
-              border: i < rows.length - 1
-                  ? const Border(
-                      bottom: BorderSide(color: AppColors.glassBorder),)
-                  : null,
+              border: Border(
+                top: i == 0
+                    ? const BorderSide(color: AppColors.glassBorder)
+                    : BorderSide.none,
+                bottom: i < rows.length - 1
+                    ? const BorderSide(color: AppColors.glassBorder)
+                    : BorderSide.none,
+              ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -291,10 +302,14 @@ class _LineItems extends StatelessWidget {
             key: Key('invoice-detail-line-${detail.lines[i].id}'),
             padding: const EdgeInsets.symmetric(vertical: 11),
             decoration: BoxDecoration(
-              border: i < detail.lines.length - 1
-                  ? const Border(
-                      bottom: BorderSide(color: AppColors.glassBorder),)
-                  : null,
+              border: Border(
+                top: i == 0
+                    ? const BorderSide(color: AppColors.glassBorder)
+                    : BorderSide.none,
+                bottom: i < detail.lines.length - 1
+                    ? const BorderSide(color: AppColors.glassBorder)
+                    : BorderSide.none,
+              ),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,10 +334,26 @@ class _LineItems extends StatelessWidget {
                     ],
                   ),
                 ),
+                const SizedBox(width: 12),
                 Text(
-                  formatMoney(detail.currency, detail.lines[i].lineTotal),
-                  style: AppTypography.body(
-                      size: AppTypography.textSm, weight: FontWeight.w700,),
+                  '×${formatQuantity(detail.lines[i].quantity)}',
+                  style: AppTypography.display(
+                      size: AppTypography.textXs,
+                      weight: FontWeight.w600,
+                      color: AppColors.textMuted,
+                      tabularNumbers: true,),
+                ),
+                const SizedBox(width: 12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 52),
+                  child: Text(
+                    formatMoney(detail.currency, detail.lines[i].lineTotal),
+                    textAlign: TextAlign.right,
+                    style: AppTypography.display(
+                        size: AppTypography.textSm,
+                        weight: FontWeight.w700,
+                        tabularNumbers: true,),
+                  ),
                 ),
               ],
             ),
@@ -340,27 +371,49 @@ class _FeedbackRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        Text('Was this parsed correctly?',
-            style: AppTypography.body(
-                size: AppTypography.textSm, color: AppColors.textMuted,),),
-        IconButton(
-          key: const Key('invoice-detail-feedback-up'),
-          isSelected: verdict == FeedbackVerdict.up,
-          onPressed: () => onRate(FeedbackVerdict.up),
-          icon: const Icon(Icons.thumb_up_outlined),
-          selectedIcon: const Icon(Icons.thumb_up, color: AppColors.success),
-        ),
-        IconButton(
-          key: const Key('invoice-detail-feedback-down'),
-          isSelected: verdict == FeedbackVerdict.down,
-          onPressed: () => onRate(FeedbackVerdict.down),
-          icon: const Icon(Icons.thumb_down_outlined),
-          selectedIcon: const Icon(Icons.thumb_down, color: AppColors.warning),
-        ),
-      ],
+    final rated = verdict != null;
+    return GlassContainer(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  rated
+                      ? 'Thanks — that trains the scanner.'
+                      : 'Was this parsed correctly?',
+                  style: AppTypography.body(
+                      size: AppTypography.textSm, weight: FontWeight.w600,),
+                ),
+                if (!rated) ...[
+                  const SizedBox(height: 2),
+                  Text('A quick rating trains the scanner.',
+                      style: AppTypography.body(
+                          size: AppTypography.text2xs,
+                          color: AppColors.textMuted,),),
+                ],
+              ],
+            ),
+          ),
+          IconButton(
+            key: const Key('invoice-detail-feedback-up'),
+            isSelected: verdict == FeedbackVerdict.up,
+            onPressed: () => onRate(FeedbackVerdict.up),
+            icon: const Icon(Icons.thumb_up_outlined),
+            selectedIcon: const Icon(Icons.thumb_up, color: AppColors.success),
+          ),
+          IconButton(
+            key: const Key('invoice-detail-feedback-down'),
+            isSelected: verdict == FeedbackVerdict.down,
+            onPressed: () => onRate(FeedbackVerdict.down),
+            icon: const Icon(Icons.thumb_down_outlined),
+            selectedIcon:
+                const Icon(Icons.thumb_down, color: AppColors.warning),
+          ),
+        ],
+      ),
     );
   }
 }

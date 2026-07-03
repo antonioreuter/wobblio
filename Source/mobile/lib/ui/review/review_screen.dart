@@ -5,6 +5,7 @@ import 'package:wobblio/core/bloc/review/review_bloc.dart';
 import 'package:wobblio/core/ingestion/invoice_detail.dart';
 import 'package:wobblio/core/ingestion/product_match.dart';
 import 'package:wobblio/main.dart';
+import 'package:wobblio/ui/design_system/wobblio_header.dart';
 import 'package:wobblio/ui/format.dart';
 import 'package:wobblio/ui/theme/app_theme.dart';
 
@@ -51,7 +52,11 @@ class _ReviewView extends StatelessWidget {
       builder: (context, state) {
         return Scaffold(
           key: const Key('review-screen'),
-          appBar: AppBar(title: const Text('Review receipt')),
+          backgroundColor: Colors.transparent,
+          appBar: WobblioHeaderBar(
+            title: 'Review receipt',
+            onBack: () => Navigator.of(context).maybePop(),
+          ),
           body: switch (state.status) {
             ReviewStatus.loading =>
               const Center(child: CircularProgressIndicator()),

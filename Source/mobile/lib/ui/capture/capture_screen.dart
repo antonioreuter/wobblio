@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:wobblio/core/bloc/capture/capture_bloc.dart';
 import 'package:wobblio/main.dart';
+import 'package:wobblio/ui/design_system/wobblio_header.dart';
 import 'package:wobblio/ui/theme/app_theme.dart';
 
 /// Capture entry point (spec 16c). Offers the three sources — camera, gallery,
@@ -49,7 +50,11 @@ class _CaptureView extends StatelessWidget {
         final busy = state is CaptureInProgress;
         return Scaffold(
           key: const Key('capture-screen'),
-          appBar: AppBar(title: const Text('Add receipt')),
+          backgroundColor: Colors.transparent,
+          appBar: WobblioHeaderBar(
+            title: 'Add receipt',
+            onBack: () => Navigator.of(context).maybePop(),
+          ),
           body: Stack(
             children: [
               _SourceActions(enabled: !busy),

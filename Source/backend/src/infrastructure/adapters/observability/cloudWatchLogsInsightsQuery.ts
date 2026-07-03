@@ -17,9 +17,18 @@ export async function runInsightsQuery(
   maxPolls: number,
   pollIntervalMs: number,
 ): Promise<Array<Record<string, string>>> {
-  const { queryId } = await client.send(
-    new StartQueryCommand({ logGroupName, startTime, endTime, queryString }),
-  );
+  let queryId: string | undefined;
+  try {
+    ({ queryId } = await client.send(
+      new StartQueryCommand({ logGroupName, startTime, endTime, queryString }),
+    ));
+  } catch (err) {
+    // A log group that has never been written to does not exist yet (e.g. a worker that
+    // has not run since deploy). That is "no data", not a failure — return empty rows so
+    // health panels render zeros instead of erroring the whole request.
+    if (err instanceof Error && err.name === 'ResourceNotFoundException') return [];
+    throw err;
+  }
   if (!queryId) throw new Error('CloudWatch Logs StartQuery returned no queryId');
 
   for (let poll = 0; poll < maxPolls; poll++) {

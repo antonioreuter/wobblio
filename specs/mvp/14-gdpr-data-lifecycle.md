@@ -105,8 +105,8 @@ GDPR compliance: consent capture at signup, data export (Art. 20), account erasu
 - [ ] Privacy policy page at `/privacy` — covers all data categories, retention schedules, processor inventory, de-identification explanation, price contribution opt-out explanation
 
 ### Price Contribution Opt-Out
-- [ ] `app_user.price_contribution_optout` field (default false)
-- [ ] Settings page: toggle "Contribute anonymous price points to the community index"
+- [x] `app_user.price_contribution_optout` field (default false)
+- [x] Settings page: toggle "Contribute anonymous price points to the community index"
 - [ ] Ingestion worker: check opt-out flag before emitting price observations
 - [ ] On toggle-off: future observations suppressed (no retroactive deletion)
 
@@ -120,9 +120,14 @@ GDPR compliance: consent capture at signup, data export (Art. 20), account erasu
 - [ ] SES email on completion with download instructions
 - [ ] `GET /me/export/{request_id}/download` → presigned URL (7-day expiry)
 - [ ] S3 lifecycle rule on exports bucket: delete ZIPs after 7 days
-- [ ] UI: Settings page "Request my data" button + status indicator (pending/ready/expired)
+- [x] UI: Settings page "Request my data" button + status indicator (pending/ready/expired)
 
 ### Account Deletion — Phase 1 (Immediate)
+
+**Status (2026-07-03): still fully unbuilt, backend and UI.** The webapp Settings page ships a
+visibly disabled "Delete my account" placeholder card (no confirmation modal, no backend call) so
+the page isn't silently missing the feature — see 14c's spec file. None of the boxes below are done.
+
 - [ ] `POST /me/delete` endpoint (authenticated)
 - [ ] Set `app_user.status = DELETED`
 - [ ] Cognito: `AdminDisableUser` (tokens remain valid for remaining TTL, then invalid)

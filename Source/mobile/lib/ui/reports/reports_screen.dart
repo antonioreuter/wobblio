@@ -35,6 +35,7 @@ class _ReportsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('reports-screen'),
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: BlocConsumer<ReportBloc, ReportState>(
           listenWhen: (prev, curr) =>

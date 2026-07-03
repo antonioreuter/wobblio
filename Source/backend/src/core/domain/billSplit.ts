@@ -126,9 +126,11 @@ function applyFees(
   return { name: p.name, subtotal, fees, total: roundTo(p.subtotal + feePool * share, 2), items: p.items };
 }
 
-// Nudge any 2dp rounding residual onto the largest participant so the parts sum to the printed total.
+// Nudge any 2dp rounding residual onto the largest participant so the parts sum to the printed
+// total. Never called with an empty array: computeSplitSummary already returns early whenever
+// assignableSubtotal <= EPSILON, and any positive assignableSubtotal guarantees buildParticipants
+// yields at least the owner bucket (it absorbs every line's unassigned remainder).
 function reconcile(participants: SplitParticipant[], grandTotal: number): SplitParticipant[] {
-  if (participants.length === 0) return participants;
   const summed = roundTo(participants.reduce((s, p) => s + p.total, 0), 2);
   const residual = roundTo(grandTotal - summed, 2);
   if (Math.abs(residual) <= EPSILON) return participants;

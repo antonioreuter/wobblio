@@ -32,6 +32,7 @@ class _HistoryView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('history-screen'),
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: BlocConsumer<HistoryBloc, HistoryState>(
           listenWhen: (prev, curr) =>

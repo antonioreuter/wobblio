@@ -10,6 +10,7 @@ class DashboardState extends Equatable {
     this.status = DashboardStatus.loading,
     this.invoices = const [],
     this.usage,
+    this.inflation,
     this.selectedTag,
     this.isRefreshing = false,
     this.feedback = const {},
@@ -19,6 +20,7 @@ class DashboardState extends Equatable {
   final DashboardStatus status;
   final List<InvoiceSummary> invoices;
   final UsageSummary? usage;
+  final InflationInsight? inflation;
   final String? selectedTag;
   final bool isRefreshing;
   final Map<String, FeedbackVerdict> feedback;
@@ -44,7 +46,8 @@ class DashboardState extends Equatable {
     UsageSummary? usage,
     bool? isRefreshing,
     Map<String, FeedbackVerdict>? feedback,
-    // selectedTag/notice are nullable-with-clear, so use explicit sentinels.
+    // selectedTag/notice/inflation are nullable-with-clear, so use explicit sentinels.
+    Object? inflation = _unset,
     Object? selectedTag = _unset,
     Object? notice = _unset,
   }) {
@@ -52,6 +55,8 @@ class DashboardState extends Equatable {
       status: status ?? this.status,
       invoices: invoices ?? this.invoices,
       usage: usage ?? this.usage,
+      inflation:
+          inflation == _unset ? this.inflation : inflation as InflationInsight?,
       selectedTag:
           selectedTag == _unset ? this.selectedTag : selectedTag as String?,
       isRefreshing: isRefreshing ?? this.isRefreshing,
@@ -61,8 +66,16 @@ class DashboardState extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [status, invoices, usage, selectedTag, isRefreshing, feedback, notice];
+  List<Object?> get props => [
+        status,
+        invoices,
+        usage,
+        inflation,
+        selectedTag,
+        isRefreshing,
+        feedback,
+        notice,
+      ];
 }
 
 const Object _unset = Object();

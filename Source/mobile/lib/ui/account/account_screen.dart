@@ -10,6 +10,7 @@ import 'package:wobblio/ui/design_system/avatar.dart';
 import 'package:wobblio/ui/design_system/badge.dart';
 import 'package:wobblio/ui/design_system/button.dart';
 import 'package:wobblio/ui/design_system/glass_container.dart';
+import 'package:wobblio/ui/design_system/wobblio_header.dart';
 import 'package:wobblio/ui/design_system/tokens.dart';
 
 /// Account screen (18f): read-only name/email/plan/status (`GET /me/profile`
@@ -35,7 +36,11 @@ class _AccountView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('account-screen'),
-      appBar: AppBar(title: const Text('Account')),
+      backgroundColor: Colors.transparent,
+      appBar: WobblioHeaderBar(
+        title: 'Account',
+        onBack: () => Navigator.of(context).maybePop(),
+      ),
       body: SafeArea(
         child: BlocBuilder<AccountBloc, AccountState>(
           builder: (context, state) {

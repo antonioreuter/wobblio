@@ -58,6 +58,12 @@ Tax-relevant records retained 7 years irrespective of account deletion.
 
 Self-service for: plan upgrade/downgrade, annual ↔ monthly switch, payment method update, subscription cancellation. Wobblio does not build a billing UI — Stripe's portal is the portal.
 
+**Known gap (2026-07-03):** `POST /billing/portal-session` currently returns a hardcoded
+`mock://portal/{userId}` — Stripe isn't wired yet (`handleBillingRoute` in
+`Source/backend/src/handlers/api-handler/index.ts`). The webapp Settings page's "Manage billing"
+button (PREMIUM only) calls this real endpoint and navigates to whatever URL it returns, but can't
+land anywhere useful until Stripe integration replaces the mock.
+
 ## EU VAT
 
 Handled via Stripe Tax (enabled on Checkout Session). Stripe collects and remits EU VAT. Financial model assumes 21% blended EU VAT out of gross revenue.

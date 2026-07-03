@@ -9,8 +9,11 @@ const AGGREGATE_QUERY = `filter event = "agentic_stage"
 // `latest(...)` picks the field from the max-@timestamp row per group, so this returns exactly
 // one row per stage with no `limit` — a global row cap here would risk one noisy stage's
 // failures crowding out a quieter stage's only failure in the window.
+// Aliases must NOT reuse a source field name (invoiceId, error): Logs Insights treats
+// `latest(invoiceId) as invoiceId` as a self-reference and rejects the whole query with
+// "Cycle found in operation dependency graph", so the panel 500s. Keep the `last*` prefixes.
 const LAST_FAILURE_QUERY = `filter event = "agentic_stage" and outcome = "error"
-| stats latest(@timestamp) as lastFailureAt, latest(invoiceId) as invoiceId, latest(error) as error by stage`;
+| stats latest(@timestamp) as lastFailureAt, latest(invoiceId) as lastInvoiceId, latest(error) as lastError by stage`;
 
 // Two queries run in parallel (Promise.all below); each must individually stay well under the
 // api-handler Lambda's 30s timeout (no override) or a slow CloudWatch response gets the whole
@@ -49,8 +52,8 @@ export class CloudWatchLogsAgenticStageHealthAdapter implements IAgenticStageHea
 
 function toFailure(row: Record<string, string>) {
   return {
-    invoiceId: row.invoiceId ?? '',
-    message: row.error ?? '',
+    invoiceId: row.lastInvoiceId ?? '',
+    message: row.lastError ?? '',
     timestamp: toIso(row.lastFailureAt),
   };
 }

@@ -37,6 +37,7 @@ import 'package:wobblio/core/ports/shopping_list_repository.dart';
 import 'package:wobblio/core/ports/split_id_cache.dart';
 import 'package:wobblio/core/ports/split_repository.dart';
 import 'package:wobblio/core/ports/upload_preparer.dart';
+import 'package:wobblio/core/ports/insights_repository.dart';
 import 'package:wobblio/core/ports/usage_repository.dart';
 import 'package:wobblio/infrastructure/adapters/app_auth_cognito_authenticator.dart';
 import 'package:wobblio/infrastructure/adapters/cognito_auth_token_provider.dart';
@@ -55,6 +56,7 @@ import 'package:wobblio/infrastructure/adapters/http_reference_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_review_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_shopping_list_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_split_repository.dart';
+import 'package:wobblio/infrastructure/adapters/http_insights_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_usage_repository.dart';
 import 'package:wobblio/infrastructure/adapters/image_compress_upload_preparer.dart';
 import 'package:wobblio/infrastructure/adapters/image_picker_camera_adapter.dart';
@@ -113,6 +115,9 @@ void configureDependencies() {
     )
     ..registerLazySingleton<IUsageRepository>(
       () => HttpUsageRepository(locator<IApiClient>()),
+    )
+    ..registerLazySingleton<IInsightsRepository>(
+      () => HttpInsightsRepository(locator<IApiClient>()),
     )
     // Review & correction (16e): invoice detail/correct/discard + product search.
     ..registerLazySingleton<IReviewRepository>(
@@ -174,6 +179,7 @@ void configureDependencies() {
       () => DashboardBloc(
         invoices: locator<IInvoiceRepository>(),
         usage: locator<IUsageRepository>(),
+        insights: locator<IInsightsRepository>(),
       ),
     )
     // Screen-scoped: a fresh review bloc per review screen.

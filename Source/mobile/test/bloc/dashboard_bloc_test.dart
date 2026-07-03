@@ -6,8 +6,10 @@ import 'package:wobblio/core/ingestion/feedback_verdict.dart';
 import 'package:wobblio/core/ingestion/invoice_detail.dart';
 import 'package:wobblio/core/ingestion/invoice_summary.dart';
 import 'package:wobblio/core/ingestion/usage_summary.dart';
+import 'package:wobblio/core/ports/insights_repository.dart';
 import 'package:wobblio/core/ports/invoice_repository.dart';
 import 'package:wobblio/core/ports/usage_repository.dart';
+import 'package:wobblio/core/reports/inflation_insight.dart';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 InvoiceSummary _inv(
@@ -87,12 +89,23 @@ class _FakeUsage implements IUsageRepository {
   }
 }
 
+class _FakeInsights implements IInsightsRepository {
+  _FakeInsights({this.fail = false});
+  final bool fail;
+  @override
+  Future<InflationInsight> fetchInflation() async {
+    if (fail) throw Exception('boom');
+    return const InflationInsight(personalInflationPct: 1.2, basketSize: 5);
+  }
+}
+
 // Zero-delay schedule so polling tests run instantly.
 const _fastSchedule = [Duration.zero, Duration.zero, Duration.zero];
 
 DashboardBloc _build({
   _FakeInvoices? invoices,
   _FakeUsage? usage,
+  _FakeInsights? insights,
   List<Duration> pollSchedule = _fastSchedule,
   int maxPollAttempts = 40,
 }) =>
@@ -104,6 +117,7 @@ DashboardBloc _build({
             ],
           ),
       usage: usage ?? _FakeUsage(),
+      insights: insights ?? _FakeInsights(),
       pollSchedule: pollSchedule,
       maxPollAttempts: maxPollAttempts,
     );
@@ -142,6 +156,28 @@ void main() {
       verify: (bloc) {
         expect(bloc.state.status, DashboardStatus.failure);
         expect(bloc.state.notice, isNotNull);
+      },
+    );
+
+    blocTest<DashboardBloc, DashboardState>(
+      'started loads the inflation insight into state',
+      build: () => _build(),
+      act: (bloc) => bloc.add(const DashboardStarted()),
+      wait: const Duration(milliseconds: 10),
+      verify: (bloc) {
+        expect(bloc.state.inflation?.personalInflationPct, 1.2);
+        expect(bloc.state.inflation?.basketSize, 5);
+      },
+    );
+
+    blocTest<DashboardBloc, DashboardState>(
+      'inflation-insight failure does not fail the load (card stays null)',
+      build: () => _build(insights: _FakeInsights(fail: true)),
+      act: (bloc) => bloc.add(const DashboardStarted()),
+      wait: const Duration(milliseconds: 10),
+      verify: (bloc) {
+        expect(bloc.state.status, DashboardStatus.ready);
+        expect(bloc.state.inflation, isNull);
       },
     );
 

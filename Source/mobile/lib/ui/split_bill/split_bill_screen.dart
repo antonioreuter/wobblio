@@ -7,6 +7,7 @@ import 'package:wobblio/core/splitting/split_summary.dart';
 import 'package:wobblio/main.dart';
 import 'package:wobblio/ui/design_system/avatar.dart';
 import 'package:wobblio/ui/design_system/button.dart';
+import 'package:wobblio/ui/design_system/wobblio_header.dart';
 import 'package:wobblio/ui/design_system/glass_container.dart';
 import 'package:wobblio/ui/design_system/input.dart';
 import 'package:wobblio/ui/design_system/tokens.dart';
@@ -77,7 +78,11 @@ class _SplitBillView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('split-bill-screen'),
-      appBar: AppBar(title: const Text('Split bill')),
+      backgroundColor: Colors.transparent,
+      appBar: WobblioHeaderBar(
+        title: 'Split bill',
+        onBack: () => Navigator.of(context).maybePop(),
+      ),
       body: SafeArea(
         child: BlocConsumer<SplitBillBloc, SplitBillState>(
           listenWhen: (prev, curr) =>

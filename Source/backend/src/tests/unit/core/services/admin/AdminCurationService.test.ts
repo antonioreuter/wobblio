@@ -81,9 +81,37 @@ describe('AdminCurationService', () => {
     repo.productCategories.mockResolvedValue([{ categoryId: 'cat-dairy', categoryName: 'Dairy', count: 4 }]);
     await sut.categories('product', 'NL', null);
     expect(repo.productCategories).toHaveBeenCalledWith('NL', null);
+    repo.merchantCategories.mockResolvedValue([]);
+    await sut.categories('merchant', 'NL', null);
+    expect(repo.merchantCategories).toHaveBeenCalledWith('NL', null);
+
     await sut.countries('merchant');
     expect(repo.merchantCountries).toHaveBeenCalled();
+    repo.productCountries.mockResolvedValue([]);
+    await sut.countries('product');
+    expect(repo.productCountries).toHaveBeenCalled();
+
     await expect(sut.regions('product', '')).rejects.toBeInstanceOf(InvalidAdminInputError);
+    repo.merchantRegions.mockResolvedValue([]);
+    await sut.regions('merchant', 'NL');
+    expect(repo.merchantRegions).toHaveBeenCalledWith('NL');
+    repo.productRegions.mockResolvedValue([]);
+    await sut.regions('product', 'NL');
+    expect(repo.productRegions).toHaveBeenCalledWith('NL');
+  });
+
+  it('passes through an explicit region filter and a whitelisted sort', async () => {
+    repo.listProvisionalProducts.mockResolvedValue([]);
+    await sut.list('product', { country: 'NL', region: 'NL-NB', sort: 'name' });
+    expect(repo.listProvisionalProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ region: 'NL-NB', sort: 'name' }),
+    );
+  });
+
+  it('clamps a non-finite limit down to the minimum', async () => {
+    repo.listProvisionalProducts.mockResolvedValue([]);
+    await sut.list('product', { country: 'NL', limit: NaN });
+    expect(repo.listProvisionalProducts).toHaveBeenCalledWith(expect.objectContaining({ limit: 1 }));
   });
 
   it('approve sets ACTIVE, releases observations, and audits curation.approve', async () => {
@@ -151,6 +179,13 @@ describe('AdminCurationService', () => {
   it('product merge 404s when the compatibility lookup finds no pair', async () => {
     repo.getMergeCompatibility.mockResolvedValue(null);
     await expect(sut.merge(ACTOR, 'product', 'p-1', 'gone')).rejects.toBeInstanceOf(UnknownAdminTargetError);
+  });
+
+  it('product merge 404s when mergeProduct itself finds nothing to move', async () => {
+    repo.getMergeCompatibility.mockResolvedValue(COMPATIBLE);
+    repo.mergeProduct.mockResolvedValue(null);
+    await expect(sut.merge(ACTOR, 'product', 'p-1', 'p-2')).rejects.toBeInstanceOf(UnknownAdminTargetError);
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it('mergeBatch merges compatible sources and skips the rest with a reason', async () => {

@@ -121,6 +121,19 @@ describe('collapseContinuationLines', () => {
     expect(collapseContinuationLines(conflicting).lines).toHaveLength(2);
   });
 
+  it('keeps the product line unitPrice when the continuation line carries none', () => {
+    const receipt = base([
+      { rawText: 'JUMBO ACHTERHAM FLIN', quantity: 1, lineTotal: 5.02, unitPrice: 2.51 },
+      { rawText: '2 X 2,51', quantity: 2, lineTotal: 5.02 }, // no unitPrice on the breakdown itself
+    ]);
+
+    const collapsed = collapseContinuationLines(receipt);
+
+    expect(collapsed.lines).toEqual([
+      { rawText: 'JUMBO ACHTERHAM FLIN', quantity: 2, lineTotal: 5.02, unitPrice: 2.51 },
+    ]);
+  });
+
   it('returns the same reference when no continuation lines are present', () => {
     const receipt = base([{ rawText: 'MELK', quantity: 1, lineTotal: 1.29 }]);
     expect(collapseContinuationLines(receipt)).toBe(receipt);

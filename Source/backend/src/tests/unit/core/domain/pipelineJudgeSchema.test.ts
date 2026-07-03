@@ -59,4 +59,20 @@ describe('parsePipelineJudgeJson', () => {
     const result = parsePipelineJudgeJson('the receipts look fine');
     expect(result.ok).toBe(false);
   });
+
+  it('rejects a null score object (typeof null is "object", so the null check must run separately)', () => {
+    const bad = JSON.parse(validJson);
+    bad.legacy_scores = null;
+    const result = parsePipelineJudgeJson(JSON.stringify(bad));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContain('legacy_scores must be an object');
+  });
+
+  it('rejects top-level JSON that parses to null', () => {
+    const result = parsePipelineJudgeJson('null');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toContain('not a JSON object');
+  });
 });

@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_lucide/flutter_lucide.dart';
 
 import 'package:wobblio/ui/capture/capture_screen.dart';
 import 'package:wobblio/ui/dashboard/dashboard_screen.dart';
-import 'package:wobblio/ui/design_system/tokens.dart';
+import 'package:wobblio/ui/design_system/wobblio_nav_bar.dart';
 import 'package:wobblio/ui/history/history_screen.dart';
 import 'package:wobblio/ui/reports/reports_screen.dart';
 import 'package:wobblio/ui/shopping_list/shopping_list_screen.dart';
 
-/// Authenticated home (18a): a bottom-tab shell over Home / Receipts /
-/// Shopping / Reports, plus a Capture entry that pushes [CaptureScreen]
-/// directly rather than living in the [IndexedStack]. All 5 of `OPTION 2A`'s
-/// bottom-nav slots are now wired — Reports (18e) was the last one, having
-/// no screen to point at until this slice. Each tab keeps owning its own
-/// inner `Scaffold`/`AppBar`/FAB exactly as [DashboardScreen] already does —
-/// only the bottom bar chrome lives here.
+/// Authenticated home (18a, re-skinned to `OPTION 2A` in 19a): a bottom-tab
+/// shell over Home / Receipts / Shopping / Reports, plus a Capture entry that
+/// pushes [CaptureScreen] directly rather than living in the [IndexedStack].
+/// The chrome is now the prototype's floating glass [WobblioNavBar] (a raised
+/// gradient capture FAB spliced into the middle) overlaid on `extendBody`
+/// content so the mounted `AuroraBackground` shows through. Each tab keeps
+/// owning its own inner `Scaffold` exactly as [DashboardScreen] already does.
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -52,62 +53,47 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  // The four tab destinations, in stack order. The capture FAB is spliced
+  // into the middle by [WobblioNavBar] (captureIndex 2) and is not a tab.
+  static const _navItems = [
+    WobblioNavItem(icon: LucideIcons.layout_dashboard, label: 'Home'),
+    WobblioNavItem(icon: LucideIcons.receipt, label: 'Receipts'),
+    WobblioNavItem(icon: LucideIcons.shopping_cart, label: 'Shopping'),
+    WobblioNavItem(icon: LucideIcons.chart_pie, label: 'Reports'),
+  ];
+
   @override
   Widget build(BuildContext context) {
+    // The floating nav overlays the content, so reserve bottom space in the
+    // tabs' scroll area for the pill (70px) + its 14px inset + a little air.
+    final media = MediaQuery.of(context);
     return Scaffold(
       key: const Key('app-shell'),
-      body: IndexedStack(index: _index, children: _tabs),
-      bottomNavigationBar: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.glassBorder)),
-        ),
-        child: BottomNavigationBar(
-          key: const Key('app-shell-nav'),
-          // Nav has 5 slots (Home/Receipts/Scan/Shopping/Reports); the stack
-          // only has 4 tabs (Scan isn't a stack page) — shift every stack
-          // index from 2 onward up by one nav position. This formula is
-          // unchanged from 18a's 3-tab version: the +1 shift only depends on
-          // there being exactly one non-stack slot (Scan, fixed at nav
-          // position 2), not on how many tabs follow it.
-          currentIndex: _index >= 2 ? _index + 1 : _index,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: AppColors.surface,
-          selectedItemColor: AppColors.brand,
-          unselectedItemColor: AppColors.textMuted,
-          onTap: (tapped) {
-            if (tapped == 2) {
-              _openCapture();
-              return;
-            }
-            setState(() => _index = tapped > 2 ? tapped - 1 : tapped);
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Home',
+      backgroundColor: Colors.transparent,
+      extendBody: true,
+      body: Stack(
+        children: [
+          MediaQuery(
+            data: media.copyWith(
+              padding: media.padding.copyWith(
+                bottom: media.padding.bottom + 96,
+              ),
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long_outlined),
-              activeIcon: Icon(Icons.receipt_long),
-              label: 'Receipts',
+            child: IndexedStack(index: _index, children: _tabs),
+          ),
+          Positioned(
+            left: 14,
+            right: 14,
+            bottom: 14 + media.padding.bottom,
+            child: WobblioNavBar(
+              key: const Key('app-shell-nav'),
+              items: _navItems,
+              currentIndex: _index,
+              onSelect: (tapped) => setState(() => _index = tapped),
+              onCapture: _openCapture,
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.photo_camera_outlined),
-              label: 'Scan',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.checklist_outlined),
-              activeIcon: Icon(Icons.checklist),
-              label: 'Shopping',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.insights_outlined),
-              activeIcon: Icon(Icons.insights),
-              label: 'Reports',
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -142,6 +142,14 @@ describe('HouseholdService', () => {
       expect(repo.disband).toHaveBeenCalledWith('hh-1', 'owner-1');
     });
 
+    it('throws NotHouseholdOwnerError if the repo-level disband guard fails despite the service-level ownership check passing (race defense)', async () => {
+      repo.findForMember.mockResolvedValue(summary);
+      repo.memberCountForUser.mockResolvedValue(1);
+      repo.disband.mockResolvedValue(false);
+
+      await expect(sut.disband('owner-1', 'hh-1')).rejects.toBeInstanceOf(NotHouseholdOwnerError);
+    });
+
     it('throws HouseholdNotFoundError when a non-member removes a member', async () => {
       repo.findForMember.mockResolvedValue(null);
       await expect(sut.removeMember('outsider', 'hh-1', 'm2')).rejects.toBeInstanceOf(HouseholdNotFoundError);

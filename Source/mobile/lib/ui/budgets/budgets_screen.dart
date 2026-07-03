@@ -10,6 +10,7 @@ import 'package:wobblio/ui/design_system/glass_container.dart';
 import 'package:wobblio/ui/design_system/input.dart';
 import 'package:wobblio/ui/design_system/progress_bar.dart';
 import 'package:wobblio/ui/design_system/tokens.dart';
+import 'package:wobblio/ui/design_system/wobblio_header.dart';
 import 'package:wobblio/ui/format.dart';
 
 /// Budgets screen (18d): non-premium accounts see an upsell card instead of
@@ -36,7 +37,11 @@ class _BudgetsView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('budgets-screen'),
-      appBar: AppBar(title: const Text('Budgets')),
+      backgroundColor: Colors.transparent,
+      appBar: WobblioHeaderBar(
+        title: 'Budgets',
+        onBack: () => Navigator.of(context).maybePop(),
+      ),
       body: SafeArea(
         child: BlocConsumer<BudgetBloc, BudgetState>(
           listenWhen: (prev, curr) =>

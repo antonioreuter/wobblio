@@ -86,8 +86,26 @@ table + `receipts/`) → uploads to the exports bucket → `GET /me/export/lates
 `GET /me/export/{id}/download` mints a fresh 300s URL per call. New `gdpr` family end to end. See
 [14b-data-export.md](./14b-data-export.md) for the full checklist and file list.
 
+## Settings-page UI (webapp) — done 2026-07-03
+
+14a and 14b were backend-only until this pass. The webapp Settings page
+(`Source/webapp/src/app/(app)/settings/page.tsx`, previously a `ComingSoon` stub) now ships:
+
+- The 14a opt-out toggle ("Contribute anonymous price points…"), wired to
+  `PUT /me/price-contribution-optout`. Required one small additive backend fix alongside it:
+  `GET /me/profile` didn't return `price_contribution_optout`, so the toggle had no current state to
+  render — added via a new migration extending `get_user_profile()`, plus the matching
+  `OnboardingProfile`/`AppUserRepositoryAdapter` change.
+- The 14b export flow ("Request my data" → status polling → "Download your data"), wired to
+  `POST /me/export`, `GET /me/export/latest`, `GET /me/export/{id}/download`.
+
+**14c/14d (account deletion) remain fully unbuilt** — no `POST /me/delete` endpoint, no soft-lock,
+no purge cron. The Settings page only ships a visibly disabled "Delete my account" placeholder card
+with no backend call behind it. Don't treat the Settings page's existence as evidence deletion is
+implemented.
+
 ## 14c / 14d / 14e — not started
 
 Sub-spec files below carry the relevant checklist items forward from the parent spec, decomposed by
 phase, with the key decisions above already folded in. Pick up 14c next; 14d cannot start
-meaningfully before it.
+meaningfully before it. 14e's remaining scope is narrower than originally scoped — see its file.
