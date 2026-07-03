@@ -328,6 +328,14 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:sqs:${this.region}:${this.account}:${config.resourceName('agentic-dlq')}`,
       ],
     }));
+    // Confirm-time routing (SqsInvoiceIngestionQueueAdapter) sends here when
+    // features/agentic_pipeline_enabled is on — grant was missing, only
+    // GetQueueAttributes (admin panel) was wired when the queue moved to
+    // WobblioDataAiPipelineStack.
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['sqs:SendMessage'],
+      resources: [`arn:aws:sqs:${this.region}:${this.account}:${config.resourceName('agentic')}`],
+    }));
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['logs:StartQuery'],
       resources: [`arn:aws:logs:${this.region}:${this.account}:log-group:${agenticWorkerLogGroupName}:*`],
