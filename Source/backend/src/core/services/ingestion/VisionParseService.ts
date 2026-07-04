@@ -1,13 +1,11 @@
-import type { BedrockConverseRequest, BedrockDocument, BedrockImage, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
+import type { BedrockConverseRequest, BedrockDocument, BedrockImage, BedrockMessage, BedrockStage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
+import type { IReceiptParser, ReceiptContext } from '../../ports/ingestion/IReceiptParser';
 import { parseReceiptJson } from '../../domain/receiptSchema';
 import { callJsonWithRetry } from '../../domain/llmJson';
 import { dropNonItemLines, collapseContinuationLines } from '../../domain/receiptPostProcess';
 import { isUnreadableVerdict, type ParsedReceipt, type UnreadableVerdict } from '../../domain/ingestion';
 
-export interface ReceiptContext {
-  countryCode: string;
-  processedDate: string; // ISO YYYY-MM-DD
-}
+export type { ReceiptContext } from '../../ports/ingestion/IReceiptParser';
 
 function buildUserInstruction(ctx: ReceiptContext): string {
   return [
@@ -17,12 +15,15 @@ function buildUserInstruction(ctx: ReceiptContext): string {
   ].join('\n');
 }
 
-export class VisionParseService {
+export class VisionParseService implements IReceiptParser {
   constructor(
     private readonly converse: IBedrockConverse,
     private readonly modelId: string,
     private readonly promptTemplate: string,
     private readonly promptVersion: string,
+    // Telemetry stage: the fallback instance passes VISION_PARSE_FALLBACK so its (pricier)
+    // tokens are metered and costed under the vision_fallback role, not the primary parser.
+    private readonly stage: BedrockStage = 'VISION_PARSE',
   ) {}
 
   // The receipt arrives as an image (JPEG/PNG → image block) or a PDF (→ native
@@ -49,7 +50,7 @@ export class VisionParseService {
   private buildRequest(messages: BedrockMessage[]): BedrockConverseRequest {
     return {
       modelId: this.modelId,
-      stage: 'VISION_PARSE',
+      stage: this.stage,
       messages,
       systemPrompt: this.promptTemplate,
       promptVersion: this.promptVersion,

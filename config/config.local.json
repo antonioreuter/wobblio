@@ -1,5 +1,6 @@
 {
   "models/vision_parser": "qwen.qwen3-vl-235b-a22b",
+  "models/vision_fallback": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
   "models/pdf_parser": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
   "models/auxiliary": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
   "models/embedder": "amazon.titan-embed-text-v2:0",

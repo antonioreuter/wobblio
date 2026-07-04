@@ -17,6 +17,13 @@ export const MODEL_OPTIONS: Record<ModelRole, ModelOption[]> = {
     { id: 'eu.amazon.nova-pro-v1:0', label: 'Amazon Nova Pro — vision' },
     { id: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5 — vision' },
   ],
+  // Powerful vision models hard image receipts escalate to (§ agentic fallback). Must accept
+  // image blocks. Swap to Sonnet 5 once its Bedrock agreement is accepted for the account.
+  vision_fallback: [
+    { id: 'eu.anthropic.claude-sonnet-4-6', label: 'Claude Sonnet 4.6 — vision' },
+    { id: 'global.anthropic.claude-sonnet-5', label: 'Claude Sonnet 5 — vision' },
+    { id: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5 — vision' },
+  ],
   // Document-capable models only — PDF invoices ride as a native document block.
   pdf_parser: [
     { id: 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 — document' },

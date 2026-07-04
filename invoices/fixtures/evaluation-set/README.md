@@ -36,6 +36,11 @@ extraction accuracy, line-item completeness, classification alignment, tag relev
 ## Curation notes
 
 - `jumbo_1` — clean receipt, line items transcribed directly.
+- `jumbo_2` — **quantity-attribution regression** (2026-07-03). The price column is folded/shifted
+  down one row and `PROT AARDBEI DRINK` is a `2 X 1,99` multi-buy. qwen3-vl mis-binds the `2` to the
+  self-priced `JUMBO ICE TEA PEACH` above it and fabricates a `0.625` unit price (= 1.25 ÷ 2); the
+  line totals still sum to 12.00 so the invoice PARSES silently. Not fixable by prompt tuning — kept
+  as a fixture to catch a stronger vision model / deterministic guard that gets the quantities right.
 - `ah_1` — crumpled; merchant/date/currency/total are authoritative, but the line items are a
   confidently-legible **subset** (see the `note` field). Expand them before trusting the
   `line_item_completeness` score for this fixture.

@@ -17,6 +17,7 @@ import { RegionReferenceAdapter } from '@infrastructure/adapters/data-intelligen
 import { FxRateRepositoryAdapter } from '@infrastructure/adapters/fx/FxRateRepositoryAdapter';
 import { CurrencyHarmonizationService } from '@core/services/fx/CurrencyHarmonizationService';
 import { VisionParseService } from '@core/services/ingestion/VisionParseService';
+import { EscalatingReceiptParser } from '@core/services/ingestion/EscalatingReceiptParser';
 import { MerchantResolver } from '@core/services/data-intelligence/MerchantResolver';
 import { ProductNormalizer } from '@core/services/data-intelligence/ProductNormalizer';
 import { InvoiceClassifier } from '@core/services/data-intelligence/InvoiceClassifier';
@@ -53,6 +54,8 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   const pdfModelId = await modelRegistry.getModelId('pdf_parser');
   const auxiliaryModelId = await modelRegistry.getModelId('auxiliary');
   const embedderModelId = await modelRegistry.getModelId('embedder');
+  // Optional: hard image receipts escalate to this powerful model. Fail-open — unset means off.
+  const visionFallbackModelId = await modelRegistry.getModelIdOptional('vision_fallback');
   const converse = new BedrockConverseAdapter(REGION);
   const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
   const uploadLimits = new SsmUploadQuotaAdapter(REGION);
@@ -64,8 +67,17 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
     const merchantCatalog = new MerchantCatalogAdapter(client);
     const productCatalog = new ProductCatalogAdapter(client);
 
+    const primaryVision = new VisionParseService(meteredConverse, visionModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
+    // Wrap the primary parser so hard image receipts re-parse on the powerful fallback model;
+    // if no fallback is provisioned, use the primary directly (identical to today's behaviour).
+    const visionParser = visionFallbackModelId
+      ? new EscalatingReceiptParser(
+          primaryVision,
+          new VisionParseService(meteredConverse, visionFallbackModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION, 'VISION_PARSE_FALLBACK'),
+        )
+      : primaryVision;
     const ocr = new OcrParserTool(
-      new VisionParseService(meteredConverse, visionModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION),
+      visionParser,
       new VisionParseService(meteredConverse, pdfModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION),
     );
     const preparer = new ExtractionPreparer(

@@ -1,5 +1,6 @@
 {
   "models/vision_parser": "qwen.qwen3-vl-235b-a22b",
+  "models/vision_fallback": "eu.anthropic.claude-sonnet-4-6",
   "models/pdf_parser": "eu.anthropic.claude-sonnet-4-6",
   "models/auxiliary": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
   "models/embedder": "amazon.titan-embed-text-v2:0",
@@ -23,7 +24,7 @@
   "tags/dedicated_call_enabled": "false",
   "tags/vocabulary": "[]",
 
-  "features/agentic_pipeline_enabled": "false",
+  "features/agentic_pipeline_enabled": "true",
 
   "billing/mock_premium_whitelist": "-",
 

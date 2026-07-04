@@ -1,0 +1,15 @@
+{
+  "merchant": "Jumbo",
+  "transactionDate": "2026-07-03",
+  "currency": "EUR",
+  "total": 12.00,
+  "category": "supermarket",
+  "tags": ["groceries", "supermarket"],
+  "lines": [
+    { "rawText": "JUMBO ICE TEA PEACH", "quantity": 1, "lineTotal": 1.25 },
+    { "rawText": "PROT AARDBEI DRINK", "quantity": 2, "unitPrice": 1.99, "lineTotal": 3.98 },
+    { "rawText": "ACTIE MELKUNIE PROT", "quantity": 1, "lineTotal": -1.48 },
+    { "rawText": "MINI RMB APPELFLAP", "quantity": 1, "lineTotal": 3.25 },
+    { "rawText": "MS CAESAR", "quantity": 1, "lineTotal": 5.00 }
+  ]
+}

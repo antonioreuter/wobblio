@@ -572,7 +572,7 @@ export class WobblioBackendStack extends Stack {
     // call, which is all-or-nothing on authorization, so a missing role 403s the matrix.
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameters', 'ssm:PutParameter'],
-      resources: ['vision_parser', 'pdf_parser', 'auxiliary', 'insight', 'embedder'].map(
+      resources: ['vision_parser', 'vision_fallback', 'pdf_parser', 'auxiliary', 'insight', 'embedder'].map(
         (role) => configParamArn(`models/${role}`),
       ),
     }));

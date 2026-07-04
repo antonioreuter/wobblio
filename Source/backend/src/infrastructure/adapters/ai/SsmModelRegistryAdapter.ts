@@ -34,6 +34,23 @@ export class SsmModelRegistryAdapter implements IModelRegistry {
     return value;
   }
 
+  // Fail-open: a missing/empty param yields null instead of throwing, so an optional role
+  // (vision_fallback) stays feature-off on stages that never provisioned it.
+  async getModelIdOptional(role: ModelRole): Promise<string | null> {
+    const cached = this.cache.get(role);
+    if (cached) return cached;
+    try {
+      const response = await this.client.send(new GetParameterCommand({ Name: paramFor(role) }));
+      const value = response.Parameter?.Value;
+      if (!value) return null;
+      this.cache.set(role, value);
+      return value;
+    } catch (err) {
+      if (err instanceof Error && err.name === 'ParameterNotFound') return null;
+      throw err;
+    }
+  }
+
   async getAll(): Promise<Record<ModelRole, string | null>> {
     const byPath = new Map(MODEL_ROLES.map((role) => [paramFor(role), role] as const));
     const response = await this.client.send(

@@ -45,6 +45,18 @@ describe('VisionParseService', () => {
     expect(sent[0].image).toEqual(image);
   });
 
+  it('defaults the telemetry stage to VISION_PARSE and honours an injected stage', async () => {
+    converse.mockResolvedValue(converseResult(VALID_JSON));
+    await sut.parse(image, ctx);
+    expect(converse.mock.calls[0][0].stage).toBe('VISION_PARSE');
+
+    const fallback = new VisionParseService(
+      { converse } as unknown as IBedrockConverse, 'mock-model', 'PROMPT', 'vision-parse/v1', 'VISION_PARSE_FALLBACK',
+    );
+    await fallback.parse(image, ctx);
+    expect(converse.mock.calls[1][0].stage).toBe('VISION_PARSE_FALLBACK');
+  });
+
   it('forwards a PDF as a document attachment', async () => {
     converse.mockResolvedValue(converseResult(VALID_JSON));
     const document: BedrockDocument = { format: 'pdf', bytes: new Uint8Array([4, 5, 6]), name: 'receipt' };

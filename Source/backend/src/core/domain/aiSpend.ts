@@ -9,6 +9,7 @@ export const AI_COST_METRIC = 'ai_cost';
 // stage today — it will simply produce no rows until a stage uses it.)
 const STAGE_ROLE: Record<string, ModelRole> = {
   VISION_PARSE: 'vision_parser',
+  VISION_PARSE_FALLBACK: 'vision_fallback',
   EMBEDDING: 'embedder',
   MERCHANT_FALLBACK: 'auxiliary',
   PRODUCT_EXPANSION: 'auxiliary',
@@ -20,6 +21,7 @@ const STAGE_ROLE: Record<string, ModelRole> = {
 // the dashboard presents the result as an estimate, not a billed figure.
 const RATE_PER_1K: Record<ModelRole, { input: number; output: number }> = {
   vision_parser: { input: 0.0008, output: 0.0008 },
+  vision_fallback: { input: 0.003, output: 0.015 },
   pdf_parser: { input: 0.003, output: 0.015 },
   auxiliary: { input: 0.0008, output: 0.004 },
   insight: { input: 0.003, output: 0.015 },

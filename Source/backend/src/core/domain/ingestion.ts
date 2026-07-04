@@ -106,6 +106,9 @@ export interface ParsedReceipt {
 // Thresholds from spec 07 "Confidence Thresholds" + 08 §6.2/§6.3.
 export const ConfidenceThresholds = {
   visionMin: 0.7,
+  // Below this the primary vision parse is escalated to the powerful fallback model. Set
+  // above visionMin (0.7) so borderline parses are re-checked before they merely NEEDS_REVIEW.
+  escalationConfidenceMin: 0.85,
   embeddingAccept: 0.92,
   embeddingLow: 0.85,
   fuzzyMatchMargin: 0.15,

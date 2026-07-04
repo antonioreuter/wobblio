@@ -1,16 +1,16 @@
-import type { VisionParseService, ReceiptContext } from '../../VisionParseService';
+import type { IReceiptParser, ReceiptContext } from '../../../../ports/ingestion/IReceiptParser';
 import type { ParsedReceipt, UnreadableVerdict } from '../../../../domain/ingestion';
 import { isImageBlockFormat, type UploadFormat } from '../../../../domain/uploadFormat';
 import { UnsupportedUploadTypeError } from '../../../../domain/errors';
 
 // Tool 1 (parent §3): file-type detection + OCR. PDFs route to the document-capable
-// pdf_parser model (the vision model rejects document blocks); images route to vision_parser.
-// Both run the same receipt prompt + schema-validated parse (delegated to VisionParseService),
-// differing only in the model. A thin wrapper — no business logic of its own.
+// pdf_parser model (the vision model rejects document blocks); images route to the vision
+// parser (which may itself escalate hard receipts to a powerful fallback model). Both run
+// the same receipt prompt + schema-validated parse. A thin wrapper — no business logic.
 export class OcrParserTool {
   constructor(
-    private readonly visionParser: VisionParseService,
-    private readonly documentParser: VisionParseService,
+    private readonly visionParser: IReceiptParser,
+    private readonly documentParser: IReceiptParser,
   ) {}
 
   parse(format: UploadFormat, bytes: Uint8Array, ctx: ReceiptContext): Promise<ParsedReceipt | UnreadableVerdict> {

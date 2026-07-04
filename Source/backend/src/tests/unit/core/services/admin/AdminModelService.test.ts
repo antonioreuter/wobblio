@@ -13,7 +13,7 @@ describe('AdminModelService', () => {
   let sut: AdminModelService;
 
   beforeEach(() => {
-    registry = { getModelId: vi.fn(), getAll: vi.fn(), setModelId: vi.fn() };
+    registry = { getModelId: vi.fn(), getModelIdOptional: vi.fn(), getAll: vi.fn(), setModelId: vi.fn() };
     audit = { record: vi.fn(), list: vi.fn() };
     sut = new AdminModelService(registry, audit);
   });
@@ -21,13 +21,14 @@ describe('AdminModelService', () => {
   it('lists all roles with current ids', async () => {
     registry.getAll.mockResolvedValue({
       vision_parser: 'v1',
+      vision_fallback: 'vf1',
       pdf_parser: 'p1',
       auxiliary: 'a1',
       insight: null,
       embedder: 'e1',
     });
     const list = await sut.list();
-    expect(list).toHaveLength(5);
+    expect(list).toHaveLength(6);
     const insight = list.find((e) => e.role === 'insight');
     expect(insight?.modelId).toBeNull();
     // each role carries curated options for the dropdown
@@ -43,6 +44,7 @@ describe('AdminModelService', () => {
   it('swaps a valid role, writing SSM and auditing old → new', async () => {
     registry.getAll.mockResolvedValue({
       vision_parser: 'old-vision',
+      vision_fallback: 'vf1',
       pdf_parser: 'p1',
       auxiliary: 'a1',
       insight: 'i1',
