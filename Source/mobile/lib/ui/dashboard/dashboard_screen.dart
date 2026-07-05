@@ -14,7 +14,7 @@ import 'package:wobblio/main.dart';
 import 'package:wobblio/ui/account/account_screen.dart';
 import 'package:wobblio/ui/budgets/budgets_screen.dart';
 import 'package:wobblio/ui/design_system/avatar.dart';
-import 'package:wobblio/ui/design_system/glass_container.dart';
+import 'package:wobblio/ui/design_system/inflation_sparkline.dart';
 import 'package:wobblio/ui/design_system/merchant_icon.dart';
 import 'package:wobblio/ui/design_system/progress_bar.dart';
 import 'package:wobblio/ui/design_system/tokens.dart';
@@ -127,7 +127,9 @@ class _Body extends StatelessWidget {
     // currencies would render a meaningless total under one symbol.
     final spendInvoices =
         state.invoices.where((inv) => inv.currency == currency);
-    final metrics = computeSpendMetrics(spendInvoices, DateTime.now(), period);
+    final now = DateTime.now();
+    final metrics = computeSpendMetrics(spendInvoices, now, period);
+    final composition = computeMerchantComposition(spendInvoices, now, period);
 
     // SafeArea gives the top inset (no AppBar to do it) and, via the bottom
     // padding the shell injects for the floating nav, the bottom clearance —
@@ -148,6 +150,7 @@ class _Body extends StatelessWidget {
                     currency: currency,
                     period: period,
                     onPeriod: onPeriod,
+                    composition: composition,
                   ),
                   const SizedBox(height: AppSpacing.s5),
                   _InflationPulse(insight: state.inflation),
@@ -247,12 +250,14 @@ class _HeroSpend extends StatelessWidget {
     required this.currency,
     required this.period,
     required this.onPeriod,
+    required this.composition,
   });
 
   final SpendMetrics metrics;
   final String currency;
   final SpendPeriod period;
   final ValueChanged<SpendPeriod> onPeriod;
+  final List<SpendSlice> composition;
 
   @override
   Widget build(BuildContext context) {
@@ -262,8 +267,10 @@ class _HeroSpend extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Total grocery spend',
-                style: AppTypography.overline(size: 11),),
+            Text(
+              'Total grocery spend'.toUpperCase(),
+              style: AppTypography.overline(size: 11),
+            ),
             _PeriodToggle(period: period, onPeriod: onPeriod),
           ],
         ),
@@ -277,7 +284,10 @@ class _HeroSpend extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppTypography.display(
-                    size: 44, weight: FontWeight.w800, tabularNumbers: true,),
+                  size: 44,
+                  weight: FontWeight.w800,
+                  tabularNumbers: true,
+                ),
               ),
             ),
             if (metrics.deltaPct != null) ...[
@@ -300,11 +310,14 @@ class _HeroSpend extends StatelessWidget {
             ],
           ],
         ),
+        _SpendCompositionBar(slices: composition),
         const SizedBox(height: AppSpacing.s2),
         Text(
           _caption(),
           style: AppTypography.body(
-              size: 12.5, color: AppColors.textSecondary,),
+            size: 12.5,
+            color: AppColors.textSecondary,
+          ),
         ),
       ],
     );
@@ -369,6 +382,43 @@ class _PeriodToggle extends StatelessWidget {
   }
 }
 
+/// Segmented spend-composition bar under the hero total (prototype 2a). Each
+/// segment is one merchant's share of the period spend, colored by its brand;
+/// widths sum to the hero total. Hidden when there's no spend — never faked.
+class _SpendCompositionBar extends StatelessWidget {
+  const _SpendCompositionBar({required this.slices});
+
+  final List<SpendSlice> slices;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = slices.fold<double>(0, (sum, s) => sum + s.amount);
+    if (slices.isEmpty || total <= 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: SizedBox(
+          height: 6,
+          child: Row(
+            // Stretch so each segment fills the 6px height — a childless
+            // ColoredBox under a Row's default (loose) constraints collapses to
+            // zero height and the bar vanishes.
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final slice in slices)
+                Expanded(
+                  flex: (slice.amount / total * 1000).round().clamp(1, 1000),
+                  child: ColoredBox(color: merchantColor(slice.merchant)),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Inflation pulse (the signature 2a card): the caller's personal price index
 // ---------------------------------------------------------------------------
@@ -381,76 +431,251 @@ class _InflationPulse extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final data = insight;
-    // Hidden until there's a real personal number — no fabricated 0% (webapp rule #4).
-    if (data == null || !data.hasPersonal) return const SizedBox.shrink();
+    // No personal number yet: show an honest building-state card (rule #4 —
+    // always state what fills the empty state), never a fabricated percentage.
+    if (data == null || !data.hasPersonal) {
+      return _InflationCardShell(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your inflation'.toUpperCase(),
+              style: AppTypography.overline(size: 10.5),
+            ),
+            const SizedBox(height: 9),
+            Text(
+              'Building your personal inflation index',
+              style: AppTypography.display(size: 17, weight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Scan a few more receipts of items you buy regularly and your '
+              'own price index shows up here.',
+              style: AppTypography.body(
+                size: 11.5,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 13),
+            const Divider(height: 1, color: AppColors.glassBorder),
+            const SizedBox(height: 13),
+            const _PriceReportLink(),
+          ],
+        ),
+      );
+    }
 
     final pct = data.personalInflationPct!;
     final rising = pct > 0;
     final color = rising ? AppColors.warning : AppColors.success;
 
+    return _InflationCardShell(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your inflation'.toUpperCase(),
+                      style: AppTypography.overline(size: 10.5),
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          '${rising ? '+' : '−'}${pct.abs().toStringAsFixed(1)}%',
+                          style: AppTypography.display(
+                            size: 30,
+                            weight: FontWeight.w800,
+                            tabularNumbers: true,
+                            color: color,
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        Text(
+                          'this quarter',
+                          style: AppTypography.body(
+                            size: 11,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (data.regionInflationPct != null) ...[
+                      const SizedBox(height: 6),
+                      _RegionRow(pct: data.regionInflationPct!),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s3),
+              InflationSparkline(trend: data.trend),
+            ],
+          ),
+          const SizedBox(height: 13),
+          const Divider(height: 1, color: AppColors.glassBorder),
+          const SizedBox(height: 13),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: _InflationFooterText(insight: data)),
+              const SizedBox(width: AppSpacing.s3),
+              const _PriceReportLink(),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "● Region +6.8%" line under the personal number: a sign-toned dot + the region's index.
+class _RegionRow extends StatelessWidget {
+  const _RegionRow({required this.pct});
+
+  final double pct;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = pct > 0 ? AppColors.warning : AppColors.success;
+    return Row(
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          'Your region',
+          style: AppTypography.body(
+            size: 11.5,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          '${pct > 0 ? '+' : '−'}${pct.abs().toStringAsFixed(1)}%',
+          style: AppTypography.display(
+            size: 11.5,
+            weight: FontWeight.w700,
+            tabularNumbers: true,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Footer line: the savings headline when there's a real number, else the honest "keep scanning"
+/// state — never a fabricated €0.
+class _InflationFooterText extends StatelessWidget {
+  const _InflationFooterText({required this.insight});
+
+  final InflationInsight insight;
+
+  @override
+  Widget build(BuildContext context) {
+    final saved = insight.savedBySwitching;
+    if (saved != null && saved > 0) {
+      return RichText(
+        text: TextSpan(
+          style: AppTypography.body(size: 12, color: AppColors.textSecondary),
+          children: [
+            TextSpan(
+              text: '€${saved.toStringAsFixed(0)} saved',
+              style: AppTypography.display(
+                size: 12,
+                weight: FontWeight.w700,
+                tabularNumbers: true,
+                color: AppColors.success,
+              ),
+            ),
+            const TextSpan(text: ' this year buying below your region'),
+          ],
+        ),
+      );
+    }
+    return Text(
+      insight.regionInflationPct == null
+          ? 'Regional comparison arrives as more shops are mapped.'
+          : 'Every scan sharpens your price picture.',
+      style: AppTypography.body(size: 12, color: AppColors.textMuted),
+    );
+  }
+}
+
+class _PriceReportLink extends StatelessWidget {
+  const _PriceReportLink();
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ReportsScreen()),
+      ),
+      child: Text(
+        'Price report →',
+        style: AppTypography.body(
+          size: 11.5,
+          weight: FontWeight.w600,
+          color: AppColors.brand,
+        ),
+      ),
+    );
+  }
+}
+
+/// Glow-card shell shared by the real inflation card and its building state:
+/// glass-highlight tile, 18px radius, and the brand-glow corner bloom.
+class _InflationCardShell extends StatelessWidget {
+  const _InflationCardShell({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.s5),
-      child: GlassContainer(
-        padding: const EdgeInsets.all(AppSpacing.s4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Your inflation', style: AppTypography.overline(size: 10.5)),
-            const SizedBox(height: 7),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
-              children: [
-                Text(
-                  '${rising ? '+' : '−'}${pct.abs().toStringAsFixed(1)}%',
-                  style: AppTypography.display(
-                      size: 30,
-                      weight: FontWeight.w800,
-                      tabularNumbers: true,
-                      color: color,),
-                ),
-                const SizedBox(width: 7),
-                Text('this quarter',
-                    style: AppTypography.body(
-                        size: 11, color: AppColors.textMuted,),),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Across a matched basket of ${data.basketSize} '
-              'product${data.basketSize == 1 ? '' : 's'} you buy regularly.',
-              style: AppTypography.body(
-                  size: 11.5, color: AppColors.textSecondary,),
-            ),
-            const SizedBox(height: 13),
-            const Divider(height: 1, color: AppColors.glassBorder),
-            const SizedBox(height: 13),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    data.regionInflationPct == null
-                        ? 'Regional comparison arrives as more shops are mapped.'
-                        : 'Your region: ${data.regionInflationPct!.toStringAsFixed(1)}%',
-                    style: AppTypography.body(
-                        size: 12, color: AppColors.textMuted,),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.glassHighlight,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.glassBorder),
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                top: -30,
+                right: -20,
+                child: Container(
+                  width: 150,
+                  height: 150,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [AppColors.brandGlow, Colors.transparent],
+                      stops: [0.0, 0.7],
+                    ),
                   ),
                 ),
-                const SizedBox(width: AppSpacing.s3),
-                GestureDetector(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ReportsScreen()),
-                  ),
-                  child: Text('Price report →',
-                      style: AppTypography.body(
-                          size: 11.5,
-                          weight: FontWeight.w600,
-                          color: AppColors.brand,),),
-                ),
-              ],
-            ),
-          ],
+              ),
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.s4),
+                child: child,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -483,27 +708,20 @@ class _MetricsSplitRow extends StatelessWidget {
           bottom: BorderSide(color: AppColors.glassBorder),
         ),
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: _vsLastPeriod()),
-            const VerticalDivider(
-                width: 1, thickness: 1, color: AppColors.glassBorder,),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(left: AppSpacing.s4),
-                child: _credits(),
-              ),
-            ),
-          ],
-        ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: _vsLastPeriod()),
+          const SizedBox(width: AppSpacing.s4),
+          Expanded(child: _credits()),
+        ],
       ),
     );
   }
 
   Widget _vsLastPeriod() {
-    final label = period == SpendPeriod.month ? 'Vs last month' : 'Vs last week';
+    final label =
+        period == SpendPeriod.month ? 'Vs last month' : 'Vs last week';
     if (metrics.deltaPct == null) {
       return _metric(label, '—', 'No prior period');
     }
@@ -521,36 +739,47 @@ class _MetricsSplitRow extends StatelessWidget {
     if (usage == null) return _metric('Credits left', '—', '');
     final u = usage!;
     final value = u.unlimited ? 'Unlimited' : '${u.remaining ?? 0}';
-    final sub = u.unlimited
-        ? 'No weekly limit'
-        : '${u.used} of ${u.cap ?? 0} used';
-    return _metric('Credits left', value, sub, valueKey: const Key('usage-pill'));
+    final sub =
+        u.unlimited ? 'No weekly limit' : '${u.used} of ${u.cap ?? 0} used';
+    return _metric(
+      'Credits left',
+      value,
+      sub,
+      valueKey: const Key('usage-pill'),
+    );
   }
 
-  Widget _metric(String label, String value, String sub,
-      {Color valueColor = AppColors.textPrimary, Key? valueKey,}) {
+  Widget _metric(
+    String label,
+    String value,
+    String sub, {
+    Color valueColor = AppColors.textPrimary,
+    Key? valueKey,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: AppTypography.overline(size: 10.5)),
+          Text(label.toUpperCase(), style: AppTypography.overline(size: 10.5)),
           const SizedBox(height: AppSpacing.s2),
           Text(
             value,
             key: valueKey,
             style: AppTypography.display(
-                size: 21,
-                weight: FontWeight.w700,
-                tabularNumbers: true,
-                color: valueColor,),
+              size: 21,
+              weight: FontWeight.w700,
+              tabularNumbers: true,
+              color: valueColor,
+            ),
           ),
           if (sub.isNotEmpty) ...[
             const SizedBox(height: 2),
-            Text(sub,
-                style:
-                    AppTypography.body(size: 11, color: AppColors.textMuted),),
+            Text(
+              sub,
+              style: AppTypography.body(size: 11, color: AppColors.textMuted),
+            ),
           ],
         ],
       ),
@@ -613,19 +842,32 @@ class _BudgetRow extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(row.categoryLabel,
-                style: AppTypography.body(
-                    size: 13, color: AppColors.textSecondary,),),
-            Text('${pct.round()}%',
-                style: AppTypography.display(
-                    size: 12,
-                    weight: FontWeight.w700,
-                    tabularNumbers: true,
-                    color: color,),),
+            Text(
+              row.categoryLabel,
+              style: AppTypography.body(
+                size: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            Text(
+              '${pct.round()}%',
+              style: AppTypography.display(
+                size: 12,
+                weight: FontWeight.w700,
+                tabularNumbers: true,
+                color: color,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 6),
-        ProgressBar(value: pct, animate: true),
+        // Prototype budget bars are brand (indigo) under cap, amber over — not
+        // the success/warning/danger threshold scheme; match the `%` label.
+        ProgressBar(
+          value: pct,
+          tone: row.overCap ? ProgressTone.warning : ProgressTone.brand,
+          animate: true,
+        ),
       ],
     );
   }
@@ -664,12 +906,17 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: AppTypography.overline(size: 11)),
+        Text(title.toUpperCase(), style: AppTypography.overline(size: 11)),
         GestureDetector(
           onTap: onAction,
-          child: Text(action,
-              style: AppTypography.body(
-                  size: 12, weight: FontWeight.w600, color: AppColors.brand,),),
+          child: Text(
+            action,
+            style: AppTypography.body(
+              size: 12,
+              weight: FontWeight.w600,
+              color: AppColors.brand,
+            ),
+          ),
         ),
       ],
     );
@@ -701,7 +948,9 @@ class _InvoiceRow extends StatelessWidget {
             _pushReview(Navigator.of(context), context.read<DashboardBloc>()),
         child: Padding(
           padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.s5, vertical: 13,),
+            horizontal: AppSpacing.s5,
+            vertical: 13,
+          ),
           child: Row(
             children: [
               _StatusDot(merchant: invoice.merchant, tone: view.tone),
@@ -710,26 +959,35 @@ class _InvoiceRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(invoice.merchant,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.body(
-                            size: 14, weight: FontWeight.w600,),),
+                    Text(
+                      invoice.merchant,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.body(
+                        size: 14,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 2),
                     Text(
                       '${formatShortDate(invoice.dateIso)} · ${view.label}',
                       style: AppTypography.body(
-                          size: 11, color: _subColor(view.tone),),
+                        size: 11,
+                        color: _subColor(view.tone),
+                      ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: AppSpacing.s2),
-              Text(formatMoney(invoice.currency, invoice.total),
-                  style: AppTypography.display(
-                      size: 14.5,
-                      weight: FontWeight.w700,
-                      tabularNumbers: true,),),
+              Text(
+                formatMoney(invoice.currency, invoice.total),
+                style: AppTypography.display(
+                  size: 14.5,
+                  weight: FontWeight.w700,
+                  tabularNumbers: true,
+                ),
+              ),
             ],
           ),
         ),
@@ -788,17 +1046,22 @@ class _EmptyState extends StatelessWidget {
                 color: AppColors.brandGlow,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(LucideIcons.receipt,
-                  size: 28, color: AppColors.brand,),
+              child: const Icon(
+                LucideIcons.receipt,
+                size: 28,
+                color: AppColors.brand,
+              ),
             ),
             const SizedBox(height: AppSpacing.s4),
-            Text('No receipts yet',
-                style:
-                    AppTypography.display(size: 17, weight: FontWeight.w600),),
+            Text(
+              'No receipts yet',
+              style: AppTypography.display(size: 17, weight: FontWeight.w600),
+            ),
             const SizedBox(height: 4),
-            Text('Tap the camera to add your first one',
-                style:
-                    AppTypography.body(size: 13, color: AppColors.textMuted),),
+            Text(
+              'Tap the camera to add your first one',
+              style: AppTypography.body(size: 13, color: AppColors.textMuted),
+            ),
           ],
         ),
       ),
@@ -817,8 +1080,10 @@ class _RetryMessage extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Couldn’t load your receipts',
-              style: AppTypography.body(size: 15),),
+          Text(
+            'Couldn’t load your receipts',
+            style: AppTypography.body(size: 15),
+          ),
           const SizedBox(height: AppSpacing.s3),
           FilledButton(onPressed: onRetry, child: const Text('Try again')),
         ],

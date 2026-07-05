@@ -13,10 +13,10 @@ export interface MatchedBasketItem {
   priorMedian: number;
 }
 
-export interface PersonalInflationResult {
-  /// Signed % change of the caller's matched basket; null when the basket is too small to be
+export interface MatchedBasketInflationResult {
+  /// Signed % change of the matched basket; null when the basket is too small to be
   /// meaningful (honest empty state — never a fabricated 0%).
-  personalInflationPct: number | null;
+  inflationPct: number | null;
   /// How many products actually matched both periods (drives the empty-state copy).
   basketSize: number;
 }
@@ -25,21 +25,23 @@ export interface PersonalInflationResult {
 /// index is noise.
 export const MIN_INFLATION_BASKET = 3;
 
-export function computePersonalInflation(
+// Generic over whose basket it is: the caller's own purchases (personal inflation) or a region's
+// price observations (regional inflation) — both are matched-basket median-of-ratios.
+export function computeMatchedBasketInflation(
   basket: MatchedBasketItem[],
   minBasket: number = MIN_INFLATION_BASKET,
-): PersonalInflationResult {
+): MatchedBasketInflationResult {
   const ratios = basket
     .filter((item) => item.priorMedian > 0 && item.currentMedian > 0)
     .map((item) => item.currentMedian / item.priorMedian);
 
   if (ratios.length < minBasket) {
-    return { personalInflationPct: null, basketSize: ratios.length };
+    return { inflationPct: null, basketSize: ratios.length };
   }
 
   const pct = (median(ratios) - 1) * 100;
   // One decimal, matching the prototype's "+0.2%" and avoiding false precision.
-  return { personalInflationPct: Math.round(pct * 10) / 10, basketSize: ratios.length };
+  return { inflationPct: Math.round(pct * 10) / 10, basketSize: ratios.length };
 }
 
 function median(values: number[]): number {

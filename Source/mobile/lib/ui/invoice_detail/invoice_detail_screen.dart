@@ -82,14 +82,17 @@ class _InvoiceDetailView extends StatelessWidget {
                 _InfoRows(detail: detail),
                 const SizedBox(height: 16),
                 if (detail.imageUrl != null)
-                  WobblioButton(
-                    label: 'View original receipt',
-                    variant: WobblioButtonVariant.outline,
-                    iconLeft: Icons.image_outlined,
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) =>
-                              _PhotoViewer(imageUrl: detail.imageUrl!),),
+                  SizedBox(
+                    width: double.infinity,
+                    child: WobblioButton(
+                      label: 'View original receipt',
+                      variant: WobblioButtonVariant.outline,
+                      iconLeft: Icons.image_outlined,
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                _PhotoViewer(imageUrl: detail.imageUrl!),),
+                      ),
                     ),
                   ),
                 const SizedBox(height: 20),
@@ -123,7 +126,7 @@ class _InvoiceDetailView extends StatelessWidget {
                         key: const Key('invoice-detail-share'),
                         label: 'Share',
                         variant: WobblioButtonVariant.primary,
-                        iconLeft: Icons.ios_share,
+                        iconLeft: Icons.share,
                         onPressed: () => context
                             .read<InvoiceDetailBloc>()
                             .add(const InvoiceDetailShareRequested()),
@@ -269,12 +272,20 @@ class _InfoRows extends StatelessWidget {
                     style: AppTypography.body(
                         size: AppTypography.textSm,
                         color: AppColors.textMuted,),),
+                // The Date value uses the mono-tabular display face (matching the
+                // prototype's monospaced date); text values keep the body face.
                 Text(
                   rows[i].$2,
-                  style: AppTypography.body(
-                      size: AppTypography.textSm,
-                      weight: FontWeight.w600,
-                      color: AppColors.textSecondary,),
+                  style: rows[i].$1 == 'Date'
+                      ? AppTypography.display(
+                          size: AppTypography.textSm,
+                          weight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                          tabularNumbers: true,)
+                      : AppTypography.body(
+                          size: AppTypography.textSm,
+                          weight: FontWeight.w600,
+                          color: AppColors.textSecondary,),
                 ),
               ],
             ),
@@ -427,18 +438,27 @@ class _PhotoViewer extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      // Frame the receipt against the whole screen, including behind the
+      // translucent app bar, so tall/large invoices are fully visible.
+      extendBodyBehindAppBar: true,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
       body: InteractiveViewer(
         key: const Key('invoice-detail-photo'),
         minScale: 1,
         maxScale: 5,
-        child: Center(
+        // BoxFit.contain scales the whole invoice down to fit the viewport;
+        // pinch-zoom then magnifies for reading detail.
+        child: SizedBox.expand(
           child: Image.network(
             imageUrl,
-            errorBuilder: (_, __, ___) => const Icon(
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const Center(
+              child: Icon(
                 Icons.broken_image_outlined,
                 color: Colors.white54,
-                size: 48,),
+                size: 48,
+              ),
+            ),
           ),
         ),
       ),

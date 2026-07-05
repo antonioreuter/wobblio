@@ -61,6 +61,33 @@ describe('EscalatingReceiptParser', () => {
     expect((result as ParsedReceipt).merchantRaw).toBe('Jumbo');
   });
 
+  it('reports escalation outcomes to the sink (used-fallback, errored, and no-escalation)', async () => {
+    const sink = vi.fn();
+
+    // No escalation → sink not called.
+    await new EscalatingReceiptParser(parserReturning(receipt()), parserReturning(receipt()), undefined, sink).parse(image, ctx);
+    expect(sink).not.toHaveBeenCalled();
+
+    // Escalate (arithmetic) + fallback ok → used the fallback.
+    await new EscalatingReceiptParser(parserReturning(receipt({ total: 99.0 })), parserReturning(receipt()), undefined, sink).parse(image, ctx);
+    expect(sink).toHaveBeenLastCalledWith({ reason: 'ARITHMETIC', usedFallback: true, fallbackErrored: false });
+
+    // Escalate + fallback throws → degraded, flagged as errored.
+    const throwing: IReceiptParser = { parse: vi.fn().mockRejectedValue(new Error('throttle')) };
+    await new EscalatingReceiptParser(parserReturning(receipt({ total: 99.0 })), throwing, undefined, sink).parse(image, ctx);
+    expect(sink).toHaveBeenLastCalledWith({ reason: 'ARITHMETIC', usedFallback: false, fallbackErrored: true });
+  });
+
+  it('never lets a throwing sink affect the parse outcome', async () => {
+    const primary = parserReturning(receipt({ total: 99.0 }));
+    const fallback = parserReturning(receipt({ merchantRaw: 'FROM_FALLBACK', total: 1.25 }));
+    const sut = new EscalatingReceiptParser(primary, fallback, undefined, () => { throw new Error('sink boom'); });
+
+    const result = await sut.parse(image, ctx);
+
+    expect((result as ParsedReceipt).merchantRaw).toBe('FROM_FALLBACK');
+  });
+
   it('uses an injected decision function when provided', async () => {
     const primary = parserReturning(receipt());
     const fallback = parserReturning(receipt({ merchantRaw: 'FROM_FALLBACK' }));

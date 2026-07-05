@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSplitSummary, type SplitLine, type SplitAssignment } from '@core/domain/billSplit';
+import { computeSplitSummary, type SplitLine, type SplitAllocation } from '@core/domain/billSplit';
 
 const product = (id: string, lineTotal: number, quantity = 1): SplitLine => ({
   id, label: id, quantity, lineTotal, isDiscount: false, isDepositOrFee: false,
@@ -14,13 +14,13 @@ const find = (s: ReturnType<typeof computeSplitSummary>, name: string) =>
   s.participants.find((p) => p.name === name);
 
 describe('computeSplitSummary', () => {
-  it('splits fully-assigned lines with proportional fees, no owner remainder', () => {
+  it('splits fully-allocated lines with proportional fees, no owner remainder', () => {
     const lines = [product('L1', 10), product('L2', 6)];
-    const assignments: SplitAssignment[] = [
-      { lineId: 'L1', participantName: 'Alice', fraction: 1 },
-      { lineId: 'L2', participantName: 'Bob', fraction: 1 },
+    const allocations: SplitAllocation[] = [
+      { lineId: 'L1', participantName: 'Alice', units: 1 },
+      { lineId: 'L2', participantName: 'Bob', units: 1 },
     ];
-    const s = computeSplitSummary(lines, assignments, 20); // feePool 4
+    const s = computeSplitSummary(lines, allocations, 20); // feePool 4
 
     expect(find(s, 'You')).toBeUndefined();
     expect(find(s, 'Alice')).toMatchObject({ subtotal: 10, fees: 2.5, total: 12.5 });
@@ -28,9 +28,52 @@ describe('computeSplitSummary', () => {
     expect(s.grandTotal).toBe(20);
   });
 
-  it('gives the unassigned remainder of a fractional line to the owner', () => {
+  it('splits a multi-unit line by quantity across people (3 units → 2 to Alice, 1 to Bob)', () => {
+    const lines = [product('L1', 12, 3)]; // 3 units @ 4 each
+    const s = computeSplitSummary(
+      lines,
+      [
+        { lineId: 'L1', participantName: 'Alice', units: 2 },
+        { lineId: 'L1', participantName: 'Bob', units: 1 },
+      ],
+      12,
+    );
+
+    expect(find(s, 'You')).toBeUndefined();
+    expect(find(s, 'Alice')).toMatchObject({ subtotal: 8, total: 8 });
+    expect(find(s, 'Bob')).toMatchObject({ subtotal: 4, total: 4 });
+    expect(find(s, 'Alice')?.items[0]).toMatchObject({ qty: 2, amount: 8 });
+    expect(find(s, 'Bob')?.items[0]).toMatchObject({ qty: 1, amount: 4 });
+  });
+
+  it('leaves the un-allocated units of a multi-unit line with the owner', () => {
+    const lines = [product('L1', 12, 3)];
+    const s = computeSplitSummary(lines, [{ lineId: 'L1', participantName: 'Alice', units: 2 }], 12);
+
+    expect(find(s, 'Alice')).toMatchObject({ subtotal: 8, total: 8 });
+    expect(find(s, 'You')).toMatchObject({ subtotal: 4, total: 4 });
+    expect(find(s, 'You')?.items[0]).toMatchObject({ qty: 1, amount: 4 });
+  });
+
+  it('shares a single item equally via fractional units (½ each)', () => {
+    const lines = [product('L1', 10, 1)];
+    const s = computeSplitSummary(
+      lines,
+      [
+        { lineId: 'L1', participantName: 'Alice', units: 0.5 },
+        { lineId: 'L1', participantName: 'Bob', units: 0.5 },
+      ],
+      10,
+    );
+
+    expect(find(s, 'You')).toBeUndefined();
+    expect(find(s, 'Alice')).toMatchObject({ subtotal: 5, total: 5 });
+    expect(find(s, 'Alice')?.items[0]).toMatchObject({ fraction: 0.5, amount: 5 });
+  });
+
+  it('gives the unallocated remainder of a half-shared line to the owner', () => {
     const lines = [product('L1', 10, 2)];
-    const s = computeSplitSummary(lines, [{ lineId: 'L1', participantName: 'Alice', fraction: 0.5 }], 10);
+    const s = computeSplitSummary(lines, [{ lineId: 'L1', participantName: 'Alice', units: 1 }], 10);
 
     expect(find(s, 'Alice')).toMatchObject({ subtotal: 5, total: 5 });
     expect(find(s, 'You')).toMatchObject({ subtotal: 5, total: 5 });
@@ -43,9 +86,9 @@ describe('computeSplitSummary', () => {
     const s = computeSplitSummary(
       lines,
       [
-        { lineId: 'L1', participantName: 'A', fraction: 1 },
-        { lineId: 'L2', participantName: 'B', fraction: 1 },
-        { lineId: 'L3', participantName: 'C', fraction: 1 },
+        { lineId: 'L1', participantName: 'A', units: 1 },
+        { lineId: 'L2', participantName: 'B', units: 1 },
+        { lineId: 'L3', participantName: 'C', units: 1 },
       ],
       18,
     );
@@ -55,7 +98,7 @@ describe('computeSplitSummary', () => {
 
   it('excludes deposit lines from the assignable subtotal and folds them into the fee pool', () => {
     const lines = [product('L1', 10), deposit('D1', 0.25)];
-    const s = computeSplitSummary(lines, [{ lineId: 'L1', participantName: 'Alice', fraction: 1 }], 10.25);
+    const s = computeSplitSummary(lines, [{ lineId: 'L1', participantName: 'Alice', units: 1 }], 10.25);
 
     expect(find(s, 'You')).toBeUndefined();
     expect(find(s, 'Alice')).toMatchObject({ subtotal: 10, fees: 0.25, total: 10.25 });
@@ -63,7 +106,7 @@ describe('computeSplitSummary', () => {
 
   it('spreads a negative fee pool (net discount) across shares', () => {
     const lines = [product('L1', 10), discount('X1', -2)];
-    const s = computeSplitSummary(lines, [{ lineId: 'L1', participantName: 'Alice', fraction: 1 }], 8);
+    const s = computeSplitSummary(lines, [{ lineId: 'L1', participantName: 'Alice', units: 1 }], 8);
     expect(find(s, 'Alice')).toMatchObject({ subtotal: 10, fees: -2, total: 8 });
   });
 
@@ -73,15 +116,14 @@ describe('computeSplitSummary', () => {
     expect(s.grandTotal).toBe(5);
   });
 
-  it('ignores an assignment whose lineId matches no product line, and gives a wholly-unassigned line entirely to the owner', () => {
+  it('ignores an allocation whose lineId matches no product line, and gives a wholly-unallocated line entirely to the owner', () => {
     const lines = [product('L1', 10), product('L2', 5)];
-    const assignments: SplitAssignment[] = [
-      { lineId: 'L1', participantName: 'Alice', fraction: 1 },
-      { lineId: 'BOGUS', participantName: 'Ghost', fraction: 1 }, // no matching product line
-      // L2 has no assignment at all — owner must absorb it via the "no entry" (?? 0) default,
-      // not the partial-fraction path already covered by other tests.
+    const allocations: SplitAllocation[] = [
+      { lineId: 'L1', participantName: 'Alice', units: 1 },
+      { lineId: 'BOGUS', participantName: 'Ghost', units: 1 }, // no matching product line
+      // L2 has no allocation at all — owner must absorb it via the "no entry" (?? 0) default.
     ];
-    const s = computeSplitSummary(lines, assignments, 15); // no fees
+    const s = computeSplitSummary(lines, allocations, 15); // no fees
 
     expect(find(s, 'Ghost')).toBeUndefined();
     expect(find(s, 'Alice')).toMatchObject({ subtotal: 10, fees: 0, total: 10 });
@@ -93,9 +135,9 @@ describe('computeSplitSummary', () => {
     const s = computeSplitSummary(
       lines,
       [
-        { lineId: 'L1', participantName: 'A', fraction: 1 },
-        { lineId: 'L2', participantName: 'B', fraction: 1 },
-        { lineId: 'L3', participantName: 'C', fraction: 1 },
+        { lineId: 'L1', participantName: 'A', units: 1 },
+        { lineId: 'L2', participantName: 'B', units: 1 },
+        { lineId: 'L3', participantName: 'C', units: 1 },
       ],
       31.01, // feePool 0.01 rounds to 0.00 for every share; the 0.01 residual lands on C (largest)
     );
@@ -110,9 +152,9 @@ describe('computeSplitSummary', () => {
     const s = computeSplitSummary(
       lines,
       [
-        { lineId: 'L1', participantName: 'A', fraction: 1 },
-        { lineId: 'L2', participantName: 'B', fraction: 1 },
-        { lineId: 'L3', participantName: 'C', fraction: 1 },
+        { lineId: 'L1', participantName: 'A', units: 1 },
+        { lineId: 'L2', participantName: 'B', units: 1 },
+        { lineId: 'L3', participantName: 'C', units: 1 },
       ],
       30.01, // feePool 0.01 → 0.0033 each rounds to 0.00; residual lands on the largest
     );

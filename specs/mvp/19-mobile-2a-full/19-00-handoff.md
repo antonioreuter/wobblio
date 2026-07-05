@@ -33,11 +33,14 @@ product yet).
 | 19a | 2a nav shell + shared header (`WobblioNavBar`, `Wobblio2aHeader`) | ✅ |
 | 19b | Home/Dashboard to full 2a (client-derived sections) | ✅ |
 | 19c | Inflation-pulse backend + Home card | ✅ personal number (region/savings deferred) |
-| 19d | Existing-screen re-skins: Onboarding, Capture, Review/Parse | 🚧 chrome done; deep body rebuilds pending |
+| 19d | Existing-screen re-skins: Onboarding, Capture, Review/Parse | 🚧 Capture deep body ✅; Onboarding + Review deep bodies pending |
 | 19e | Net-new-screen re-chrome: Invoice Detail, History, Budgets, Reports, Account, Shopping, Notifications, Split, Processing | ✅ chrome |
 | 19f | Deep-body prototype conformance, one screen at a time (started) | 🚧 Dashboard-Recent ✅, Invoice Detail ✅ |
 
 Legend: ⬜ not started · 🚧 in progress · ✅ done
+
+> **Per-screen review checklist:** [`19-01-screen-review.md`](19-01-screen-review.md) — status +
+> concrete prototype divergences for all 13 screens, and the review workflow.
 
 ### 19f — deep-body conformance (incremental, 2026-07-03)
 User re-flagged that most screens are chrome-only vs prototype 2a; agreed to conform bodies one screen
@@ -58,12 +61,65 @@ at a time (verified live on `emulator-5554`). Prototype = `Mobile UI design prin
   and looked "completely different" from the prototype's atmospheric dark. Moved it to `MaterialApp.builder`
   (behind the whole Navigator) in `lib/app.dart`, so the aurora + glass now show on every route. This is the
   single biggest conformance win and fixes all pushed screens at once. analyze 0, 162 tests.
+- **Invoice-Detail polish (2026-07-03):** "View original receipt" wrapped in `SizedBox(width: infinity)` so
+  it's full-width with centered content (WobblioButton's `Center(widthFactor:1)` centers under tight
+  constraints); Date value now uses the mono-tabular `display` face (`AppTypography.display(..., tabularNumbers)`)
+  vs body; Share icon `Icons.ios_share` → `Icons.share` (share-nodes, matches proto). Date still has no time
+  ("· 14:32") — model `transactionDate` is date-only; would need a backend timestamp.
 - **Remaining Invoice-Detail deltas vs prototype (data-limited / deliberate, lower priority):** no merchant
   sub-line/branch ("Eindhoven Centrum" — model has no branch field); badge "READY" vs proto "PROCESSED"
   (deliberate canonical webapp label); info rows Date+Location vs proto Date(+time)/Country/Region (model has
   one combined `locationLabel`, date w/o time); merchant icon glyph differs.
-- **Next candidate:** History (`data-screen="4"`) — its rows still show ISO dates (`2026-07-02`) and a
-  different layout vs the prototype's month-grouped `● merchant · "12 Jun" · €amt` ledger.
+- **History** ✅ (`data-screen="4"`, 2026-07-03) — rebuilt to the 2a lean ledger + reviewed on
+  `emulator-5554`. `_LedgerRow` went from a two-line Column with **ISO dates** (`2026-07-02`) to a
+  **single-line** `● merchant  "30 Jun"[· label]  €amt` row: `formatShortDate` for the date, the date +
+  amount on the mono-tabular `display` face, merchant-color dot (warning tone + `· label` suffix only for
+  warning-status rows). Header subtitle (`N scanned · €X this month`) switched to the mono-tabular face and
+  the month-group label to overline **w700** to match the prototype. Search field + month grouping were
+  already present (18b). All keys preserved (`history-screen`, `history-search`, `history-row-{id}`).
+  Gates: analyze 0, 162 tests.
+- **Capture** ✅ (`data-screen="2"`, 2026-07-03) — full rewrite of `capture/capture_screen.dart` from three
+  stacked FilledButtons to the 2a scan viewfinder + reviewed on `emulator-5554`. Full-bleed dark scene
+  (`#06070C` + radial wash), `Positioned` top bar (back chevron + centered "Scan receipt"), a 230×340 beige
+  **receipt-preview mock** (platform `monospace`, no new font dep) framed by 4 brand `_Corner` brackets and an
+  `AnimationController`-driven indigo→teal **laser sweep**, "Align the receipt · tap to scan" caption, a 74×74
+  **shutter** (white 5px ring + `AppColors.gradientBrand` core) wired to `CaptureFromCameraRequested`, and
+  **Gallery + PDF** as `OutlinedButton` secondaries. **Decision (asked user, both recommended options):**
+  stylized viewfinder — NO live in-app camera feed (capture still routes through `image_picker`/OS camera; the
+  prototype viewfinder is itself a static mock); Gallery/PDF kept as secondary buttons below the shutter.
+  `CaptureBloc`/ports unchanged; keys preserved (`capture-screen`, `capture-camera-button`,
+  `capture-gallery-button`, `capture-pdf-button`, `capture-progress`, `capture-error-snackbar`) + new
+  `capture-back-button`. **LANDMINE (fixed during review):** the body `Stack` needed `fit: StackFit.expand`
+  (else it collapsed to the top bar's height and everything bunched at the top / the receipt overflowed); and
+  with `StackFit.expand` the top bar must be `Positioned` (a bare non-positioned child gets tight full-height
+  constraints and vertically-centers). Gates: analyze 0, 162 tests.
+- **Reports / "Price report"** ✅ code (`data-screen="6"`, 2026-07-04) — rebuilt `reports/reports_screen.dart`
+  from the 18e product-picker + "My prices vs Local market" trend chart to the 2a **personal-inflation
+  CPI** view. Sections: header "Price report" + "`<region>` · last 90 days" (region from profile,
+  best-effort); "Your inflation vs region" **fixed-series proportional bars** (You=`success`/teal,
+  Region=`warning`/amber, matching the sparkline's series identity — bar fill ∝ |pct| scaled to the larger
+  of the two, honest `—`+hint on nulls); the reused dual-line **`InflationSparkline`** (extracted from the
+  dashboard `_InflationPulse` into `design_system/inflation_sparkline.dart` — one copy, two call sites);
+  and a "€X saved this year by switching" **glass card** (shown only for a real positive figure). All
+  figures come from the existing `GET /me/insights/inflation` via a new **lean `PriceReportBloc`**
+  (`core/bloc/reports/price_report_bloc.dart`, insight required → failure+retry, profile best-effort for
+  the label). **Decisions (user):** *replace the 18e chart entirely* — deleted `price_trend_comparison.dart`,
+  `IPriceTrendRepository`/`HttpPriceTrendRepository`, `line_chart.dart` (`TrendLineChart`), the old
+  `report_bloc` trio + test, and their `main.dart` DI (kept `IProductSearchRepository` — Review still uses
+  it; webapp keeps its trend chart). *Defer* the prototype's per-product **"Tracked items"** list (needs an
+  endpoint field surfacing the matched-basket breakdown — the data already exists in
+  `PersonalInflationQueryAdapter`) and the derived "X% cheaper than region" line. New
+  `test/bloc/price_report_bloc_test.dart` (5 cases). Gates: analyze 0, tests green. **Backend now covered:**
+  `src/tests/integration/InflationInsights.local.test.ts` (8 tests, green on the local Postgres stack)
+  exercises all five inflation adapters against real SQL — personal matched basket + monthly series under a
+  restricted RLS role (tenant isolation proven: tenantB never sees tenantA's rows), the regional matched
+  basket + series over `price_observation` (k≥3 quorum, quarantine/discount/region filters), switching
+  savings (sub-quorum products dropped), and the full personal-vs-region trend composed through the domain
+  the way `handleInflationInsight` does (+10% personal / +20% region on the seeded basket). The prior
+  "adapter SQL not integration-tested" landmine is retired; **on-device review of the mobile screen is still
+  pending.**
+- **Next candidate:** Review/Parse (`data-screen` confirm/review) — 2a inline-edit rows + "confirm each line"
+  gate (19d deep body).
 
 ## Gates for every slice
 - `cd Source/mobile && fvm flutter analyze` (0 issues) + `fvm flutter test` (green).

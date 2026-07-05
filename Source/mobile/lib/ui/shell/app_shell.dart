@@ -56,7 +56,7 @@ class _AppShellState extends State<AppShell> {
   // The four tab destinations, in stack order. The capture FAB is spliced
   // into the middle by [WobblioNavBar] (captureIndex 2) and is not a tab.
   static const _navItems = [
-    WobblioNavItem(icon: LucideIcons.layout_dashboard, label: 'Home'),
+    WobblioNavItem(icon: LucideIcons.layout_dashboard, label: 'Dashboard'),
     WobblioNavItem(icon: LucideIcons.receipt, label: 'Receipts'),
     WobblioNavItem(icon: LucideIcons.shopping_cart, label: 'Shopping'),
     WobblioNavItem(icon: LucideIcons.chart_pie, label: 'Reports'),

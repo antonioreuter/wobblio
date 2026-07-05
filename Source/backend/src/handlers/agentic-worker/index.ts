@@ -74,6 +74,8 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       ? new EscalatingReceiptParser(
           primaryVision,
           new VisionParseService(meteredConverse, visionFallbackModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION, 'VISION_PARSE_FALLBACK'),
+          undefined,
+          (outcome) => log.info('vision parse escalated to fallback', { event: 'vision_escalation', ...outcome }),
         )
       : primaryVision;
     const ocr = new OcrParserTool(

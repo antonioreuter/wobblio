@@ -1,0 +1,64 @@
+import type { Pool, PoolClient } from 'pg';
+import type {
+  IPersonalInflationSeriesQuery,
+  PersonalSeriesInput,
+} from '@core/ports/data-intelligence/IInflationSeriesQuery';
+import type { MonthlyProductMedian } from '@core/domain/inflationSeries';
+
+interface MedianRow {
+  period: string;
+  product_id: string;
+  median: string;
+}
+
+// Per-month, per-product median prices from the caller's OWN invoices (RLS-scoped — tenant context
+// MUST be set first). Same price basis and line filters as PersonalInflationQueryAdapter (regular,
+// non-discount, non-deposit lines; €/unit when known for the product else €/item), grouped by the
+// invoice month instead of a current/prior bucket. The domain turns these into the baselined index.
+export class PersonalInflationSeriesQueryAdapter implements IPersonalInflationSeriesQuery {
+  constructor(private readonly db: Pool | PoolClient) {}
+
+  async monthlyMedians(input: PersonalSeriesInput): Promise<MonthlyProductMedian[]> {
+    const result = await this.db.query<MedianRow>(
+      `WITH lines AS (
+         SELECT to_char(i.transaction_date, 'YYYY-MM') AS period,
+                l.product_id,
+                (l.line_total / NULLIF(l.quantity, 0)) AS pack_price,
+                l.normalized_unit_price,
+                l.base_unit
+         FROM invoice_line l
+         JOIN invoice i ON i.id = l.invoice_id
+         WHERE i.status IN ('PARSED', 'NEEDS_REVIEW')
+           AND i.transaction_date IS NOT NULL
+           AND i.transaction_date >= (date_trunc('month', CURRENT_DATE)
+                 - (($1::int - 1) * INTERVAL '1 month'))
+           AND l.line_total > 0
+           AND l.quantity > 0
+           AND l.is_deposit_or_fee = false
+           AND l.is_discount = false
+           AND l.product_id IS NOT NULL
+       ),
+       prod AS (
+         SELECT product_id,
+                (COUNT(*) FILTER (WHERE normalized_unit_price IS NULL) = 0
+                   AND COUNT(DISTINCT base_unit) = 1) AS unit_known
+         FROM lines
+         GROUP BY product_id
+       )
+       SELECT l.period,
+              l.product_id,
+              percentile_cont(0.5) WITHIN GROUP (
+                ORDER BY CASE WHEN p.unit_known THEN l.normalized_unit_price ELSE l.pack_price END
+              )::text AS median
+       FROM lines l
+       JOIN prod p ON p.product_id = l.product_id
+       GROUP BY l.period, l.product_id`,
+      [input.months],
+    );
+    return result.rows.map((row) => ({
+      period: row.period,
+      productId: row.product_id,
+      median: parseFloat(row.median),
+    }));
+  }
+}

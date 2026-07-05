@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
-import { Copy, Crown, Users, X } from 'lucide-react'
+import { Copy, Crown, Link2, Minus, MessageCircle, Plus, RotateCcw, Users, X } from 'lucide-react'
 import { Avatar, Card } from '@/components/ds'
 import { useWorkspace } from './workspace-provider'
 import { fmtDate, fmtMoney, type Invoice } from './invoice-data'
-import { useBillSplit, type AssignableLine, type SplitAssignment } from './use-bill-split'
+import { useBillSplit, type AssignableLine, type LineAllocationInput } from './use-bill-split'
 import { deriveInitials } from '@/lib/user-initials'
 import { memberInitials } from './household-data'
 import { seriesColor } from './trend-data'
@@ -17,19 +17,12 @@ const YOU_COLOR = seriesColor(0)
 const FRACTION_CYCLE = [1, 0.5, 1 / 3]
 const MAX_PARTICIPANT_NAME_LENGTH = 40
 
-// bill_split_line.fraction is NUMERIC(5,4) — 1/3 round-trips through the backend
-// as 0.3333, not JS's 0.3333333333333333 (diff ≈ 3.33e-5). The tolerance must
-// comfortably clear that DB-rounding gap while staying tight enough that the three
-// cycle values (1, 0.5, 1/3) never collide with each other.
-const FRACTION_EPSILON = 1e-3
+// bill_split_line.units is NUMERIC(9,4) — 1/3 round-trips as 0.3333, so tolerances
+// must clear that DB-rounding gap while staying tight enough to tell 1, ½, ⅓ apart.
+const EPSILON = 1e-3
 
 const canSplitBill = (role: string | undefined): boolean => !!role && role !== 'STANDARD'
 
-// "You" always gets a fixed, stable color; named participants rotate through the
-// rest of the palette by their index in `namedParticipants` (participants ∪
-// whatever the backend already knows about — see namedParticipants below — so a
-// participant with an existing assignment gets a stable color from first paint,
-// not just after the participants-growing effect catches up).
 function participantColor(name: string, namedParticipants: string[]): string {
   if (name === YOU) return YOU_COLOR
   const idx = namedParticipants.indexOf(name)
@@ -37,16 +30,16 @@ function participantColor(name: string, namedParticipants: string[]): string {
 }
 
 function fractionLabel(fraction: number): string {
-  if (Math.abs(fraction - 0.5) < FRACTION_EPSILON) return '½'
-  if (Math.abs(fraction - 1 / 3) < FRACTION_EPSILON) return '⅓'
+  if (Math.abs(fraction - 0.5) < EPSILON) return '½'
+  if (Math.abs(fraction - 1 / 3) < EPSILON) return '⅓'
   return ''
 }
 
-function nextFractionAriaHint(fraction: number): string {
-  const i = FRACTION_CYCLE.findIndex((f) => Math.abs(f - fraction) < FRACTION_EPSILON)
-  if (i + 1 >= FRACTION_CYCLE.length) return 'press again to unassign'
-  if (FRACTION_CYCLE[i + 1] === 0.5) return 'press again for half'
-  return 'press again for a third'
+// How a participant's share of a line reads on their avatar badge: a unit count for
+// multi-unit lines (×2), a fraction glyph for a shared single item (½), else nothing.
+function shareLabel(units: number, lineQuantity: number): string {
+  if (lineQuantity > 1 + EPSILON) return `×${Number(units.toFixed(2))}`
+  return fractionLabel(units)
 }
 
 interface BillSplitDialogProps {
@@ -58,10 +51,12 @@ interface BillSplitDialogProps {
 export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps) {
   const { showToast } = useWorkspace()
   const { data: session } = useSession()
-  const { state, assignLine, unassignLine, removeParticipant, fetchWhatsappText } = useBillSplit(invoice.id)
+  const { state, setLineAllocations, removeParticipant, fetchWhatsappText, createShareLink } = useBillSplit(invoice.id)
   const [participants, setParticipants] = useState<string[]>([])
   const [activeParticipant, setActiveParticipant] = useState<string>(YOU)
   const [newName, setNewName] = useState('')
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [sharing, setSharing] = useState(false)
 
   const youInitials = deriveInitials(session?.user?.name ?? '', session?.user?.email ?? '')
 
@@ -71,22 +66,15 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Participants are otherwise only implicit (derived from assignments), but the
-  // panel lets you add a name before assigning anything to them — grow the local
-  // chip set from whatever the backend already knows about, never shrink it here.
   useEffect(() => {
     if (state.status !== 'ready') return
-    const assignedNames = Array.from(new Set(state.assignments.map((a) => a.participantName)))
+    const assignedNames = Array.from(new Set(state.allocations.map((a) => a.participantName)))
     setParticipants((prev) => Array.from(new Set([...prev, ...assignedNames])))
   }, [state])
 
-  // Color-index source: participants ∪ whatever the backend already knows about,
-  // computed fresh each render rather than relying on the effect above, which
-  // otherwise lags one paint behind on first load (a known-assigned participant
-  // would briefly index as -1 → the same color as "You").
   const namedParticipants =
     state.status === 'ready'
-      ? Array.from(new Set([...participants, ...state.assignments.map((a) => a.participantName)]))
+      ? Array.from(new Set([...participants, ...state.allocations.map((a) => a.participantName)]))
       : participants
 
   const addParticipant = () => {
@@ -112,24 +100,69 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
     }
   }
 
-  // "You" is the synthetic implicit remainder owner, not a PATCH-able participant —
-  // while active, a tap can only give a line back to you (unassign), never cycle a
-  // fraction under a literal "You" assignment row.
-  const handleLineTap = async (line: AssignableLine, assignment: SplitAssignment | undefined) => {
+  // Everything a participant holds on a line, and the running totals the gestures need.
+  const allocationsFor = (lineId: string) =>
+    state.status === 'ready' ? state.allocations.filter((a) => a.lineId === lineId) : []
+  const unitsFor = (lineId: string, name: string) =>
+    allocationsFor(lineId).find((a) => a.participantName === name)?.units ?? 0
+  const othersOf = (lineId: string, name: string): LineAllocationInput[] =>
+    allocationsFor(lineId)
+      .filter((a) => a.participantName !== name)
+      .map((a) => ({ participantName: a.participantName, units: a.units }))
+
+  const commit = async (lineId: string, allocations: LineAllocationInput[]) => {
     try {
-      if (activeParticipant === YOU) {
-        if (assignment) await unassignLine(line.id)
-        return
-      }
-      if (!assignment || assignment.participantName !== activeParticipant) {
-        await assignLine(line.id, activeParticipant, 1)
-        return
-      }
-      const i = FRACTION_CYCLE.findIndex((f) => Math.abs(f - assignment.fraction) < FRACTION_EPSILON)
-      if (i + 1 >= FRACTION_CYCLE.length) await unassignLine(line.id)
-      else await assignLine(line.id, activeParticipant, FRACTION_CYCLE[i + 1])
+      await setLineAllocations(lineId, allocations)
     } catch {
       showToast("Couldn't update that line — please try again.", 'danger')
+    }
+  }
+
+  // Multi-unit lines: nudge the active participant's unit count, capped by what's left.
+  const stepUnits = async (line: AssignableLine, delta: number) => {
+    if (activeParticipant === YOU) return
+    const others = othersOf(line.id, activeParticipant)
+    const otherUnits = others.reduce((sum, a) => sum + a.units, 0)
+    const next = Math.max(0, Math.min(unitsFor(line.id, activeParticipant) + delta, line.quantity - otherUnits))
+    await commit(line.id, [...others, ...(next > EPSILON ? [{ participantName: activeParticipant, units: next }] : [])])
+  }
+
+  // Single-unit lines keep the tap-to-cycle share: assign in full, then ½, ⅓, then release.
+  // A single-unit line has one owner at a time (remainder → You), so this replaces the set.
+  const cycleShare = async (line: AssignableLine) => {
+    if (activeParticipant === YOU) return
+    const owns = allocationsFor(line.id).some((a) => a.participantName === activeParticipant)
+    if (!owns) {
+      await commit(line.id, [{ participantName: activeParticipant, units: 1 }])
+      return
+    }
+    const mine = unitsFor(line.id, activeParticipant)
+    const i = FRACTION_CYCLE.findIndex((f) => Math.abs(f - mine) < EPSILON)
+    const next = i + 1 < FRACTION_CYCLE.length ? FRACTION_CYCLE[i + 1] : 0
+    await commit(line.id, next > EPSILON ? [{ participantName: activeParticipant, units: next }] : [])
+  }
+
+  const resetLine = async (line: AssignableLine) => {
+    if (allocationsFor(line.id).length > 0) await commit(line.id, [])
+  }
+
+  const shareLink = async () => {
+    setSharing(true)
+    try {
+      const url = await createShareLink()
+      if (!url) {
+        showToast("Couldn't create a share link — please try again.", 'danger')
+        return
+      }
+      setShareUrl(url)
+      try {
+        await navigator.clipboard.writeText(url)
+        showToast('Share link copied — anyone with it can view the split.', 'success')
+      } catch {
+        // Clipboard can be blocked; the link is still shown for manual copy.
+      }
+    } finally {
+      setSharing(false)
     }
   }
 
@@ -259,44 +292,108 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
 
             <div className="split-section-head">
               <span className="split-section-title">Assign items</span>
-              <span className="split-hint">tap → <strong>{activeParticipant}</strong></span>
+              <span className="split-hint">assigning to <strong>{activeParticipant}</strong></span>
             </div>
             <div className="split-lines">
               {state.lines
                 .filter((line) => !line.isDiscount && !line.isDepositOrFee)
                 .map((line) => {
-                  const assignment = state.assignments.find((a) => a.lineId === line.id)
-                  const ownerName = assignment?.participantName ?? YOU
-                  const ownerInitials = ownerName === YOU ? youInitials : memberInitials({ fullName: ownerName, email: '' })
-                  const ownerColor = participantColor(ownerName, namedParticipants)
-                  const fraction = assignment?.fraction ?? 1
-                  const label = assignment
-                    ? `${line.rawText}, ${money(line.lineTotal)}, assigned to ${ownerName} ${fraction === 1 ? 'full' : fractionLabel(fraction)} — ${nextFractionAriaHint(fraction)}`
-                    : `${line.rawText}, ${money(line.lineTotal)}, unassigned (You) — tap to assign to ${activeParticipant}`
+                  const allocs = allocationsFor(line.id)
+                  const assigned = allocs.reduce((sum, a) => sum + a.units, 0)
+                  const remainder = line.quantity - assigned
+                  const isMulti = line.quantity > 1 + EPSILON
+                  const myUnits = unitsFor(line.id, activeParticipant)
+
+                  const owners = [
+                    ...allocs.map((a) => ({ name: a.participantName, units: a.units })),
+                    ...(remainder > EPSILON ? [{ name: YOU, units: remainder }] : []),
+                  ]
+
                   return (
-                    <div className="split-line" key={line.id}>
-                      <button
-                        type="button"
-                        className="split-line-row"
-                        onClick={() => void handleLineTap(line, assignment)}
-                        data-testid={`split-assign-${line.id}`}
-                        aria-label={label}
-                      >
-                        <span className="split-line-name">{line.rawText}</span>
-                        <span className="split-line-amt">{money(line.lineTotal)}</span>
-                        <span style={{ position: 'relative' }}>
-                          <Avatar initials={ownerInitials} size={24} background={ownerColor} />
-                          {fraction !== 1 && (
-                            <span className="split-line-fraction">{fractionLabel(fraction)}</span>
-                          )}
-                        </span>
-                      </button>
+                    <div className="split-line" key={line.id} data-testid={`split-line-${line.id}`}>
+                      {isMulti ? (
+                        <div className="split-line-row split-line-row--static">
+                          <span className="split-line-name">
+                            {line.rawText} <span className="split-line-qty">×{Number(line.quantity)}</span>
+                          </span>
+                          <span className="split-line-amt">{money(line.lineTotal)}</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="split-line-row"
+                          onClick={() => void (activeParticipant === YOU ? resetLine(line) : cycleShare(line))}
+                          data-testid={`split-assign-${line.id}`}
+                          aria-label={
+                            activeParticipant === YOU
+                              ? `${line.rawText}, ${money(line.lineTotal)} — tap to clear`
+                              : `${line.rawText}, ${money(line.lineTotal)} — tap to assign to ${activeParticipant}, again for ½ or ⅓`
+                          }
+                        >
+                          <span className="split-line-name">{line.rawText}</span>
+                          <span className="split-line-amt">{money(line.lineTotal)}</span>
+                        </button>
+                      )}
+
+                      <div className="split-alloc">
+                        <div className="split-owners">
+                          {owners.map((o) => (
+                            <span className="split-owner" key={o.name} title={`${o.name} ${shareLabel(o.units, line.quantity) || 'full'}`}>
+                              <Avatar
+                                initials={o.name === YOU ? youInitials : memberInitials({ fullName: o.name, email: '' })}
+                                size={22}
+                                background={participantColor(o.name, namedParticipants)}
+                              />
+                              {shareLabel(o.units, line.quantity) && (
+                                <span className="split-owner-badge">{shareLabel(o.units, line.quantity)}</span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+
+                        {isMulti && activeParticipant !== YOU && (
+                          <div className="split-stepper" data-testid={`split-stepper-${line.id}`}>
+                            <button
+                              type="button"
+                              aria-label={`Remove a ${line.rawText} from ${activeParticipant}`}
+                              disabled={myUnits <= EPSILON}
+                              onClick={() => void stepUnits(line, -1)}
+                              data-testid={`split-minus-${line.id}`}
+                            >
+                              <Minus size={14} />
+                            </button>
+                            <span className="split-stepper-val tabular" data-testid={`split-units-${line.id}`}>
+                              {Number(myUnits.toFixed(2))}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label={`Add a ${line.rawText} to ${activeParticipant}`}
+                              disabled={remainder <= EPSILON}
+                              onClick={() => void stepUnits(line, 1)}
+                              data-testid={`split-plus-${line.id}`}
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                        )}
+                        {isMulti && activeParticipant === YOU && allocs.length > 0 && (
+                          <button
+                            type="button"
+                            className="split-reset"
+                            onClick={() => void resetLine(line)}
+                            aria-label={`Give all of ${line.rawText} back to you`}
+                            data-testid={`split-reset-${line.id}`}
+                          >
+                            <RotateCcw size={13} /> Reset
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
             </div>
             <p className="split-progress">
-              {money(assignedToOthers)} of {money(grandTotal)} assigned · tap a line again for ½ or ⅓
+              {money(assignedToOthers)} of {money(grandTotal)} assigned · use +/− for quantities, tap a single item for ½ or ⅓
             </p>
 
             <div className="split-summary" data-testid="split-summary">
@@ -316,7 +413,9 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                   <div className="store-lines">
                     {p.items.map((item) => (
                       <div className="split-item-row" key={item.lineId}>
-                        <span className="split-item-name">{item.label} ×{item.qty}</span>
+                        <span className="split-item-name">
+                          {item.label} {fractionLabel(item.fraction) || `×${Number(item.qty)}`}
+                        </span>
                         <span className="split-item-amt">{money(item.amount)}</span>
                       </div>
                     ))}
@@ -332,6 +431,42 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                 <span>{money(state.summary.grandTotal)}</span>
               </div>
             </div>
+
+            <div className="split-section-head">
+              <span className="split-section-title">Share this split</span>
+            </div>
+            {shareUrl ? (
+              <div className="share-link" data-testid="split-share-link">
+                <input
+                  className="share-input"
+                  readOnly
+                  value={shareUrl}
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <a
+                  className="btn btn--outline share-copy"
+                  href={`https://wa.me/?text=${encodeURIComponent(`Here's how we split ${invoice.merchant}: ${shareUrl}`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Share on WhatsApp"
+                >
+                  <MessageCircle size={15} /> WhatsApp
+                </a>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--outline"
+                onClick={() => void shareLink()}
+                disabled={sharing}
+                data-testid="split-share-create"
+              >
+                <Link2 size={16} /> {sharing ? 'Creating link…' : 'Create share link'}
+              </button>
+            )}
+            <p className="split-hint" style={{ marginTop: 6 }}>
+              A read-only page anyone can open — like sharing a receipt. The link expires in 7 days.
+            </p>
 
             <button
               type="button"

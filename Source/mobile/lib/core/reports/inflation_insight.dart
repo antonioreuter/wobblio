@@ -11,6 +11,7 @@ class InflationInsight extends Equatable {
     this.personalInflationPct,
     this.regionInflationPct,
     this.savedBySwitching,
+    this.trend = const [],
   });
 
   final double? personalInflationPct;
@@ -18,10 +19,35 @@ class InflationInsight extends Equatable {
   final double? regionInflationPct;
   final double? savedBySwitching;
 
+  /// 100-based personal-vs-region price index by month, oldest first — the card's sparkline.
+  final List<InflationTrendPoint> trend;
+
   /// True when there's a real personal number to show — the card is hidden otherwise.
   bool get hasPersonal => personalInflationPct != null;
 
   @override
-  List<Object?> get props =>
-      [personalInflationPct, basketSize, regionInflationPct, savedBySwitching];
+  List<Object?> get props => [
+        personalInflationPct,
+        basketSize,
+        regionInflationPct,
+        savedBySwitching,
+        trend,
+      ];
+}
+
+/// One month on the inflation sparkline: the caller's index and their region's index (either may be
+/// null when that month is too thin), both 100-based against the earliest month in the window.
+class InflationTrendPoint extends Equatable {
+  const InflationTrendPoint({
+    required this.period,
+    this.personalIndexPct,
+    this.regionIndexPct,
+  });
+
+  final String period; // 'YYYY-MM'
+  final double? personalIndexPct;
+  final double? regionIndexPct;
+
+  @override
+  List<Object?> get props => [period, personalIndexPct, regionIndexPct];
 }

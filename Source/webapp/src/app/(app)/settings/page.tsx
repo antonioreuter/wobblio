@@ -6,7 +6,6 @@ import { useSession } from 'next-auth/react'
 import {
   Check,
   ChevronDown,
-  Construction,
   CreditCard,
   Download,
   Globe,
@@ -223,7 +222,9 @@ export default function SettingsPage() {
       <h2 className="pane-title">Settings</h2>
       <p className="pane-subtitle">Manage your profile, plan, and privacy preferences.</p>
 
-      <Card className="panel" data-testid="settings-profile">
+      <div className="settings-grid">
+        <div className="stack">
+          <Card className="panel" data-testid="settings-profile">
         <div className="panel-header"><span className="panel-title">Profile</span></div>
         <form onSubmit={handleSaveProfile} className="auth-form" noValidate>
           <Input
@@ -320,10 +321,12 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="panel" data-testid="settings-plan">
-        <div className="pane-head-row">
-          <div className="panel-header">
-            <span className="panel-title">Plan &amp; usage</span>
-            <Badge tone={role === 'PREMIUM' ? 'success' : 'primary'} style={{ marginLeft: 8 }}>{role}</Badge>
+        <div className="settings-card-head">
+          <div className="settings-card-heading">
+            <span className="panel-title">
+              Plan &amp; usage
+              <Badge tone={role === 'PREMIUM' ? 'success' : 'primary'} style={{ marginLeft: 8 }}>{role}</Badge>
+            </span>
           </div>
           {role === 'PREMIUM' && (
             <Button
@@ -336,38 +339,49 @@ export default function SettingsPage() {
             </Button>
           )}
         </div>
-        <div className="hh-pool-head" style={{ marginTop: 12 }}>
-          <span className="hh-pool-title">Credits this week</span>
-          <span className="hh-pool-count tabular">
-            {usage ? (
-              <>{usage.used} / {usage.unlimited ? '∞' : usage.cap} <span className="hh-pool-unit">used</span></>
-            ) : '—'}
+        <div className="plan-figure tabular">
+          <span className="plan-figure-value" data-testid="settings-credits">
+            {usage ? `${usage.used} / ${usage.unlimited ? '∞' : usage.cap}` : '—'}
           </span>
+          <span className="plan-figure-label">credits used this week</span>
         </div>
         <ProgressBar value={usagePct} ariaLabel={`Weekly credits ${usagePct}% used`} />
-      </Card>
-
-      <Card className="panel" data-testid="settings-household">
-        <div className="pane-head-row">
-          <div className="panel-header"><span className="panel-title">Household</span></div>
-          <Link href="/household" className="btn btn--outline" data-testid="settings-manage-household">
-            Manage household
-          </Link>
-        </div>
-        <p className="pane-subtitle" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Users size={14} />
-          {household ? `${household.name} · ${household.members.length} member(s)` : 'You’re not in a household yet.'}
+        <p className="settings-hint">
+          {usage?.unlimited
+            ? 'You have unlimited scans on your current role.'
+            : 'Your weekly credits refresh every Monday.'}
         </p>
+      </Card>
+        </div>
+
+        <div className="stack">
+      <Card className="panel" data-testid="settings-household">
+        <div className="settings-card-head">
+          <div className="settings-card-heading">
+            <span className="panel-title">Household</span>
+            <p className="settings-section-desc" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Users size={14} />
+              {household ? `${household.name} · ${household.members.length} member(s)` : 'You’re not in a household yet.'}
+            </p>
+          </div>
+        </div>
+        <Link href="/household" className="btn btn--outline" data-testid="settings-manage-household">
+          Manage household
+        </Link>
       </Card>
 
       <Card className="panel" data-testid="settings-privacy">
-        <div className="pane-head-row">
-          <div>
-            <div className="panel-header"><span className="panel-title">Privacy</span></div>
-            <p className="pane-subtitle">
+        <div className="settings-toggle-row">
+          <div className="settings-card-heading">
+            <span className="panel-title">Privacy</span>
+            <p className="settings-section-desc">
               Contribute anonymous price points to the community index. Helps power the regional
               price index — you can opt out any time.
             </p>
+            <span className={`settings-toggle-status ${optout ? 'is-off' : 'is-on'}`}>
+              <span className="dot" />
+              {optout ? 'Not contributing' : 'Contributing'}
+            </span>
           </div>
           <Switch
             checked={!optout}
@@ -379,8 +393,12 @@ export default function SettingsPage() {
       </Card>
 
       <Card className="panel" data-testid="settings-export">
-        <div className="panel-header"><span className="panel-title">Your data</span></div>
-        <p className="pane-subtitle">Request a copy of everything Wobblio has stored for you.</p>
+        <div className="settings-card-head">
+          <div className="settings-card-heading">
+            <span className="panel-title">Your data</span>
+            <p className="settings-section-desc">Request a copy of everything Wobblio has stored for you.</p>
+          </div>
+        </div>
         <ExportStatusPanel
           request={exportRequest}
           requesting={requestingExport}
@@ -390,17 +408,23 @@ export default function SettingsPage() {
         />
       </Card>
 
-      <Card className="panel hh-upsell" data-testid="settings-delete">
-        <div className="hh-upsell-icon"><Construction size={22} /></div>
-        <h3 className="hh-upsell-title">Delete my account</h3>
-        <p className="hh-upsell-body">
-          Account deletion is coming soon. Once it ships, this will start a 30-day grace period
-          during which you can sign back in to cancel.
-        </p>
+      <Card className="panel settings-danger" data-testid="settings-delete">
+        <div className="settings-card-head">
+          <div className="settings-card-heading">
+            <span className="panel-title">Delete account</span>
+            <p className="settings-section-desc">
+              Deletion starts a 30-day grace period during which you can sign back in to cancel.
+              Anonymised price contributions are never linked to you and remain in the index.
+            </p>
+          </div>
+          <span className="settings-soon-pill">Coming soon</span>
+        </div>
         <Button variant="outline" disabled data-testid="settings-delete-disabled">
           Delete my account
         </Button>
       </Card>
+        </div>
+      </div>
     </div>
   )
 }

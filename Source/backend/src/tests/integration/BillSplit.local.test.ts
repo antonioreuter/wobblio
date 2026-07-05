@@ -68,43 +68,49 @@ describe('BillSplitRepositoryAdapter — Postgres + encryption round-trip', () =
     return { invoiceId, lineId: detail!.lines[0].id };
   };
 
-  it('creates a split, round-trips an encrypted assignment, updates on conflict, and removes it', async () => {
+  it('creates a split, round-trips multi-participant encrypted allocations, replaces the set, and clears it', async () => {
     const tenantId = await provisionTenant();
 
     const result = await withTenant(tenantId, async (db) => {
-      const { invoiceId, lineId } = await seedInvoiceLine(db, tenantId);
-      const splits = new BillSplitRepositoryAdapter(db);
+      const { invoiceId, lineId } = await seedInvoiceLine(db, tenantId); // line quantity 2
 
+      const splits = new BillSplitRepositoryAdapter(db);
       const splitId = await splits.create(invoiceId);
       const meta = await splits.getMeta(splitId);
 
-      await splits.upsertAssignment(splitId, lineId, await enc.encrypt('Alice'), 0.5);
-      const afterInsert = await splits.listAssignments(splitId);
+      // Two people on one line: 1 unit each.
+      await splits.setLineAllocations(splitId, lineId, [
+        { participantNameEnc: await enc.encrypt('Alice'), units: 1 },
+        { participantNameEnc: await enc.encrypt('Bob'), units: 1 },
+      ]);
+      const afterInsert = await splits.listAllocations(splitId);
 
-      // ON CONFLICT (split_id, line_id) updates the same row rather than inserting a second.
-      await splits.upsertAssignment(splitId, lineId, await enc.encrypt('Bob'), 1);
-      const afterUpdate = await splits.listAssignments(splitId);
+      // Replacing the set wholesale swaps both rows atomically.
+      await splits.setLineAllocations(splitId, lineId, [
+        { participantNameEnc: await enc.encrypt('Carol'), units: 2 },
+      ]);
+      const afterReplace = await splits.listAllocations(splitId);
 
-      await splits.removeAssignment(splitId, lineId);
-      const afterRemove = await splits.listAssignments(splitId);
+      await splits.setLineAllocations(splitId, lineId, []);
+      const afterClear = await splits.listAllocations(splitId);
 
       return {
         meta, splitId, invoiceId,
-        insertName: await enc.decrypt(afterInsert[0].participantNameEnc),
-        insertFraction: afterInsert[0].fraction,
-        updateCount: afterUpdate.length,
-        updateName: await enc.decrypt(afterUpdate[0].participantNameEnc),
-        updateFraction: afterUpdate[0].fraction,
-        afterRemoveCount: afterRemove.length,
+        insertCount: afterInsert.length,
+        insertNames: (await Promise.all(afterInsert.map((a) => enc.decrypt(a.participantNameEnc)))).sort(),
+        replaceCount: afterReplace.length,
+        replaceName: await enc.decrypt(afterReplace[0].participantNameEnc),
+        replaceUnits: afterReplace[0].units,
+        afterClearCount: afterClear.length,
       };
     });
 
     expect(result.meta).toEqual({ id: result.splitId, invoiceId: result.invoiceId });
-    expect(result.insertName).toBe('Alice');
-    expect(result.insertFraction).toBe(0.5);
-    expect(result.updateCount).toBe(1);
-    expect(result.updateName).toBe('Bob');
-    expect(result.updateFraction).toBe(1);
-    expect(result.afterRemoveCount).toBe(0);
+    expect(result.insertCount).toBe(2);
+    expect(result.insertNames).toEqual(['Alice', 'Bob']);
+    expect(result.replaceCount).toBe(1);
+    expect(result.replaceName).toBe('Carol');
+    expect(result.replaceUnits).toBe(2);
+    expect(result.afterClearCount).toBe(0);
   });
 });

@@ -34,6 +34,43 @@ class SpendMetrics {
   bool get spendingDown => deltaPct != null && deltaPct! < 0;
 }
 
+/// One merchant's share of the current period's spend — the segments behind the
+/// Home hero's composition bar. There is no category-breakdown endpoint, so the
+/// honest axis is the merchant total the client already holds; the slices sum to
+/// [SpendMetrics.current] (same-currency invoices only, filtered by the caller).
+class SpendSlice {
+  const SpendSlice({required this.merchant, required this.amount});
+
+  final String merchant;
+  final double amount;
+}
+
+/// Per-merchant spend for the current [period] as of [now], largest first.
+/// Empty when nothing was spent — the caller hides the bar rather than faking it.
+List<SpendSlice> computeMerchantComposition(
+  Iterable<InvoiceSummary> invoices,
+  DateTime now,
+  SpendPeriod period,
+) {
+  final currentKey = _periodKey(now.year, now.month, now.day, period);
+  final byMerchant = <String, double>{};
+  for (final inv in invoices) {
+    final date = _calendarDate(inv.dateIso);
+    if (date == null) continue;
+    if (_periodKey(date.$1, date.$2, date.$3, period) != currentKey) continue;
+    byMerchant.update(
+      inv.merchant,
+      (v) => v + inv.total,
+      ifAbsent: () => inv.total,
+    );
+  }
+  final slices = byMerchant.entries
+      .map((e) => SpendSlice(merchant: e.key, amount: e.value))
+      .toList()
+    ..sort((a, b) => b.amount.compareTo(a.amount));
+  return slices;
+}
+
 /// Computes [SpendMetrics] for [period] as of [now]. Uses plain calendar-date
 /// arithmetic (no UTC conversion) so a date-only `dateIso` like `"2026-06-12"`
 /// can't drift a day across timezones the way `DateTime.parse(...).toUtc()`

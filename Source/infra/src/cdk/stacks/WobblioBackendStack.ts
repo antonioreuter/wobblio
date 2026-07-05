@@ -261,6 +261,11 @@ export class WobblioBackendStack extends Stack {
     // exposes/touches only its one list (name + items; no pricing, no productId).
     const shareShoppingListFn = makeLambda('share-shopping-list', 5);
 
+    // Public read-only resolver for shared bill-split links (§11, /s/<token>). No
+    // Cognito — the unguessable token is the only credential; resolves under the split
+    // owner's RLS scope so a token exposes only its one split's per-person breakdown.
+    const shareBillSplitFn = makeLambda('share-bill-split', 5);
+
     // ── SQS event source on ingestion worker ─────────────────────────────────
     ingestionWorkerFn.addEventSource(
       new SqsEventSource(ingestionQueue, {
@@ -366,6 +371,8 @@ export class WobblioBackendStack extends Stack {
     dbStack.kmsKey.grantEncryptDecrypt(waitlistStatusFn);
     dbStack.kmsKey.grantEncryptDecrypt(analyticsEventsFn);
     dbStack.kmsKey.grantEncryptDecrypt(exportWorkerFn);
+    // Decrypts the field-level-encrypted participant names to render the shared breakdown.
+    dbStack.kmsKey.grantEncryptDecrypt(shareBillSplitFn);
 
     analyticsEventsQueue.grantSendMessages(analyticsEventsFn);
 
@@ -386,6 +393,7 @@ export class WobblioBackendStack extends Stack {
     dbSecret.grantRead(waitlistStatusFn);
     dbSecret.grantRead(shareInvoiceFn);
     dbSecret.grantRead(shareShoppingListFn);
+    dbSecret.grantRead(shareBillSplitFn);
     dbSecret.grantRead(exportWorkerFn);
 
     // Logs Insights: StartQuery is scoped to the worker log group; GetQueryResults and
@@ -416,7 +424,7 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
       ],
     });
-    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, shareInvoiceFn, shareShoppingListFn, exportWorkerFn]
+    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, shareInvoiceFn, shareShoppingListFn, shareBillSplitFn, exportWorkerFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
 
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
@@ -730,6 +738,13 @@ export class WobblioBackendStack extends Stack {
       authorizer: undefined,
     });
 
+    // Public shared bill-split resolver — token-gated, no Cognito (see shareBillSplitFn, §11).
+    const sharedSplitResource = api.root.addResource('shared-splits').addResource('{token}');
+    const sharedSplitMethod = sharedSplitResource.addMethod('GET', new apigw.LambdaIntegration(shareBillSplitFn), {
+      authorizationType: apigw.AuthorizationType.NONE,
+      authorizer: undefined,
+    });
+
     // Public shared-shopping-list resolver + checkbox toggle — token-gated, no
     // Cognito (see shareShoppingListFn, §10b).
     const sharedListResource = api.root.addResource('shared-lists').addResource('{token}');
@@ -928,7 +943,7 @@ export class WobblioBackendStack extends Stack {
       apiHandlerFn, ingestionWorkerFn, exportWorkerFn,
       cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn,
       cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, analyticsEventsFn, shareInvoiceFn,
-      shareShoppingListFn,
+      shareShoppingListFn, shareBillSplitFn,
     ];
 
     // ── Lambda log retention ──────────────────────────────────────────────────
@@ -997,6 +1012,9 @@ export class WobblioBackendStack extends Stack {
     ]);
     NagSuppressions.addResourceSuppressions(sharedInvoiceMethod, [
       { id: 'AwsSolutions-COG4', reason: 'The shared-invoice resolver is public by design; the unguessable share token is the credential' },
+    ]);
+    NagSuppressions.addResourceSuppressions(sharedSplitMethod, [
+      { id: 'AwsSolutions-COG4', reason: 'The shared bill-split resolver is public by design; the unguessable share token is the credential' },
     ]);
     NagSuppressions.addResourceSuppressions(sharedListGetMethod, [
       { id: 'AwsSolutions-COG4', reason: 'The shared-shopping-list resolver is public by design; the unguessable share token is the credential' },

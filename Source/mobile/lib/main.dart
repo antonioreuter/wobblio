@@ -10,7 +10,7 @@ import 'package:wobblio/core/bloc/dashboard/dashboard_bloc.dart';
 import 'package:wobblio/core/bloc/history/history_bloc.dart';
 import 'package:wobblio/core/bloc/invoice_detail/invoice_detail_bloc.dart';
 import 'package:wobblio/core/bloc/notifications/notification_bloc.dart';
-import 'package:wobblio/core/bloc/reports/report_bloc.dart';
+import 'package:wobblio/core/bloc/reports/price_report_bloc.dart';
 import 'package:wobblio/core/bloc/review/review_bloc.dart';
 import 'package:wobblio/core/bloc/shopping_list/shopping_list_bloc.dart';
 import 'package:wobblio/core/bloc/split_bill/split_bill_bloc.dart';
@@ -25,7 +25,6 @@ import 'package:wobblio/core/ports/gallery_picker.dart';
 import 'package:wobblio/core/ports/ingestion_repository.dart';
 import 'package:wobblio/core/ports/invoice_repository.dart';
 import 'package:wobblio/core/ports/notification_repository.dart';
-import 'package:wobblio/core/ports/price_trend_repository.dart';
 import 'package:wobblio/core/ports/product_search_repository.dart';
 import 'package:wobblio/core/ports/profile_repository.dart';
 import 'package:wobblio/core/ports/reference_repository.dart';
@@ -49,7 +48,6 @@ import 'package:wobblio/infrastructure/adapters/http_budget_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_ingestion_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_invoice_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_notification_repository.dart';
-import 'package:wobblio/infrastructure/adapters/http_price_trend_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_product_search_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_profile_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_reference_repository.dart';
@@ -143,10 +141,6 @@ void configureDependencies() {
     ..registerLazySingleton<INotificationRepository>(
       () => HttpNotificationRepository(locator<IApiClient>()),
     )
-    // Reports (18e): price-trend comparison chart.
-    ..registerLazySingleton<IPriceTrendRepository>(
-      () => HttpPriceTrendRepository(locator<IApiClient>()),
-    )
     // Split Bill (18h): the 6 /invoices/{id}/splits... routes, plus the
     // locally-cached split id that works around POST's lack of idempotency.
     ..registerLazySingleton<ISplitRepository>(
@@ -227,11 +221,10 @@ void configureDependencies() {
     ..registerFactory<NotificationBloc>(
       () => NotificationBloc(notifications: locator<INotificationRepository>()),
     )
-    // Reports (18e): a fresh bloc per Reports tab mount.
-    ..registerFactory<ReportBloc>(
-      () => ReportBloc(
-        trends: locator<IPriceTrendRepository>(),
-        products: locator<IProductSearchRepository>(),
+    // Reports (19f): a fresh "Price report" bloc per Reports tab mount.
+    ..registerFactory<PriceReportBloc>(
+      () => PriceReportBloc(
+        insights: locator<IInsightsRepository>(),
         profile: locator<IProfileRepository>(),
       ),
     )

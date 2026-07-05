@@ -1,13 +1,15 @@
 import 'package:wobblio/core/error/api_exception.dart';
 import 'package:wobblio/core/ports/api_client.dart';
 import 'package:wobblio/core/ports/split_repository.dart';
-import 'package:wobblio/core/splitting/split_assignment.dart';
+import 'package:wobblio/core/splitting/shared_split.dart';
+import 'package:wobblio/core/splitting/split_allocation.dart';
 import 'package:wobblio/core/splitting/split_summary.dart';
 
 /// [ISplitRepository] over the authed [IApiClient]. Maps the
-/// `/invoices/{id}/splits...` responses field-for-field to the domain
-/// models — see `specs/mvp/18-mobile-navigation-and-lists/18h-split-bill.md`
-/// for the backend contract this mirrors.
+/// `/invoices/{id}/splits...` (and public `/shared-splits/{token}`) responses
+/// field-for-field to the domain models — see
+/// `specs/mvp/18-mobile-navigation-and-lists/18h-split-bill.md` for the backend
+/// contract this mirrors.
 class HttpSplitRepository implements ISplitRepository {
   HttpSplitRepository(this._api);
 
@@ -25,38 +27,35 @@ class HttpSplitRepository implements ISplitRepository {
   }
 
   @override
-  Future<List<SplitAssignment>> getSplit(
+  Future<List<SplitAllocation>> getSplit(
       String invoiceId, String splitId,) async {
     final response = await _api.get('/invoices/$invoiceId/splits/$splitId');
     final data = response.data;
-    if (data is! Map<String, dynamic> || data['assignments'] is! List) {
+    if (data is! Map<String, dynamic> || data['allocations'] is! List) {
       throw const ApiException('Malformed split response', statusCode: 502);
     }
-    return (data['assignments'] as List)
+    return (data['allocations'] as List)
         .whereType<Map<String, dynamic>>()
-        .map(_toAssignment)
+        .map(_toAllocation)
         .toList();
   }
 
   @override
-  Future<void> assignLine(
+  Future<void> setLineAllocations(
     String invoiceId,
     String splitId,
     String lineId,
-    String participantName, {
-    double fraction = 1,
-  }) async {
-    await _api.patch(
-      '/invoices/$invoiceId/splits/$splitId/lines/$lineId',
-      body: {'participantName': participantName, 'fraction': fraction},
+    List<LineAllocation> allocations,
+  ) async {
+    await _api.put(
+      '/invoices/$invoiceId/splits/$splitId/lines/$lineId/allocations',
+      body: {
+        'allocations': [
+          for (final a in allocations)
+            {'participantName': a.participantName, 'units': a.units},
+        ],
+      },
     );
-  }
-
-  @override
-  Future<void> unassignLine(
-      String invoiceId, String splitId, String lineId,) async {
-    await _api.delete(
-        '/invoices/$invoiceId/splits/$splitId/lines/$lineId/assignment',);
   }
 
   @override
@@ -83,10 +82,41 @@ class HttpSplitRepository implements ISplitRepository {
     return data['text'] as String;
   }
 
-  SplitAssignment _toAssignment(Map<String, dynamic> row) => SplitAssignment(
+  @override
+  Future<String> createShareLink(String invoiceId, String splitId) async {
+    final response =
+        await _api.post('/invoices/$invoiceId/splits/$splitId/share');
+    final data = response.data;
+    if (data is! Map || data['shareUrl'] is! String) {
+      throw const ApiException('Malformed share response', statusCode: 502);
+    }
+    return data['shareUrl'] as String;
+  }
+
+  @override
+  Future<SharedSplit> getSharedSplit(String token) async {
+    final response = await _api.get('/shared-splits/$token');
+    final data = response.data;
+    if (data is! Map<String, dynamic> || data['participants'] is! List) {
+      throw const ApiException('Malformed shared-split response',
+          statusCode: 502,);
+    }
+    return SharedSplit(
+      merchant: data['merchant'] as String?,
+      date: data['date'] as String?,
+      currency: data['currency'] as String?,
+      participants: (data['participants'] as List)
+          .whereType<Map<String, dynamic>>()
+          .map(_toParticipant)
+          .toList(),
+      grandTotal: (data['grandTotal'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  SplitAllocation _toAllocation(Map<String, dynamic> row) => SplitAllocation(
         lineId: row['lineId'] as String,
         participantName: (row['participantName'] as String?) ?? '',
-        fraction: (row['fraction'] as num?)?.toDouble() ?? 1,
+        units: (row['units'] as num?)?.toDouble() ?? 0,
       );
 
   SplitSummary _toSummary(Map<String, dynamic> data) {

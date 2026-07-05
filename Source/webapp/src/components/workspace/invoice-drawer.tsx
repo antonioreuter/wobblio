@@ -235,7 +235,7 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
         <div className="drawer-foot">
           <button
             type="button"
-            className="btn btn--outline"
+            className="btn btn--success"
             style={{ flex: 1 }}
             onClick={() => onShare(invoice)}
           >
@@ -244,7 +244,7 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
           {invoice.status[1] === 'Ready' && (
             <button
               type="button"
-              className="btn btn--outline"
+              className="btn btn--brand"
               style={{ flex: 1 }}
               onClick={() => onSplit(invoice)}
               data-testid="split-open"

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:wobblio/ui/design_system/tokens.dart';
 
-enum ProgressTone { success, warning, danger }
+enum ProgressTone { brand, success, warning, danger }
 
 /// Ports `ProgressBar.tsx`: an 8px pill track, fill color auto-selected by
 /// [value] thresholds (>=85 danger, >=75 warning, else success) unless [tone]
@@ -10,12 +10,13 @@ enum ProgressTone { success, warning, danger }
 /// [animate] is set, skipped under `MediaQuery.disableAnimations` (this app's
 /// equivalent of the web's `prefers-reduced-motion`).
 class ProgressBar extends StatefulWidget {
-  const ProgressBar(
-      {super.key,
-      required this.value,
-      this.tone,
-      this.showThreshold = true,
-      this.animate = false,});
+  const ProgressBar({
+    super.key,
+    required this.value,
+    this.tone,
+    this.showThreshold = true,
+    this.animate = false,
+  });
 
   final double value;
   final ProgressTone? tone;
@@ -73,8 +74,9 @@ class _ProgressBarState extends State<ProgressBar> {
           return Container(
             height: 8,
             decoration: BoxDecoration(
-                color: AppColors.glassBorder,
-                borderRadius: BorderRadius.circular(AppSpacing.radiusPill),),
+              color: AppColors.glassBorder,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+            ),
             clipBehavior: Clip.antiAlias,
             child: Stack(
               children: [
@@ -84,9 +86,9 @@ class _ProgressBarState extends State<ProgressBar> {
                       : const Duration(milliseconds: 800),
                   width: constraints.maxWidth * (_target / 100),
                   decoration: BoxDecoration(
-                      color: fill,
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusPill),),
+                    color: fill,
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+                  ),
                 ),
                 if (widget.showThreshold)
                   Positioned(
@@ -94,7 +96,9 @@ class _ProgressBarState extends State<ProgressBar> {
                     top: 0,
                     bottom: 0,
                     child: Container(
-                        width: 1.5, color: Colors.white.withValues(alpha: 0.3),),
+                      width: 1.5,
+                      color: Colors.white.withValues(alpha: 0.3),
+                    ),
                   ),
               ],
             ),
@@ -105,6 +109,7 @@ class _ProgressBarState extends State<ProgressBar> {
   }
 
   Color _colorFor(ProgressTone tone) => switch (tone) {
+        ProgressTone.brand => AppColors.brand,
         ProgressTone.success => AppColors.success,
         ProgressTone.warning => AppColors.warning,
         ProgressTone.danger => AppColors.danger,

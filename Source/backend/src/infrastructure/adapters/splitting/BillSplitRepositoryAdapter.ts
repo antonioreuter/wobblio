@@ -2,7 +2,8 @@ import type { PoolClient } from 'pg';
 import type {
   IBillSplitRepository,
   BillSplitMeta,
-  StoredAssignment,
+  StoredAllocation,
+  LineAllocationInput,
 } from '@core/ports/splitting/IBillSplitRepository';
 
 // RLS on bill_split / bill_split_line scopes every row to the caller's invoices (tenant_isolation
@@ -27,38 +28,32 @@ export class BillSplitRepositoryAdapter implements IBillSplitRepository {
     return row ? { id: row.id, invoiceId: row.invoice_id } : null;
   }
 
-  async listAssignments(splitId: string): Promise<StoredAssignment[]> {
-    const result = await this.client.query<{ line_id: string; participant_name_enc: string; fraction: string }>(
-      `SELECT line_id, participant_name_enc, fraction::text AS fraction
+  async listAllocations(splitId: string): Promise<StoredAllocation[]> {
+    const result = await this.client.query<{ line_id: string; participant_name_enc: string; units: string }>(
+      `SELECT line_id, participant_name_enc, units::text AS units
        FROM bill_split_line WHERE split_id = $1`,
       [splitId],
     );
     return result.rows.map((r) => ({
       lineId: r.line_id,
       participantNameEnc: r.participant_name_enc,
-      fraction: parseFloat(r.fraction),
+      units: parseFloat(r.units),
     }));
   }
 
-  async upsertAssignment(
-    splitId: string,
-    lineId: string,
-    participantNameEnc: string,
-    fraction: number,
-  ): Promise<void> {
-    await this.client.query(
-      `INSERT INTO bill_split_line (split_id, line_id, participant_name_enc, fraction)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (split_id, line_id)
-       DO UPDATE SET participant_name_enc = EXCLUDED.participant_name_enc, fraction = EXCLUDED.fraction`,
-      [splitId, lineId, participantNameEnc, fraction],
-    );
-  }
-
-  async removeAssignment(splitId: string, lineId: string): Promise<void> {
+  // A line's allocation set is replaced wholesale so multi-participant edits stay atomic.
+  // The caller already runs inside a tenant transaction (withTenantTx).
+  async setLineAllocations(splitId: string, lineId: string, allocations: LineAllocationInput[]): Promise<void> {
     await this.client.query(
       `DELETE FROM bill_split_line WHERE split_id = $1 AND line_id = $2`,
       [splitId, lineId],
     );
+    for (const a of allocations) {
+      await this.client.query(
+        `INSERT INTO bill_split_line (split_id, line_id, participant_name_enc, units)
+         VALUES ($1, $2, $3, $4)`,
+        [splitId, lineId, a.participantNameEnc, a.units],
+      );
+    }
   }
 }

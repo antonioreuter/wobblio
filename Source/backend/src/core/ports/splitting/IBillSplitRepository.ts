@@ -3,16 +3,21 @@ export interface BillSplitMeta {
   invoiceId: string;
 }
 
-export interface StoredAssignment {
+export interface StoredAllocation {
   lineId: string;
   participantNameEnc: string;
-  fraction: number;
+  units: number;
+}
+
+export interface LineAllocationInput {
+  participantNameEnc: string;
+  units: number;
 }
 
 export interface IBillSplitRepository {
   create(invoiceId: string): Promise<string>;
   getMeta(splitId: string): Promise<BillSplitMeta | null>;
-  listAssignments(splitId: string): Promise<StoredAssignment[]>;
-  upsertAssignment(splitId: string, lineId: string, participantNameEnc: string, fraction: number): Promise<void>;
-  removeAssignment(splitId: string, lineId: string): Promise<void>;
+  listAllocations(splitId: string): Promise<StoredAllocation[]>;
+  // Replaces all allocations for a single line atomically (delete + insert).
+  setLineAllocations(splitId: string, lineId: string, allocations: LineAllocationInput[]): Promise<void>;
 }

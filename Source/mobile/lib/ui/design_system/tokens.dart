@@ -116,21 +116,30 @@ class AppTypography {
   static const trackingWide =
       0.05; // em — multiply by font size for letterSpacing
 
-  /// Display face (Outfit) at [size]/[weight]/[color], optionally tabular-nums
-  /// for money and other aligned figures.
+  /// Display face at [size]/[weight]/[color]. Titles use Outfit; when
+  /// [tabularNumbers] is set the figure is a financial value, so it renders in
+  /// the monospace face — matching the prototype's `.money { font: --font-mono }`
+  /// so digits align in fixed-width columns ("numbers are the protagonist").
   static TextStyle display({
     required double size,
     FontWeight weight = FontWeight.w700,
     Color color = AppColors.textPrimary,
     bool tabularNumbers = false,
   }) {
+    if (tabularNumbers) {
+      return GoogleFonts.jetBrainsMono(
+        fontSize: size,
+        fontWeight: weight,
+        color: color,
+        letterSpacing: -0.015 * size,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      );
+    }
     return GoogleFonts.outfit(
       fontSize: size,
       fontWeight: weight,
       color: color,
       letterSpacing: -0.02 * size,
-      fontFeatures:
-          tabularNumbers ? const [FontFeature.tabularFigures()] : null,
     );
   }
 

@@ -28,8 +28,7 @@ describe('BillSplitService', () => {
   beforeEach(() => {
     invoices = { getDetail: vi.fn() } as unknown as MockedObject<IInvoiceRepository>;
     splits = {
-      create: vi.fn(), getMeta: vi.fn(), listAssignments: vi.fn(),
-      upsertAssignment: vi.fn(), removeAssignment: vi.fn(),
+      create: vi.fn(), getMeta: vi.fn(), listAllocations: vi.fn(), setLineAllocations: vi.fn(),
     };
     encryption = { encrypt: vi.fn(), decrypt: vi.fn() };
     sut = new BillSplitService(invoices, splits, encryption);
@@ -47,85 +46,121 @@ describe('BillSplitService', () => {
     await expect(sut.createSplit('ghost')).rejects.toBeInstanceOf(InvoiceNotFoundError);
   });
 
-  it('encrypts the participant name and upserts a product-line assignment', async () => {
+  it('encrypts each participant name and replaces the line allocation set', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', lineTotal: 10 }]));
-    encryption.encrypt.mockResolvedValue('enc-alice');
+    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', lineTotal: 12, quantity: 3 }]));
+    encryption.encrypt.mockImplementation(async (name: string) => `enc-${name}`);
 
-    await sut.assignLine('split-1', 'L1', 'Alice', 0.5);
+    await sut.setLineAllocations('split-1', 'L1', [
+      { participantName: 'Alice', units: 2 },
+      { participantName: 'Bob', units: 1 },
+    ]);
 
     expect(encryption.encrypt).toHaveBeenCalledWith('Alice');
-    expect(splits.upsertAssignment).toHaveBeenCalledWith('split-1', 'L1', 'enc-alice', 0.5);
+    expect(encryption.encrypt).toHaveBeenCalledWith('Bob');
+    expect(splits.setLineAllocations).toHaveBeenCalledWith('split-1', 'L1', [
+      { participantNameEnc: 'enc-Alice', units: 2 },
+      { participantNameEnc: 'enc-Bob', units: 1 },
+    ]);
   });
 
-  it('rejects a fraction outside (0, 1]', async () => {
+  it('merges duplicate names by summing their units', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    await expect(sut.assignLine('split-1', 'L1', 'Alice', 1.5)).rejects.toBeInstanceOf(InvalidSplitError);
-    expect(splits.upsertAssignment).not.toHaveBeenCalled();
+    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', lineTotal: 12, quantity: 3 }]));
+    encryption.encrypt.mockImplementation(async (name: string) => `enc-${name}`);
+
+    await sut.setLineAllocations('split-1', 'L1', [
+      { participantName: 'Alice', units: 1 },
+      { participantName: 'Alice', units: 1 },
+    ]);
+
+    expect(splits.setLineAllocations).toHaveBeenCalledWith('split-1', 'L1', [
+      { participantNameEnc: 'enc-Alice', units: 2 },
+    ]);
   });
 
-  it('rejects assigning a deposit/fee line', async () => {
+  it('clears a line when given an empty allocation set', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', quantity: 2 }]));
+    await sut.setLineAllocations('split-1', 'L1', []);
+    expect(splits.setLineAllocations).toHaveBeenCalledWith('split-1', 'L1', []);
+  });
+
+  it('rejects allocated units exceeding the line quantity', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', quantity: 2 }]));
+    await expect(
+      sut.setLineAllocations('split-1', 'L1', [
+        { participantName: 'Alice', units: 2 },
+        { participantName: 'Bob', units: 1 },
+      ]),
+    ).rejects.toBeInstanceOf(InvalidSplitError);
+    expect(splits.setLineAllocations).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-positive units', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', quantity: 2 }]));
+    await expect(sut.setLineAllocations('split-1', 'L1', [{ participantName: 'Alice', units: 0 }]))
+      .rejects.toBeInstanceOf(InvalidSplitError);
+  });
+
+  it('rejects allocating a deposit/fee line', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
     invoices.getDetail.mockResolvedValue(detail([{ id: 'D1', isDepositOrFee: true }]));
-    await expect(sut.assignLine('split-1', 'D1', 'Alice', 1)).rejects.toBeInstanceOf(InvalidSplitError);
+    await expect(sut.setLineAllocations('split-1', 'D1', [{ participantName: 'Alice', units: 1 }]))
+      .rejects.toBeInstanceOf(InvalidSplitError);
   });
 
   it('rejects a line that is not on the invoice', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
     invoices.getDetail.mockResolvedValue(detail([{ id: 'L1' }]));
-    await expect(sut.assignLine('split-1', 'other', 'Alice', 1)).rejects.toBeInstanceOf(InvalidSplitError);
+    await expect(sut.setLineAllocations('split-1', 'other', [{ participantName: 'Alice', units: 1 }]))
+      .rejects.toBeInstanceOf(InvalidSplitError);
   });
 
   it('rejects an empty participant name', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    await expect(sut.assignLine('split-1', 'L1', '  ', 1)).rejects.toBeInstanceOf(InvalidSplitError);
+    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1' }]));
+    await expect(sut.setLineAllocations('split-1', 'L1', [{ participantName: '  ', units: 1 }]))
+      .rejects.toBeInstanceOf(InvalidSplitError);
   });
 
-  it('rejects "You" (any case) as an assignable participant — it is the implicit owner', async () => {
+  it('rejects "You" (any case) as a participant — it is the implicit owner', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    await expect(sut.assignLine('split-1', 'L1', 'You', 1)).rejects.toBeInstanceOf(InvalidSplitError);
-    await expect(sut.assignLine('split-1', 'L1', ' YOU ', 1)).rejects.toBeInstanceOf(InvalidSplitError);
-    expect(splits.upsertAssignment).not.toHaveBeenCalled();
+    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1' }]));
+    await expect(sut.setLineAllocations('split-1', 'L1', [{ participantName: ' YOU ', units: 1 }]))
+      .rejects.toBeInstanceOf(InvalidSplitError);
+    expect(splits.setLineAllocations).not.toHaveBeenCalled();
   });
 
-  it('treats a missing participant name as empty (optional-chaining safety net)', async () => {
-    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    await expect(sut.assignLine('split-1', 'L1', undefined as unknown as string, 1)).rejects.toBeInstanceOf(InvalidSplitError);
-    expect(splits.upsertAssignment).not.toHaveBeenCalled();
-  });
-
-  it('removes an assignment for a known split', async () => {
-    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    await sut.removeAssignment('split-1', 'L1');
-    expect(splits.removeAssignment).toHaveBeenCalledWith('split-1', 'L1');
-  });
-
-  it('throws InvoiceNotFoundError if the invoice is gone by the time a line is assigned', async () => {
+  it('throws InvoiceNotFoundError if the invoice is gone by the time a line is allocated', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
     invoices.getDetail.mockResolvedValue(null);
-    await expect(sut.assignLine('split-1', 'L1', 'Alice', 1)).rejects.toBeInstanceOf(InvoiceNotFoundError);
+    await expect(sut.setLineAllocations('split-1', 'L1', [{ participantName: 'Alice', units: 1 }]))
+      .rejects.toBeInstanceOf(InvoiceNotFoundError);
   });
 
   it('throws BillSplitNotFoundError for an unknown split', async () => {
     splits.getMeta.mockResolvedValue(null);
-    await expect(sut.assignLine('ghost', 'L1', 'Alice', 1)).rejects.toBeInstanceOf(BillSplitNotFoundError);
+    await expect(sut.setLineAllocations('ghost', 'L1', [{ participantName: 'Alice', units: 1 }]))
+      .rejects.toBeInstanceOf(BillSplitNotFoundError);
     await expect(sut.getSplit('ghost')).rejects.toBeInstanceOf(BillSplitNotFoundError);
-    await expect(sut.removeAssignment('ghost', 'L1')).rejects.toBeInstanceOf(BillSplitNotFoundError);
   });
 
   it('decrypts participant names when reading a split', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    splits.listAssignments.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', fraction: 1 }]);
+    splits.listAllocations.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', units: 2 }]);
     encryption.decrypt.mockResolvedValue('Alice');
 
     const view = await sut.getSplit('split-1');
-    expect(view.assignments).toEqual([{ lineId: 'L1', participantName: 'Alice', fraction: 1 }]);
+    expect(view.allocations).toEqual([{ lineId: 'L1', participantName: 'Alice', units: 2 }]);
   });
 
-  it('builds a summary from decrypted assignments and invoice lines', async () => {
+  it('builds a summary from decrypted allocations and invoice lines', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
     invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', lineTotal: 20 }]));
-    splits.listAssignments.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', fraction: 1 }]);
+    splits.listAllocations.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', units: 1 }]);
     encryption.decrypt.mockResolvedValue('Alice');
 
     const summary = await sut.summary('split-1');
@@ -136,7 +171,7 @@ describe('BillSplitService', () => {
   it('formats a WhatsApp export with the invoice currency symbol', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
     invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', rawText: 'Pizza', lineTotal: 20 }]));
-    splits.listAssignments.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', fraction: 1 }]);
+    splits.listAllocations.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', units: 1 }]);
     encryption.decrypt.mockResolvedValue('Alice');
 
     const { text } = await sut.whatsAppExport('split-1');
@@ -149,7 +184,7 @@ describe('BillSplitService', () => {
   it('defaults a null invoice total to 0 in the summary grand total', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
     invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', lineTotal: 0 }], { total: null }));
-    splits.listAssignments.mockResolvedValue([]);
+    splits.listAllocations.mockResolvedValue([]);
 
     const summary = await sut.summary('split-1');
     expect(summary.grandTotal).toBe(0);
@@ -158,7 +193,7 @@ describe('BillSplitService', () => {
   it('falls back to the plain amount (no symbol) when currency has no known mapping', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
     invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', rawText: 'Pizza', lineTotal: 20 }], { currency: null }));
-    splits.listAssignments.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', fraction: 1 }]);
+    splits.listAllocations.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', units: 1 }]);
     encryption.decrypt.mockResolvedValue('Alice');
 
     const { text } = await sut.whatsAppExport('split-1');
@@ -171,7 +206,7 @@ describe('BillSplitService', () => {
     invoices.getDetail.mockResolvedValue(
       detail([{ id: 'L1', lineTotal: 20 }], { merchantName: null, transactionDate: null }),
     );
-    splits.listAssignments.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', fraction: 1 }]);
+    splits.listAllocations.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', units: 1 }]);
     encryption.decrypt.mockResolvedValue('Alice');
 
     const { text } = await sut.whatsAppExport('split-1');

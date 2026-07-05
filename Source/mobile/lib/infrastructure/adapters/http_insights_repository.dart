@@ -15,13 +15,30 @@ class HttpInsightsRepository implements IInsightsRepository {
     final data = response.data;
     if (data is! Map<String, dynamic>) {
       throw const ApiException(
-          'Malformed /me/insights/inflation response', statusCode: 502,);
+        'Malformed /me/insights/inflation response',
+        statusCode: 502,
+      );
     }
     return InflationInsight(
       personalInflationPct: (data['personalInflationPct'] as num?)?.toDouble(),
       basketSize: (data['basketSize'] as num?)?.toInt() ?? 0,
       regionInflationPct: (data['regionInflationPct'] as num?)?.toDouble(),
       savedBySwitching: (data['savedBySwitching'] as num?)?.toDouble(),
+      trend: _parseTrend(data['trend']),
     );
+  }
+
+  List<InflationTrendPoint> _parseTrend(Object? raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (p) => InflationTrendPoint(
+            period: p['period'] as String? ?? '',
+            personalIndexPct: (p['personalIndexPct'] as num?)?.toDouble(),
+            regionIndexPct: (p['regionIndexPct'] as num?)?.toDouble(),
+          ),
+        )
+        .toList();
   }
 }

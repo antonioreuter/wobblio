@@ -74,7 +74,8 @@ class _HistoryView extends StatelessWidget {
                         padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
                         sliver: SliverToBoxAdapter(
                           child: Text(group.label.toUpperCase(),
-                              style: AppTypography.overline(),),
+                              style: AppTypography.overline(
+                                  weight: FontWeight.w700,),),
                         ),
                       ),
                       SliverPadding(
@@ -113,8 +114,11 @@ class _Header extends StatelessWidget {
             style: AppTypography.display(size: AppTypography.text2xl),),
         const SizedBox(height: 2),
         Text(subtitle,
-            style: AppTypography.body(
-                size: AppTypography.textXs, color: AppColors.textMuted,),),
+            style: AppTypography.display(
+                size: AppTypography.textXs,
+                weight: FontWeight.w500,
+                tabularNumbers: true,
+                color: AppColors.textMuted,),),
         const SizedBox(height: 16),
         TextField(
           key: const Key('history-search'),
@@ -174,19 +178,24 @@ class _LedgerRow extends StatelessWidget {
             ),
             const SizedBox(width: 11),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    invoice.merchant,
-                    style: AppTypography.body(
-                        size: AppTypography.textSm, weight: FontWeight.w600,),
-                    overflow: TextOverflow.ellipsis,
+                  Flexible(
+                    child: Text(
+                      invoice.merchant,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.body(
+                          size: AppTypography.textSm, weight: FontWeight.w600,),
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   Text(
-                    '${invoice.dateIso}${view.tone == StatusTone.warning ? ' · ${view.label}' : ''}',
-                    style: AppTypography.body(
-                      size: AppTypography.textXs,
+                    '${formatShortDate(invoice.dateIso)}${view.tone == StatusTone.warning ? ' · ${view.label}' : ''}',
+                    style: AppTypography.display(
+                      size: AppTypography.text2xs,
+                      weight: FontWeight.w500,
+                      tabularNumbers: true,
                       color: view.tone == StatusTone.warning
                           ? AppColors.warning
                           : AppColors.textMuted,
@@ -195,6 +204,7 @@ class _LedgerRow extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             Text(
               formatMoney(invoice.currency, invoice.total),
               style: AppTheme.money,

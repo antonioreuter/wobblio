@@ -101,6 +101,58 @@ button, a, input, select, [role="button"] { -webkit-tap-highlight-color: transpa
   box-shadow: var(--card-shadow), var(--shadow-brand-glow);
 }
 
+/* ---- Switch (toggle) --------------------------------------------------- */
+/* iOS-style track + raised thumb so the control reads unmistakably as a
+   toggle in both states (bordered pill off, filled + focus ring on). */
+.ds-switch {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 46px;
+  height: 26px;
+}
+.ds-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.ds-switch input:disabled { cursor: not-allowed; }
+.ds-switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-pill);
+  background: var(--glass-highlight);
+  border: 1.5px solid var(--glass-border);
+  transition: background 0.25s var(--ease-out), border-color 0.25s var(--ease-out);
+  pointer-events: none;
+}
+.ds-switch-thumb {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.25s var(--ease-out);
+  pointer-events: none;
+}
+.ds-switch input:checked ~ .ds-switch-track {
+  background: var(--success);
+  border-color: var(--success);
+}
+.ds-switch input:checked ~ .ds-switch-thumb { transform: translateX(20px); }
+.ds-switch input:focus-visible ~ .ds-switch-track {
+  border-color: var(--success);
+  box-shadow: 0 0 0 3px var(--success-glow);
+}
+.ds-switch:has(input:disabled) { opacity: 0.5; }
+
 /* ---- Badge / pill ------------------------------------------------------ */
 .badge {
   display: inline-flex;
@@ -146,6 +198,26 @@ button, a, input, select, [role="button"] { -webkit-tap-highlight-color: transpa
   background: var(--brand-hover);
   transform: translateY(-1px);
   box-shadow: 0 6px 24px -1px var(--brand-glow);
+}
+.btn--brand {
+  background: var(--brand);
+  color: #ffffff;
+  box-shadow: 0 4px 20px -2px var(--brand-glow);
+}
+.btn--brand:hover {
+  background: var(--brand-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px -1px var(--brand-glow);
+}
+.btn--success {
+  background: var(--success);
+  color: #ffffff;
+  box-shadow: 0 4px 20px -2px var(--success-glow);
+}
+.btn--success:hover {
+  background: color-mix(in srgb, var(--success) 88%, #000);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px -1px var(--success-glow);
 }
 .btn--outline {
   background: transparent;

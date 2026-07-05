@@ -21,7 +21,14 @@ import { PriceObservationStoreAdapter } from '@infrastructure/adapters/data-inte
 import { QuotaRepositoryAdapter } from '@infrastructure/adapters/quota/QuotaRepositoryAdapter';
 import { WeeklyAdvisorRepositoryAdapter } from '@infrastructure/adapters/ai/WeeklyAdvisorRepositoryAdapter';
 import { PersonalInflationQueryAdapter } from '@infrastructure/adapters/data-intelligence/PersonalInflationQueryAdapter';
-import { computePersonalInflation } from '@core/domain/personalInflation';
+import { RegionInflationQueryAdapter } from '@infrastructure/adapters/data-intelligence/RegionInflationQueryAdapter';
+import { PersonalInflationSeriesQueryAdapter } from '@infrastructure/adapters/data-intelligence/PersonalInflationSeriesQueryAdapter';
+import { RegionInflationSeriesQueryAdapter } from '@infrastructure/adapters/data-intelligence/RegionInflationSeriesQueryAdapter';
+import { SwitchingSavingsQueryAdapter } from '@infrastructure/adapters/data-intelligence/SwitchingSavingsQueryAdapter';
+import { computeMatchedBasketInflation } from '@core/domain/personalInflation';
+import { computeInflationSeries, mergeInflationSeries } from '@core/domain/inflationSeries';
+import { computeSwitchingSavings } from '@core/domain/switchingSavings';
+import { resolveObservationRegion } from '@core/domain/region';
 import { S3FileStorageAdapter } from '@infrastructure/adapters/ingestion/S3FileStorageAdapter';
 import { SqsInvoiceIngestionQueueAdapter } from '@infrastructure/adapters/ingestion/SqsInvoiceIngestionQueueAdapter';
 import { IngestionLedgerAdapter } from '@infrastructure/adapters/ingestion/IngestionLedgerAdapter';
@@ -328,19 +335,51 @@ async function handleTopMerchant(db: PoolClient, user: AppUser): Promise<APIGate
   return json(200, { merchants });
 }
 
-// Personal inflation number for the Home "inflation pulse" card: the caller's matched-basket price
-// change over the trailing quarter vs the one before. Regional index and switch-shop savings are
-// not computed yet — returned null so the client renders an honest "building" state, never a fake 0.
+const INFLATION_WINDOW_DAYS = 90;
+const TREND_MONTHS = 6;
+const SAVINGS_WINDOW_DAYS = 365;
+
+// Inflation pulse for the Home card: the caller's own matched-basket price change over the trailing
+// quarter, their region's index over the same window, a 6-month personal-vs-region trend sparkline,
+// and how much they saved buying below the region median this year. Every figure is real or null —
+// nulls render the honest "building"/"as more shops are mapped" states, never fabricated numbers.
 async function handleInflationInsight(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
-  const result = await withTenantTx(db, user.id, async () =>
-    computePersonalInflation(await new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: 90 })),
-  );
+  const profile = await new AppUserRepositoryAdapter(db).getProfile(user.cognitoSub);
+  const regionCode = profile ? resolveObservationRegion(profile.regionCode, profile.country) : null;
+
+  // Personal side is RLS-scoped → one tenant transaction. The savings join reaches the RLS-exempt
+  // regional side but is anchored on the caller's own lines, so it belongs here too.
+  const personal = await withTenantTx(db, user.id, async () => ({
+    basket: await new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: INFLATION_WINDOW_DAYS }),
+    series: await new PersonalInflationSeriesQueryAdapter(db).monthlyMedians({ months: TREND_MONTHS }),
+    savingsLines: regionCode
+      ? await new SwitchingSavingsQueryAdapter(db).savingsLines({ regionCode, windowDays: SAVINGS_WINDOW_DAYS })
+      : [],
+  }));
+
+  const region = await resolveRegionSeries(db, regionCode);
+  const personalResult = computeMatchedBasketInflation(personal.basket);
+
   return json(200, {
-    personalInflationPct: result.personalInflationPct,
-    basketSize: result.basketSize,
-    regionInflationPct: null,
-    savedBySwitching: null,
+    personalInflationPct: personalResult.inflationPct,
+    basketSize: personalResult.basketSize,
+    regionInflationPct: computeMatchedBasketInflation(region.basket).inflationPct,
+    savedBySwitching: computeSwitchingSavings(personal.savingsLines),
+    trend: mergeInflationSeries(
+      computeInflationSeries(personal.series),
+      computeInflationSeries(region.series),
+    ),
   });
+}
+
+// Regional matched basket + monthly series from the de-identified price_observation store (no tenant
+// context — those rows carry none). Empty when the region is unknown; the domain then yields nulls.
+async function resolveRegionSeries(db: PoolClient, regionCode: string | null) {
+  if (!regionCode) return { basket: [], series: [] };
+  return {
+    basket: await new RegionInflationQueryAdapter(db).matchedBasket({ regionCode, windowDays: INFLATION_WINDOW_DAYS }),
+    series: await new RegionInflationSeriesQueryAdapter(db).monthlyMedians({ regionCode, months: TREND_MONTHS }),
+  };
 }
 
 async function handleUsage(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {

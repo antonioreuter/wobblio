@@ -11,12 +11,13 @@ export interface SplitLine {
   isDepositOrFee: boolean;
 }
 
-// One line attributed to one named participant (PK split_id,line_id → at most one per line).
+// One participant's slice of a line, measured in that line's units (fractional units
+// express a shared single item: ½ = 0.5). Several allocations may target the same line.
 // `participantName` is already decrypted by the service before it reaches this pure domain.
-export interface SplitAssignment {
+export interface SplitAllocation {
   lineId: string;
   participantName: string;
-  fraction: number;
+  units: number;
 }
 
 export interface SplitItem {
@@ -42,13 +43,18 @@ export interface SplitSummary {
 
 const EPSILON = 1e-9;
 
-// Proportional split of a printed invoice. Named participants take the fractions assigned to them;
-// every unassigned product-line remainder falls to the account holder (`ownerLabel`), so the split
-// is always complete and Σ participant totals === grandTotal (= printed invoice total). Fees (taxes,
-// tips, service = invoiceTotal − Σ product lines) are spread by each participant's subtotal share.
+// A line's units, never zero (guards a divide-by-zero for lines parsed without a quantity).
+function lineUnits(line: SplitLine): number {
+  return line.quantity > EPSILON ? line.quantity : 1;
+}
+
+// Proportional split of a printed invoice. Named participants take the units allocated to them;
+// every unallocated remainder of a product line falls to the account holder (`ownerLabel`), so the
+// split is always complete and Σ participant totals === grandTotal (= printed invoice total). Fees
+// (taxes, tips, service = invoiceTotal − Σ product lines) are spread by each participant's subtotal share.
 export function computeSplitSummary(
   lines: SplitLine[],
-  assignments: SplitAssignment[],
+  allocations: SplitAllocation[],
   invoiceTotal: number,
   ownerLabel = 'You',
 ): SplitSummary {
@@ -58,33 +64,33 @@ export function computeSplitSummary(
   if (assignableSubtotal <= EPSILON) return { participants: [], grandTotal };
 
   const feePool = invoiceTotal - assignableSubtotal;
-  const draft = buildParticipants(productLines, assignments, ownerLabel);
+  const draft = buildParticipants(productLines, allocations, ownerLabel);
   const priced = draft.map((p) => applyFees(p, assignableSubtotal, feePool));
   return { participants: reconcile(priced, grandTotal), grandTotal };
 }
 
 // Named participants (grouped by decrypted name, first-seen order) plus the owner bucket, which
-// collects every line's un-assigned remainder. Assignments to non-product lines are ignored here.
+// collects every line's unallocated remainder. Allocations to non-product lines are ignored here.
 function buildParticipants(
   productLines: SplitLine[],
-  assignments: SplitAssignment[],
+  allocations: SplitAllocation[],
   ownerLabel: string,
 ): { name: string; subtotal: number; items: SplitItem[] }[] {
   const byLine = new Map(productLines.map((l) => [l.id, l]));
   const named = new Map<string, { name: string; subtotal: number; items: SplitItem[] }>();
-  const assignedFraction = new Map<string, number>();
+  const allocatedUnits = new Map<string, number>();
 
-  for (const a of assignments) {
+  for (const a of allocations) {
     const line = byLine.get(a.lineId);
-    if (!line) continue;
-    assignedFraction.set(a.lineId, a.fraction);
+    if (!line || a.units <= EPSILON) continue;
+    allocatedUnits.set(a.lineId, (allocatedUnits.get(a.lineId) ?? 0) + a.units);
     const bucket = named.get(a.participantName) ?? { name: a.participantName, subtotal: 0, items: [] };
-    bucket.items.push(toItem(line, a.fraction));
-    bucket.subtotal += line.lineTotal * a.fraction;
+    bucket.items.push(toItem(line, a.units));
+    bucket.subtotal += line.lineTotal * (a.units / lineUnits(line));
     named.set(a.participantName, bucket);
   }
 
-  const owner = ownerBucket(productLines, assignedFraction, ownerLabel);
+  const owner = ownerBucket(productLines, allocatedUnits, ownerLabel);
   const participants = [...named.values()];
   if (owner) participants.push(owner);
   return participants;
@@ -92,24 +98,25 @@ function buildParticipants(
 
 function ownerBucket(
   productLines: SplitLine[],
-  assignedFraction: Map<string, number>,
+  allocatedUnits: Map<string, number>,
   ownerLabel: string,
 ): { name: string; subtotal: number; items: SplitItem[] } | null {
   const owner = { name: ownerLabel, subtotal: 0, items: [] as SplitItem[] };
   for (const line of productLines) {
-    const remainder = 1 - (assignedFraction.get(line.id) ?? 0);
+    const remainder = lineUnits(line) - (allocatedUnits.get(line.id) ?? 0);
     if (remainder <= EPSILON) continue;
     owner.items.push(toItem(line, remainder));
-    owner.subtotal += line.lineTotal * remainder;
+    owner.subtotal += line.lineTotal * (remainder / lineUnits(line));
   }
   return owner.subtotal > EPSILON ? owner : null;
 }
 
-function toItem(line: SplitLine, fraction: number): SplitItem {
+function toItem(line: SplitLine, units: number): SplitItem {
+  const fraction = units / lineUnits(line);
   return {
     lineId: line.id,
     label: line.label,
-    qty: roundTo(line.quantity * fraction, 2),
+    qty: roundTo(units, 2),
     fraction: roundTo(fraction, 4),
     amount: roundTo(line.lineTotal * fraction, 2),
   };
@@ -129,7 +136,7 @@ function applyFees(
 // Nudge any 2dp rounding residual onto the largest participant so the parts sum to the printed
 // total. Never called with an empty array: computeSplitSummary already returns early whenever
 // assignableSubtotal <= EPSILON, and any positive assignableSubtotal guarantees buildParticipants
-// yields at least the owner bucket (it absorbs every line's unassigned remainder).
+// yields at least the owner bucket (it absorbs every line's unallocated remainder).
 function reconcile(participants: SplitParticipant[], grandTotal: number): SplitParticipant[] {
   const summed = roundTo(participants.reduce((s, p) => s + p.total, 0), 2);
   const residual = roundTo(grandTotal - summed, 2);
