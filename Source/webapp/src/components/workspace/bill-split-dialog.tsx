@@ -14,12 +14,17 @@ import { seriesColor } from './trend-data'
 
 const YOU = 'You'
 const YOU_COLOR = seriesColor(0)
-const FRACTION_CYCLE = [1, 0.5, 1 / 3]
 const MAX_PARTICIPANT_NAME_LENGTH = 40
 
 // bill_split_line.units is NUMERIC(9,4) — 1/3 round-trips as 0.3333, so tolerances
 // must clear that DB-rounding gap while staying tight enough to tell 1, ½, ⅓ apart.
 const EPSILON = 1e-3
+
+// Unicode vulgar fractions for the even-split shares a line can carry (1/N). Beyond ⅒
+// the badge falls back to a plain "1/N" string.
+const VULGAR_FRACTION: Record<number, string> = {
+  2: '½', 3: '⅓', 4: '¼', 5: '⅕', 6: '⅙', 7: '⅐', 8: '⅛', 9: '⅑', 10: '⅒',
+}
 
 const canSplitBill = (role: string | undefined): boolean => !!role && role !== 'STANDARD'
 
@@ -29,9 +34,12 @@ function participantColor(name: string, namedParticipants: string[]): string {
   return seriesColor(idx + 1)
 }
 
+// A unit-fraction (1/N) reads as its glyph; anything else (a whole share, a 2-of-3 slice)
+// returns '' so callers fall back to their ×qty label.
 function fractionLabel(fraction: number): string {
-  if (Math.abs(fraction - 0.5) < EPSILON) return '½'
-  if (Math.abs(fraction - 1 / 3) < EPSILON) return '⅓'
+  if (fraction <= EPSILON || fraction >= 1 - EPSILON) return ''
+  const n = Math.round(1 / fraction)
+  if (n >= 2 && Math.abs(fraction - 1 / n) < EPSILON) return VULGAR_FRACTION[n] ?? `1/${n}`
   return ''
 }
 
@@ -54,6 +62,7 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
   const { state, setLineAllocations, removeParticipant, fetchWhatsappText, createShareLink } = useBillSplit(invoice.id)
   const [participants, setParticipants] = useState<string[]>([])
   const [activeParticipant, setActiveParticipant] = useState<string>(YOU)
+  const [selectedLineId, setSelectedLineId] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
@@ -121,28 +130,47 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
   // Multi-unit lines: nudge the active participant's unit count, capped by what's left.
   const stepUnits = async (line: AssignableLine, delta: number) => {
     if (activeParticipant === YOU) return
+    setSelectedLineId(line.id)
     const others = othersOf(line.id, activeParticipant)
     const otherUnits = others.reduce((sum, a) => sum + a.units, 0)
     const next = Math.max(0, Math.min(unitsFor(line.id, activeParticipant) + delta, line.quantity - otherUnits))
     await commit(line.id, [...others, ...(next > EPSILON ? [{ participantName: activeParticipant, units: next }] : [])])
   }
 
-  // Single-unit lines keep the tap-to-cycle share: assign in full, then ½, ⅓, then release.
-  // A single-unit line has one owner at a time (remainder → You), so this replaces the set.
-  const cycleShare = async (line: AssignableLine) => {
-    if (activeParticipant === YOU) return
-    const owns = allocationsFor(line.id).some((a) => a.participantName === activeParticipant)
-    if (!owns) {
-      await commit(line.id, [{ participantName: activeParticipant, units: 1 }])
+  // A single-unit line's sharers: the named people who hold a slice, plus You when the line
+  // is only partly assigned (You always absorbs the remainder). A fully-unassigned line has
+  // no explicit sharers — it belongs to You by default.
+  const sharersOf = (line: AssignableLine): string[] => {
+    const named = allocationsFor(line.id).filter((a) => a.units > EPSILON).map((a) => a.participantName)
+    const remainder = line.quantity - allocationsFor(line.id).reduce((sum, a) => sum + a.units, 0)
+    return named.length > 0 && remainder > EPSILON ? [...named, YOU] : named
+  }
+
+  // Split a single-unit line evenly across a set of sharers (1/N each). Only named shares are
+  // persisted; You's slice is the reconciled remainder. No named sharers → the line is all You.
+  const applyEvenSplit = async (line: AssignableLine, sharers: string[]) => {
+    const named = sharers.filter((name) => name !== YOU)
+    if (named.length === 0) {
+      await commit(line.id, [])
       return
     }
-    const mine = unitsFor(line.id, activeParticipant)
-    const i = FRACTION_CYCLE.findIndex((f) => Math.abs(f - mine) < EPSILON)
-    const next = i + 1 < FRACTION_CYCLE.length ? FRACTION_CYCLE[i + 1] : 0
-    await commit(line.id, next > EPSILON ? [{ participantName: activeParticipant, units: next }] : [])
+    const share = 1 / sharers.length
+    await commit(line.id, named.map((name) => ({ participantName: name, units: share })))
+  }
+
+  // Single-unit lines: tapping toggles the active participant (named or You) in the line's
+  // sharer set, then re-splits evenly — so one item can be shared across two or more people.
+  const toggleShare = async (line: AssignableLine) => {
+    setSelectedLineId(line.id)
+    const sharers = sharersOf(line)
+    const next = sharers.includes(activeParticipant)
+      ? sharers.filter((name) => name !== activeParticipant)
+      : [...sharers, activeParticipant]
+    await applyEvenSplit(line, next)
   }
 
   const resetLine = async (line: AssignableLine) => {
+    setSelectedLineId(line.id)
     if (allocationsFor(line.id).length > 0) await commit(line.id, [])
   }
 
@@ -191,6 +219,11 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
       ? state.summary.participants.filter((p) => p.name !== YOU).reduce((sum, p) => sum + p.total, 0)
       : 0
   const grandTotal = state.status === 'ready' ? state.summary.grandTotal : 0
+
+  // A summary item carries only its own units, not the line's quantity, so its label needs
+  // the parent line to tell a shared single item (½) from one unit of a multi-unit line (×1).
+  const lineQuantityById = (lineId: string): number =>
+    (state.status === 'ready' ? state.lines.find((l) => l.id === lineId)?.quantity : undefined) ?? 1
 
   return createPortal(
     <div className="modal-overlay" onClick={onClose} data-testid="split-dialog">
@@ -309,25 +342,39 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                     ...(remainder > EPSILON ? [{ name: YOU, units: remainder }] : []),
                   ]
 
+                  const isSelected = selectedLineId === line.id
+
                   return (
-                    <div className="split-line" key={line.id} data-testid={`split-line-${line.id}`}>
+                    <div
+                      className={`split-line ${isSelected ? 'is-selected' : ''}`}
+                      key={line.id}
+                      data-testid={`split-line-${line.id}`}
+                    >
                       {isMulti ? (
-                        <div className="split-line-row split-line-row--static">
+                        <button
+                          type="button"
+                          className="split-line-row"
+                          onClick={() => setSelectedLineId(line.id)}
+                          data-testid={`split-select-${line.id}`}
+                          aria-label={`${line.rawText}, ${money(line.lineTotal)} — select to edit; use +/− to share units`}
+                          aria-pressed={isSelected}
+                        >
                           <span className="split-line-name">
                             {line.rawText} <span className="split-line-qty">×{Number(line.quantity)}</span>
                           </span>
                           <span className="split-line-amt">{money(line.lineTotal)}</span>
-                        </div>
+                        </button>
                       ) : (
                         <button
                           type="button"
                           className="split-line-row"
-                          onClick={() => void (activeParticipant === YOU ? resetLine(line) : cycleShare(line))}
+                          onClick={() => void toggleShare(line)}
                           data-testid={`split-assign-${line.id}`}
+                          aria-pressed={isSelected}
                           aria-label={
                             activeParticipant === YOU
-                              ? `${line.rawText}, ${money(line.lineTotal)} — tap to clear`
-                              : `${line.rawText}, ${money(line.lineTotal)} — tap to assign to ${activeParticipant}, again for ½ or ⅓`
+                              ? `${line.rawText}, ${money(line.lineTotal)} — tap to add or remove You as a sharer`
+                              : `${line.rawText}, ${money(line.lineTotal)} — tap to share with ${activeParticipant}; tap again to remove`
                           }
                         >
                           <span className="split-line-name">{line.rawText}</span>
@@ -393,7 +440,7 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                 })}
             </div>
             <p className="split-progress">
-              {money(assignedToOthers)} of {money(grandTotal)} assigned · use +/− for quantities, tap a single item for ½ or ⅓
+              {money(assignedToOthers)} of {money(grandTotal)} assigned · use +/− for quantities, tap a single item to share it evenly
             </p>
 
             <div className="split-summary" data-testid="split-summary">
@@ -414,7 +461,7 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                     {p.items.map((item) => (
                       <div className="split-item-row" key={item.lineId}>
                         <span className="split-item-name">
-                          {item.label} {fractionLabel(item.fraction) || `×${Number(item.qty)}`}
+                          {item.label} {shareLabel(item.qty, lineQuantityById(item.lineId))}
                         </span>
                         <span className="split-item-amt">{money(item.amount)}</span>
                       </div>

@@ -16,10 +16,10 @@ import 'package:wobblio/ui/format.dart';
 /// Split Bill screen (18h): non-premium accounts see an in-place upsell card
 /// (the entry point on `InvoiceDetailScreen` is always visible — the upsell
 /// lives here, not as a hidden affordance, mirroring the webapp's
-/// `bill-split-dialog.tsx`). Premium accounts get the full tap-to-assign
-/// flow: people chips, assignable line rows, per-person summary, WhatsApp
-/// share/copy. See
-/// `specs/mvp/18-mobile-navigation-and-lists/18h-split-bill.md`.
+/// `bill-split-dialog.tsx`). Premium accounts get the full assignment flow:
+/// people chips, assignable line rows (multi-unit +/− steppers, single-unit
+/// tap-to-cycle), a per-person summary, a public share link, and a WhatsApp
+/// export. See `specs/mvp/18-mobile-navigation-and-lists/18h-split-bill.md`.
 class SplitBillScreen extends StatelessWidget {
   const SplitBillScreen({super.key, required this.invoiceId});
 
@@ -69,6 +69,17 @@ String _fractionLabel(double fraction) {
   if ((fraction - 0.5).abs() < 1e-3) return '½';
   if ((fraction - 1 / 3).abs() < 1e-3) return '⅓';
   return '';
+}
+
+// How a participant's share of a line reads on their avatar badge: a unit count
+// for multi-unit lines (×2), a fraction glyph for a shared single item (½),
+// else nothing. Ports the webapp's `shareLabel`.
+String _shareLabel(double units, double lineQuantity) {
+  if (lineQuantity > 1 + 1e-3) {
+    final rounded = double.parse(units.toStringAsFixed(2));
+    return '×${rounded == rounded.roundToDouble() ? rounded.toInt() : rounded}';
+  }
+  return _fractionLabel(units);
 }
 
 class _SplitBillView extends StatelessWidget {
@@ -127,6 +138,8 @@ class _SplitBillView extends StatelessWidget {
             const SizedBox(height: 20),
             _SummarySection(state: state),
           ],
+          const SizedBox(height: 20),
+          _ShareSection(state: state),
           const SizedBox(height: 20),
           const _ActionButtons(),
         ],
@@ -328,7 +341,7 @@ class _AssignItemsSection extends StatelessWidget {
                 style: AppTypography.body(
                     size: AppTypography.textXs, color: AppColors.textMuted,),
                 children: [
-                  const TextSpan(text: 'tap → '),
+                  const TextSpan(text: 'to '),
                   TextSpan(
                       text: state.activeParticipant,
                       style: const TextStyle(fontWeight: FontWeight.w700),),
@@ -350,70 +363,264 @@ class _LineRow extends StatelessWidget {
   final InvoiceLineDetail line;
   final SplitBillState state;
 
+  bool get _isMulti => line.quantity > 1 + 1e-3;
+
   @override
   Widget build(BuildContext context) {
-    final assignment = state.assignmentFor(line.id);
-    final ownerName = assignment?.participantName ?? SplitBillBloc.you;
-    final fraction = assignment?.fraction ?? 1;
+    final active = state.activeParticipant;
+    final isYou = active == SplitBillBloc.you;
+    final hasAllocations = state.allocationsFor(line.id).isNotEmpty;
+
+    final row = Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.glassBorder)),),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    style: AppTypography.body(
+                        size: AppTypography.textSm, weight: FontWeight.w500,),
+                    children: [
+                      TextSpan(text: line.rawText),
+                      if (_isMulti)
+                        TextSpan(
+                          text: '  ×${_qtyLabel(line.quantity)}',
+                          style: AppTypography.body(
+                              size: AppTypography.textXs,
+                              color: AppColors.textMuted,),
+                        ),
+                    ],
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text(
+                formatMoney(state.currency, line.lineTotal),
+                style: AppTypography.body(
+                    size: AppTypography.textSm, weight: FontWeight.w700,),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _OwnerStack(line: line, state: state)),
+              if (_isMulti && !isYou)
+                _Stepper(line: line, state: state)
+              else if (_isMulti && isYou && hasAllocations)
+                _ResetButton(lineId: line.id)
+              else if (!_isMulti)
+                Text(
+                  isYou ? 'tap to clear' : 'tap → ½ → ⅓',
+                  style: AppTypography.body(
+                      size: AppTypography.textXs, color: AppColors.textMuted,),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    // Single-unit lines are tap-to-cycle; multi-unit lines drive from the
+    // stepper/reset controls instead, so their row body is static.
+    if (_isMulti) return row;
     return GestureDetector(
       key: Key('split-assign-${line.id}'),
       onTap: () =>
           context.read<SplitBillBloc>().add(SplitBillLineTapped(line.id)),
+      child: row,
+    );
+  }
+}
+
+// The set of owners on a line: every allocation, plus the unallocated remainder
+// attributed to "You". Mirrors the webapp's `owners` derivation.
+class _OwnerStack extends StatelessWidget {
+  const _OwnerStack({required this.line, required this.state});
+
+  final InvoiceLineDetail line;
+  final SplitBillState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final allocs = state.allocationsFor(line.id);
+    final remainder = line.quantity - state.assignedUnits(line.id);
+    final owners = <(String, double)>[
+      for (final a in allocs) (a.participantName, a.units),
+      if (remainder > 1e-3) (SplitBillBloc.you, remainder),
+    ];
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final owner in owners)
+          _OwnerAvatar(
+            name: owner.$1,
+            badge: _shareLabel(owner.$2, line.quantity),
+            color: _participantColor(owner.$1, state.participants),
+          ),
+      ],
+    );
+  }
+}
+
+class _OwnerAvatar extends StatelessWidget {
+  const _OwnerAvatar({
+    required this.name,
+    required this.badge,
+    required this.color,
+  });
+
+  final String name;
+  final String badge;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 26,
+      height: 26,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Avatar(initials: _initialsFor(name), size: 24, background: color),
+          if (badge.isNotEmpty)
+            Positioned(
+              right: -4,
+              bottom: -4,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.glassBorder),
+                ),
+                child: Text(badge, style: AppTypography.overline(size: 9)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stepper extends StatelessWidget {
+  const _Stepper({required this.line, required this.state});
+
+  final InvoiceLineDetail line;
+  final SplitBillState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = state.activeParticipant;
+    final myUnits = state.unitsFor(line.id, active);
+    final remainder = line.quantity - state.assignedUnits(line.id);
+    return Row(
+      key: Key('split-stepper-${line.id}'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _StepButton(
+          icon: Icons.remove,
+          buttonKey: Key('split-minus-${line.id}'),
+          enabled: myUnits > 1e-3,
+          onPressed: () => context
+              .read<SplitBillBloc>()
+              .add(SplitBillLineStepped(line.id, -1)),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Text(
+            _qtyLabel(myUnits),
+            key: Key('split-units-${line.id}'),
+            style: AppTypography.body(
+                size: AppTypography.textSm, weight: FontWeight.w700,),
+          ),
+        ),
+        _StepButton(
+          icon: Icons.add,
+          buttonKey: Key('split-plus-${line.id}'),
+          enabled: remainder > 1e-3,
+          onPressed: () => context
+              .read<SplitBillBloc>()
+              .add(SplitBillLineStepped(line.id, 1)),
+        ),
+      ],
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  const _StepButton({
+    required this.icon,
+    required this.buttonKey,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final Key buttonKey;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: buttonKey,
+      onTap: enabled ? onPressed : null,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: AppColors.glassBorder)),),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                line.rawText,
-                style: AppTypography.body(
-                    size: AppTypography.textSm, weight: FontWeight.w500,),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Text(
-              formatMoney(state.currency, line.lineTotal),
-              style: AppTypography.body(
-                  size: AppTypography.textSm, weight: FontWeight.w700,),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Avatar(
-                    initials: _initialsFor(ownerName),
-                    size: 24,
-                    background: _participantColor(ownerName, state.participants),
-                  ),
-                  if ((fraction - 1).abs() > 1e-9)
-                    Positioned(
-                      right: -4,
-                      bottom: -4,
-                      child: Container(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppColors.glassBorder),
-                        ),
-                        child: Text(_fractionLabel(fraction),
-                            style: AppTypography.overline(size: 9),),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: AppColors.glassHighlight,
+          border: Border.all(color: AppColors.glassBorder),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        ),
+        child: Icon(
+          icon,
+          size: 16,
+          color: enabled ? AppColors.textSecondary : AppColors.textMuted,
         ),
       ),
     );
   }
+}
+
+class _ResetButton extends StatelessWidget {
+  const _ResetButton({required this.lineId});
+
+  final String lineId;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      key: Key('split-reset-$lineId'),
+      onTap: () =>
+          context.read<SplitBillBloc>().add(SplitBillLineReset(lineId)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.refresh, size: 14, color: AppColors.textMuted),
+          const SizedBox(width: 4),
+          Text('Reset',
+              style: AppTypography.body(
+                  size: AppTypography.textXs, color: AppColors.textMuted,),),
+        ],
+      ),
+    );
+  }
+}
+
+String _qtyLabel(double value) {
+  final rounded = double.parse(value.toStringAsFixed(2));
+  return rounded == rounded.roundToDouble()
+      ? rounded.toInt().toString()
+      : rounded.toString();
 }
 
 class _ProgressLine extends StatelessWidget {
@@ -432,8 +639,8 @@ class _ProgressLine extends StatelessWidget {
     final grandTotal = summary?.grandTotal ?? 0.0;
     return Text(
       '${formatMoney(state.currency, assignedToOthers)} of '
-      '${formatMoney(state.currency, grandTotal)} assigned · tap a line '
-      'again for ½ or ⅓',
+      '${formatMoney(state.currency, grandTotal)} assigned · use +/− for '
+      'quantities, tap a single item for ½ or ⅓',
       style: AppTypography.body(
           size: AppTypography.textXs, color: AppColors.textMuted,),
     );
@@ -552,8 +759,8 @@ class _ItemLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final qtyLabel =
-        item.qty == item.qty.roundToDouble() ? item.qty.toInt() : item.qty;
+    final fraction = _fractionLabel(item.fraction);
+    final label = fraction.isNotEmpty ? fraction : '×${_qtyLabel(item.qty)}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -561,7 +768,7 @@ class _ItemLine extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              '${item.label} ×$qtyLabel',
+              '${item.label} $label',
               style: AppTypography.body(
                   size: AppTypography.textXs, color: AppColors.textSecondary,),
               overflow: TextOverflow.ellipsis,
@@ -574,6 +781,70 @@ class _ItemLine extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// "Share this split" — mints a public read-only /s/<token> link (7-day expiry)
+// and, once created, surfaces it for copy/re-share. Mirrors the webapp's
+// share-link section; the native share sheet is triggered in the bloc.
+class _ShareSection extends StatelessWidget {
+  const _ShareSection({required this.state});
+
+  final SplitBillState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('SHARE THIS SPLIT', style: AppTypography.overline()),
+        const SizedBox(height: 10),
+        if (state.shareUrl != null)
+          GlassContainer(
+            key: const Key('split-share-link'),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    state.shareUrl!,
+                    style: AppTypography.body(
+                        size: AppTypography.textSm,
+                        color: AppColors.textSecondary,),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                WobblioButton(
+                  key: const Key('split-reshare-link'),
+                  label: 'Share',
+                  variant: WobblioButtonVariant.outline,
+                  iconLeft: Icons.ios_share,
+                  onPressed: () => context
+                      .read<SplitBillBloc>()
+                      .add(const SplitBillShareLinkRequested()),
+                ),
+              ],
+            ),
+          )
+        else
+          WobblioButton(
+            key: const Key('split-share-create'),
+            label: 'Create share link',
+            variant: WobblioButtonVariant.outline,
+            iconLeft: Icons.link,
+            onPressed: () => context
+                .read<SplitBillBloc>()
+                .add(const SplitBillShareLinkRequested()),
+          ),
+        const SizedBox(height: 6),
+        Text(
+          'A read-only page anyone can open — like sharing a receipt. '
+          'The link expires in 7 days.',
+          style: AppTypography.body(
+              size: AppTypography.textXs, color: AppColors.textMuted,),
+        ),
+      ],
     );
   }
 }

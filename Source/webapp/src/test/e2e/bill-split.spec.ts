@@ -52,10 +52,15 @@ test.describe('bill splitting', () => {
     const alexChip = page.locator('div.split-chip', { has: page.getByTestId('split-chip-Alex') })
     await expect(alexChip).toHaveClass(/on/)
 
-    // Tapping the "Bread" line assigns it to the active participant (Alex) at
-    // fraction 1 — no separate picker step in the tap-to-cycle interaction model.
+    // Tapping the "Bread" line shares it with the active participant (Alex). The
+    // first tap gives Alex the whole item; "You" covers the rest.
     const breadLine = page.locator('[data-testid^="split-assign-"]', { hasText: 'Bread' })
     await breadLine.click()
+
+    // The tapped line shows a distinct selected/edited highlight so it's obvious
+    // which item is being associated to which people.
+    const breadCard = page.locator('.split-line', { has: breadLine })
+    await expect(breadCard).toHaveClass(/is-selected/)
 
     // Summary reconciles: Alex owes for Bread, "You" covers the rest, and the
     // total always equals the invoice total (computeSplitSummary's invariant).
@@ -63,43 +68,32 @@ test.describe('bill splitting', () => {
     await expect(page.getByTestId('split-summary')).toContainText('€3.50')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
 
-    // Tapping the same line again (Alex still active) cycles the fraction to ½ —
-    // Alex's share halves and "You" absorbs the rest, total still reconciles.
+    // Share the SAME single-quantity item across a second person: add Bob (which
+    // auto-activates him) and tap Bread — it now splits ½ Alex + ½ Bob (€1.75 each).
+    await page.getByTestId('split-participant-input').fill('Bob')
+    await page.getByTestId('split-add-participant').click()
     await breadLine.click()
     await expect(page.getByTestId('split-summary')).toContainText('€1.75')
-    await expect(page.getByTestId('split-summary')).toContainText('€3.75')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
 
-    // Third tap cycles to ⅓ — this is the step that used to get stuck: the backend
-    // rounds 1/3 to NUMERIC(5,4) (0.3333) on the round-trip, so the epsilon used to
-    // match it against the client's raw 1/3 must be loose enough to still equal it.
-    await breadLine.click()
-    await expect(page.getByTestId('split-summary')).toContainText('€1.17')
-    await expect(page.getByTestId('split-summary')).toContainText('€4.33')
-    await expect(page.getByTestId('split-summary')).toContainText('€5.50')
-
-    // Fourth tap wraps the cycle to "unassign" — this is the other half of the same
-    // bug: with a too-tight epsilon, the ⅓ round-trip value never matched anything
-    // in FRACTION_CYCLE, so the cycle silently restarted at fraction 1 instead.
-    await breadLine.click()
-    await expect(page.getByTestId('split-summary')).not.toContainText('Alex')
-    await expect(page.getByTestId('split-summary')).toContainText('€5.50')
-
-    // Re-assign (fresh cycle, fraction 1) for the "You"-active unassign path below.
-    await breadLine.click()
-    await expect(page.getByTestId('split-summary')).toContainText('€3.50')
-
-    // Switching the active participant back to "You" and tapping the line again
-    // unassigns it — "You" is never itself an assignable/cyclable participant.
+    // Pull "You" into the share too → three-way even split (⅓ each ≈ €1.17).
     await page.getByTestId('split-chip-You').click()
     await breadLine.click()
-    await expect(page.getByTestId('split-summary')).not.toContainText('Alex')
+    await expect(page.getByTestId('split-summary')).toContainText('€1.17')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
 
-    // Re-assign Bread to Alex (full) so the WhatsApp export below has someone to name.
-    await page.getByTestId('split-chip-Alex').click()
+    // Toggle Bob back out (Bob active) — Bread re-splits evenly between the rest.
+    await page.getByTestId('split-chip-Bob').click()
+    await breadLine.click()
+    await expect(page.getByTestId('split-summary')).toContainText('€1.75')
+    await expect(page.getByTestId('split-summary')).toContainText('€5.50')
+
+    // Remove "You" from the share (You active) → the whole item falls back to Alex,
+    // giving the WhatsApp export below a named owner.
+    await page.getByTestId('split-chip-You').click()
     await breadLine.click()
     await expect(page.getByTestId('split-summary')).toContainText('Alex')
+    await expect(page.getByTestId('split-summary')).toContainText('€3.50')
 
     // WhatsApp export copies to the clipboard.
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])

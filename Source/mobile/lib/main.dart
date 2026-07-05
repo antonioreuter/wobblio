@@ -12,6 +12,7 @@ import 'package:wobblio/core/bloc/invoice_detail/invoice_detail_bloc.dart';
 import 'package:wobblio/core/bloc/notifications/notification_bloc.dart';
 import 'package:wobblio/core/bloc/reports/price_report_bloc.dart';
 import 'package:wobblio/core/bloc/review/review_bloc.dart';
+import 'package:wobblio/core/bloc/shared_split/shared_split_bloc.dart';
 import 'package:wobblio/core/bloc/shopping_list/shopping_list_bloc.dart';
 import 'package:wobblio/core/bloc/split_bill/split_bill_bloc.dart';
 import 'package:wobblio/core/config/app_config.dart';
@@ -20,6 +21,7 @@ import 'package:wobblio/core/ports/auth_token_provider.dart';
 import 'package:wobblio/core/ports/budget_repository.dart';
 import 'package:wobblio/core/ports/camera_capture.dart';
 import 'package:wobblio/core/ports/cognito_authenticator.dart';
+import 'package:wobblio/core/ports/deep_link_source.dart';
 import 'package:wobblio/core/ports/document_picker.dart';
 import 'package:wobblio/core/ports/gallery_picker.dart';
 import 'package:wobblio/core/ports/ingestion_repository.dart';
@@ -39,6 +41,7 @@ import 'package:wobblio/core/ports/upload_preparer.dart';
 import 'package:wobblio/core/ports/insights_repository.dart';
 import 'package:wobblio/core/ports/usage_repository.dart';
 import 'package:wobblio/infrastructure/adapters/app_auth_cognito_authenticator.dart';
+import 'package:wobblio/infrastructure/adapters/app_links_deep_link_source.dart';
 import 'package:wobblio/infrastructure/adapters/cognito_auth_token_provider.dart';
 import 'package:wobblio/infrastructure/adapters/dio_api_client.dart';
 import 'package:wobblio/infrastructure/adapters/dio_s3_uploader.dart';
@@ -149,6 +152,9 @@ void configureDependencies() {
     ..registerLazySingleton<ISplitIdCache>(
       () => const SharedPrefsSplitIdCache(),
     )
+    // Deep links (18h): inbound /s/{token} share links → the public read-only
+    // shared-split page, routed above AuthGate (works signed-out).
+    ..registerLazySingleton<IDeepLinkSource>(AppLinksDeepLinkSource.new)
     ..registerLazySingleton<AuthBloc>(
       () => AuthBloc(
         authenticator: locator<ICognitoAuthenticator>(),
@@ -238,6 +244,13 @@ void configureDependencies() {
         share: locator<ISharePresenter>(),
         invoiceId: invoiceId,
       ),
+    )
+    // Shared Split (18h): public read-only page, parameterized by share token.
+    ..registerFactoryParam<SharedSplitBloc, String, void>(
+      (token, _) => SharedSplitBloc(
+        splits: locator<ISplitRepository>(),
+        token: token,
+      ),
     );
 }
 
@@ -245,5 +258,10 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   configureDependencies();
   final authBloc = locator<AuthBloc>()..add(const AuthBootstrapRequested());
-  runApp(WobblioApp(authBloc: authBloc));
+  runApp(
+    WobblioApp(
+      authBloc: authBloc,
+      deepLinks: locator<IDeepLinkSource>(),
+    ),
+  );
 }

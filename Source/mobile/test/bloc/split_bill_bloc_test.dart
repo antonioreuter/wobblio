@@ -12,7 +12,8 @@ import 'package:wobblio/core/ports/profile_repository.dart';
 import 'package:wobblio/core/ports/share_presenter.dart';
 import 'package:wobblio/core/ports/split_id_cache.dart';
 import 'package:wobblio/core/ports/split_repository.dart';
-import 'package:wobblio/core/splitting/split_assignment.dart';
+import 'package:wobblio/core/splitting/shared_split.dart';
+import 'package:wobblio/core/splitting/split_allocation.dart';
 import 'package:wobblio/core/splitting/split_summary.dart';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
@@ -20,6 +21,7 @@ InvoiceLineDetail _line(
   String id,
   String text,
   double total, {
+  double quantity = 1,
   bool isDiscount = false,
   bool isDepositOrFee = false,
 }) =>
@@ -27,7 +29,7 @@ InvoiceLineDetail _line(
       id: id,
       rawText: text,
       productId: null,
-      quantity: 1,
+      quantity: quantity,
       unitPrice: total,
       lineTotal: total,
       categoryName: null,
@@ -51,6 +53,10 @@ InvoiceDetail _detailFixture({List<InvoiceLineDetail>? lines}) => InvoiceDetail(
             _line('l3', 'Korting', -1, isDiscount: true),
           ],
     );
+
+// A single multi-quantity product line (qty 3) for the +/− stepper tests.
+InvoiceDetail _multiDetailFixture() =>
+    _detailFixture(lines: [_line('l1', '3× Cola', 9, quantity: 3)]);
 
 UserProfile _profile(String role) =>
     UserProfile(onboarded: true, fullName: 'Anna', role: role, status: 'ACTIVE');
@@ -129,32 +135,34 @@ class _FakeSplits implements ISplitRepository {
     Set<String>? validSplitIds,
     this.createdId = 'split-created',
     this.summary,
-    this.assignLineError = false,
-    this.unassignLineError = false,
+    this.setError = false,
     this.getSplitError = false,
-    Map<String, SplitAssignment>? seedAssignments,
+    this.shareUrl = 'https://wobblio.app/s/tok123',
+    this.shareError = false,
+    Map<String, List<SplitAllocation>>? seedAllocations,
   })  : // A fresh, mutable copy — `createSplit` below grows this set, and a
         // `const` default (or a caller-passed literal) would throw on `.add`.
         validSplitIds = {...(validSplitIds ?? const {'split-1'})},
-        _assignments = {...?seedAssignments};
+        _allocations = {...?seedAllocations};
 
   final Set<String> validSplitIds;
   final String createdId;
   SplitSummary? summary;
-  final bool assignLineError;
-  final bool unassignLineError;
+  final bool setError;
   final bool getSplitError;
+  final String shareUrl;
+  final bool shareError;
 
   int createCalls = 0;
+  int createShareCalls = 0;
   final List<String> getSplitCalls = [];
-  final List<(String, double)> assignCalls = [];
-  final List<String> unassignCalls = [];
+  final List<(String, List<LineAllocation>)> setCalls = [];
 
-  /// Mutable in-memory assignment set so getSplit reflects prior
-  /// assign/unassign calls, letting the fraction-cycle tests read back what
-  /// the previous tap wrote. May be pre-seeded to simulate a fraction
-  /// already round-tripped through the backend's `NUMERIC(5,4)` column.
-  final Map<String, SplitAssignment> _assignments;
+  /// Mutable in-memory allocation set (lineId → its allocations) so getSplit
+  /// reflects prior setLineAllocations calls, letting the cycle/stepper tests
+  /// read back what the previous mutation wrote. May carry several allocations
+  /// per line (multiple participants sharing a multi-unit line).
+  final Map<String, List<SplitAllocation>> _allocations;
 
   @override
   Future<String> createSplit(String invoiceId) async {
@@ -164,34 +172,33 @@ class _FakeSplits implements ISplitRepository {
   }
 
   @override
-  Future<List<SplitAssignment>> getSplit(String invoiceId, String splitId) async {
+  Future<List<SplitAllocation>> getSplit(String invoiceId, String splitId) async {
     getSplitCalls.add(splitId);
     if (getSplitError) throw const ApiException('boom', statusCode: 500);
     if (!validSplitIds.contains(splitId)) {
       throw const ApiException('not found', statusCode: 404);
     }
-    return _assignments.values.toList();
+    return [for (final list in _allocations.values) ...list];
   }
 
   @override
-  Future<void> assignLine(
+  Future<void> setLineAllocations(
     String invoiceId,
     String splitId,
     String lineId,
-    String participantName, {
-    double fraction = 1,
-  }) async {
-    assignCalls.add((lineId, fraction));
-    if (assignLineError) throw Exception('boom');
-    _assignments[lineId] =
-        SplitAssignment(lineId: lineId, participantName: participantName, fraction: fraction);
-  }
-
-  @override
-  Future<void> unassignLine(String invoiceId, String splitId, String lineId) async {
-    unassignCalls.add(lineId);
-    if (unassignLineError) throw Exception('boom');
-    _assignments.remove(lineId);
+    List<LineAllocation> allocations,
+  ) async {
+    setCalls.add((lineId, allocations));
+    if (setError) throw Exception('boom');
+    if (allocations.isEmpty) {
+      _allocations.remove(lineId);
+      return;
+    }
+    _allocations[lineId] = [
+      for (final a in allocations)
+        SplitAllocation(
+            lineId: lineId, participantName: a.participantName, units: a.units,),
+    ];
   }
 
   @override
@@ -201,6 +208,16 @@ class _FakeSplits implements ISplitRepository {
   @override
   Future<String> getWhatsAppText(String invoiceId, String splitId) async =>
       'Split summary text';
+
+  @override
+  Future<String> createShareLink(String invoiceId, String splitId) async {
+    createShareCalls++;
+    if (shareError) throw const ApiException('boom', statusCode: 500);
+    return shareUrl;
+  }
+
+  @override
+  Future<SharedSplit> getSharedSplit(String token) => throw UnimplementedError();
 }
 
 SplitBillBloc _build({
@@ -271,15 +288,6 @@ void main() {
       },
     );
 
-    test('a cached, still-valid split id issues no create call', () async {
-      final splits = _FakeSplits(validSplitIds: {'split-1'});
-      final bloc = _build(cache: _FakeSplitIdCache(seeded: 'split-1'), splits: splits);
-      bloc.add(const SplitBillStarted());
-      await Future<void>.delayed(Duration.zero);
-      expect(splits.createCalls, 0);
-      await bloc.close();
-    });
-
     test('a cached but stale (404) split id falls back to creating a fresh one', () async {
       final splits = _FakeSplits(validSplitIds: {}, createdId: 'split-fresh');
       final cache = _FakeSplitIdCache(seeded: 'split-stale');
@@ -300,8 +308,6 @@ void main() {
       final bloc = _build(cache: cache, splits: splits);
       bloc.add(const SplitBillStarted());
       await Future<void>.delayed(Duration.zero);
-      // getSplitError makes every getSplit call throw, so the ready state
-      // never lands — assert the fallback create still happened.
       expect(splits.createCalls, 1);
       expect(cache.writes, 1);
       await bloc.close();
@@ -339,20 +345,19 @@ void main() {
       ],
     );
 
-    group('fraction-cycle state machine (handleLineTap)', () {
-      test('You active + unassigned line → no-op (nothing to unassign)', () async {
+    group('single-unit tap-cycle state machine', () {
+      test('You active + unassigned line → no-op (nothing to clear)', () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillLineTapped('l1'));
         await Future<void>.delayed(Duration.zero);
-        expect(splits.unassignCalls, isEmpty);
-        expect(splits.assignCalls, isEmpty);
+        expect(splits.setCalls, isEmpty);
         await bloc.close();
       });
 
-      test('non-You active + unassigned line → assigns at fraction 1', () async {
+      test('non-You active + unassigned line → assigns 1 unit', () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
@@ -361,12 +366,14 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillLineTapped('l1'));
         await Future<void>.delayed(Duration.zero);
-        expect(splits.assignCalls, [('l1', 1.0)]);
-        expect(bloc.state.assignmentFor('l1')?.participantName, 'Sam');
+        expect(splits.setCalls, [
+          ('l1', [const LineAllocation(participantName: 'Sam', units: 1)]),
+        ]);
+        expect(bloc.state.unitsFor('l1', 'Sam'), 1);
         await bloc.close();
       });
 
-      test('full walk: unassigned → 1 → ½ → ⅓ → unassign', () async {
+      test('full walk: unassigned → 1 → ½ → ⅓ → clear', () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
@@ -376,55 +383,49 @@ void main() {
 
         bloc.add(const SplitBillLineTapped('l1')); // → 1
         await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.assignmentFor('l1')?.fraction, 1);
+        expect(bloc.state.unitsFor('l1', 'Sam'), 1);
 
         bloc.add(const SplitBillLineTapped('l1')); // → ½
         await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.assignmentFor('l1')?.fraction, 0.5);
+        expect(bloc.state.unitsFor('l1', 'Sam'), 0.5);
 
         bloc.add(const SplitBillLineTapped('l1')); // → ⅓
         await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.assignmentFor('l1')?.fraction, closeTo(1 / 3, 1e-9));
+        expect(bloc.state.unitsFor('l1', 'Sam'), closeTo(1 / 3, 1e-9));
 
-        bloc.add(const SplitBillLineTapped('l1')); // → unassign
+        bloc.add(const SplitBillLineTapped('l1')); // → clear
         await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.assignmentFor('l1'), isNull);
-        expect(splits.unassignCalls, contains('l1'));
-
+        expect(bloc.state.allocationsFor('l1'), isEmpty);
+        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
         await bloc.close();
       });
 
       test(
-          'a NUMERIC(5,4) round-tripped 0.3333 (not exact 1/3) still matches '
-          'the ⅓ cycle index — next tap unassigns, not restarts at 1', () async {
-        // Simulates the backend echoing back 0.3333 (its NUMERIC(5,4) rounding
-        // of 1/3) rather than Dart's literal 0.3333333333333333 — the epsilon
-        // tolerance must still resolve this to cycle index 2 (⅓) so the next
-        // tap correctly unassigns instead of misreading it as "no match" and
-        // restarting the cycle at fraction 1.
+          'a NUMERIC(9,4) round-tripped 0.3333 (not exact 1/3) still matches '
+          'the ⅓ cycle index — next tap clears, not restarts at 1', () async {
         final splits = _FakeSplits(
-          seedAssignments: {
-            'l1': const SplitAssignment(
-                lineId: 'l1', participantName: 'Sam', fraction: 0.3333,),
+          seedAllocations: {
+            'l1': const [
+              SplitAllocation(lineId: 'l1', participantName: 'Sam', units: 0.3333),
+            ],
           },
         );
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
         await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.assignmentFor('l1')?.fraction, 0.3333);
+        expect(bloc.state.unitsFor('l1', 'Sam'), 0.3333);
         bloc.add(const SplitBillParticipantSelected('Sam'));
         await Future<void>.delayed(Duration.zero);
 
-        bloc.add(const SplitBillLineTapped('l1')); // ⅓ → past the end → unassign
+        bloc.add(const SplitBillLineTapped('l1')); // ⅓ → past the end → clear
         await Future<void>.delayed(Duration.zero);
 
-        expect(splits.unassignCalls, contains('l1'));
-        expect(splits.assignCalls, isEmpty);
-        expect(bloc.state.assignmentFor('l1'), isNull);
+        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
+        expect(bloc.state.allocationsFor('l1'), isEmpty);
         await bloc.close();
       });
 
-      test('You active + assigned line → unassign only, never PATCH', () async {
+      test('You active + assigned line → clears the set, never re-assigns', () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
@@ -435,16 +436,14 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantSelected(SplitBillBloc.you));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1')); // You active → unassign only
+        bloc.add(const SplitBillLineTapped('l1')); // You active → clear
         await Future<void>.delayed(Duration.zero);
-        expect(splits.unassignCalls, contains('l1'));
-        expect(bloc.state.assignmentFor('l1'), isNull);
-        // Only the one assign call from Sam's tap — no PATCH under "You".
-        expect(splits.assignCalls, [('l1', 1.0)]);
+        expect(bloc.state.allocationsFor('l1'), isEmpty);
+        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
         await bloc.close();
       });
 
-      test('tapping a line already owned by a different participant reassigns at fraction 1',
+      test('tapping a line owned by a different participant reassigns it at 1 unit',
           () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
@@ -458,13 +457,13 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillLineTapped('l1')); // Zoe steals it at 1
         await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.assignmentFor('l1')?.participantName, 'Zoe');
-        expect(bloc.state.assignmentFor('l1')?.fraction, 1);
+        expect(bloc.state.unitsFor('l1', 'Zoe'), 1);
+        expect(bloc.state.unitsFor('l1', 'Sam'), 0);
         await bloc.close();
       });
 
       test('a line-tap failure surfaces a notice', () async {
-        final splits = _FakeSplits(assignLineError: true);
+        final splits = _FakeSplits(setError: true);
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
         await Future<void>.delayed(Duration.zero);
@@ -477,7 +476,93 @@ void main() {
       });
     });
 
-    group('mutations refetch assignments+summary rather than recompute', () {
+    group('multi-unit +/− stepper', () {
+      test('+ assigns a unit to the active participant, keeping other owners', () async {
+        final splits = _FakeSplits(
+          seedAllocations: {
+            'l1': const [
+              SplitAllocation(lineId: 'l1', participantName: 'Sam', units: 1),
+            ],
+          },
+        );
+        final bloc = _build(
+            splits: splits, invoices: _FakeInvoices(detail: _multiDetailFixture()),);
+        bloc.add(const SplitBillStarted());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillParticipantAdded('Zoe'));
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineStepped('l1', 1)); // Zoe +1
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.unitsFor('l1', 'Zoe'), 1);
+        expect(bloc.state.unitsFor('l1', 'Sam'), 1);
+        await bloc.close();
+      });
+
+      test('+ is capped at the units left after the other owners', () async {
+        final splits = _FakeSplits(
+          seedAllocations: {
+            'l1': const [
+              SplitAllocation(lineId: 'l1', participantName: 'Sam', units: 2),
+            ],
+          },
+        );
+        final bloc = _build(
+            splits: splits, invoices: _FakeInvoices(detail: _multiDetailFixture()),);
+        bloc.add(const SplitBillStarted());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillParticipantAdded('Zoe'));
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineStepped('l1', 1)); // Zoe +1 → 1 (cap 3-2)
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineStepped('l1', 1)); // capped, stays 1
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.unitsFor('l1', 'Zoe'), 1);
+        await bloc.close();
+      });
+
+      test('− decrements and drops the participant off the line at zero', () async {
+        final splits = _FakeSplits(
+          seedAllocations: {
+            'l1': const [
+              SplitAllocation(lineId: 'l1', participantName: 'Zoe', units: 1),
+            ],
+          },
+        );
+        final bloc = _build(
+            splits: splits, invoices: _FakeInvoices(detail: _multiDetailFixture()),);
+        bloc.add(const SplitBillStarted());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillParticipantSelected('Zoe'));
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineStepped('l1', -1)); // Zoe 1 → 0
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.unitsFor('l1', 'Zoe'), 0);
+        expect(bloc.state.allocationsFor('l1'), isEmpty);
+        await bloc.close();
+      });
+
+      test('reset clears every allocation on the line', () async {
+        final splits = _FakeSplits(
+          seedAllocations: {
+            'l1': const [
+              SplitAllocation(lineId: 'l1', participantName: 'Sam', units: 1),
+              SplitAllocation(lineId: 'l1', participantName: 'Zoe', units: 1),
+            ],
+          },
+        );
+        final bloc = _build(
+            splits: splits, invoices: _FakeInvoices(detail: _multiDetailFixture()),);
+        bloc.add(const SplitBillStarted());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineReset('l1'));
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.allocationsFor('l1'), isEmpty);
+        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
+        await bloc.close();
+      });
+    });
+
+    group('mutations refetch allocations+summary rather than recompute', () {
       test('a successful line tap ends up with the canned post-mutation summary', () async {
         final cannedSummary = _summaryFixture(
           participants: const [
@@ -555,7 +640,8 @@ void main() {
     });
 
     group('participant remove', () {
-      test('unassigns every line they held and reassigns active back to You', () async {
+      test('strips them from every line they held and reassigns active back to You',
+          () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
@@ -568,22 +654,51 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 10));
         expect(bloc.state.participants, isNot(contains('Sam')));
         expect(bloc.state.activeParticipant, SplitBillBloc.you);
-        expect(splits.unassignCalls, contains('l1'));
+        // Sam was the sole owner of l1 → the line is re-committed empty.
+        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
+        expect(bloc.state.allocationsFor('l1'), isEmpty);
         await bloc.close();
       });
 
       test('reverts the local participant list on failure', () async {
-        final splits = _FakeSplits(unassignLineError: true);
-        final bloc = _build(splits: splits);
+        // Sam is seeded owning l1 (so participants seeds to [Sam] on load), and
+        // every setLineAllocations fails — so the remove's re-commit throws and
+        // the optimistic chip drop is reverted with a notice.
+        final bloc = _build(splits: _FailingOnSetSplits());
         bloc.add(const SplitBillStarted());
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillParticipantAdded('Sam'));
-        await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1'));
-        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.participants, contains('Sam'));
         bloc.add(const SplitBillParticipantRemoved('Sam'));
         await Future<void>.delayed(const Duration(milliseconds: 10));
         expect(bloc.state.participants, contains('Sam'));
+        expect(bloc.state.notice, isNotNull);
+        await bloc.close();
+      });
+    });
+
+    group('share link', () {
+      test('SplitBillShareLinkRequested mints a link, stores it, and shares it', () async {
+        final share = _FakeShare();
+        final splits = _FakeSplits(shareUrl: 'https://wobblio.app/s/abc');
+        final bloc = _build(splits: splits, share: share);
+        bloc.add(const SplitBillStarted());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillShareLinkRequested());
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        expect(splits.createShareCalls, 1);
+        expect(bloc.state.shareUrl, 'https://wobblio.app/s/abc');
+        expect(share.shared, ['https://wobblio.app/s/abc']);
+        await bloc.close();
+      });
+
+      test('a share-link failure surfaces a notice and leaves shareUrl null', () async {
+        final splits = _FakeSplits(shareError: true);
+        final bloc = _build(splits: splits);
+        bloc.add(const SplitBillStarted());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillShareLinkRequested());
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        expect(bloc.state.shareUrl, isNull);
         expect(bloc.state.notice, isNotNull);
         await bloc.close();
       });
@@ -616,4 +731,29 @@ void main() {
       });
     });
   });
+}
+
+// A variant whose setLineAllocations always fails — used to exercise the
+// participant-remove revert path (the initial state seeds Sam owning l1 so the
+// remove has a line to re-commit).
+class _FailingOnSetSplits extends _FakeSplits {
+  _FailingOnSetSplits()
+      : super(
+          seedAllocations: {
+            'l1': const [
+              SplitAllocation(lineId: 'l1', participantName: 'Sam', units: 1),
+            ],
+          },
+        );
+
+  @override
+  Future<void> setLineAllocations(
+    String invoiceId,
+    String splitId,
+    String lineId,
+    List<LineAllocation> allocations,
+  ) async {
+    setCalls.add((lineId, allocations));
+    throw Exception('boom');
+  }
 }

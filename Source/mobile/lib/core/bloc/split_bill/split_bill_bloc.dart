@@ -7,7 +7,7 @@ import 'package:wobblio/core/ports/profile_repository.dart';
 import 'package:wobblio/core/ports/share_presenter.dart';
 import 'package:wobblio/core/ports/split_id_cache.dart';
 import 'package:wobblio/core/ports/split_repository.dart';
-import 'package:wobblio/core/splitting/split_assignment.dart';
+import 'package:wobblio/core/splitting/split_allocation.dart';
 import 'package:wobblio/core/splitting/split_summary.dart';
 
 part 'split_bill_event.dart';
@@ -19,10 +19,12 @@ part 'split_bill_state.dart';
 /// fail-closed premium gate (mirrors `ShoppingListBloc`/`BudgetBloc`), the
 /// split-id resolve-with-cache-fallback dance (`_resolveSplitId`, working
 /// around `POST /invoices/{id}/splits`' lack of idempotency), and the
-/// tap-to-assign/fraction-cycle state machine (`_onLineTapped`). Every
-/// assignment mutation refetches `assignments`+`summary` from the backend —
-/// the fee-pool-proportional-share math is server-only. Widgets stay
-/// logic-free (`.claude/rules/flutter-architecture-guard.md`).
+/// units-based assignment state machine — multi-unit lines step with `+/−`
+/// (`_stepUnits`), single-unit lines tap-cycle `[1, ½, ⅓]` (`_cycleShare`).
+/// Every mutation replaces a line's whole allocation set then refetches
+/// `allocations`+`summary` — the fee-pool-proportional-share math is
+/// server-only. Widgets stay logic-free
+/// (`.claude/rules/flutter-architecture-guard.md`).
 class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
   SplitBillBloc({
     required ISplitRepository splits,
@@ -42,23 +44,26 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     on<SplitBillParticipantSelected>(_onParticipantSelected);
     on<SplitBillParticipantRemoved>(_onParticipantRemoved);
     on<SplitBillLineTapped>(_onLineTapped);
+    on<SplitBillLineStepped>(_onLineStepped);
+    on<SplitBillLineReset>(_onLineReset);
+    on<SplitBillShareLinkRequested>(_onShareLinkRequested);
     on<SplitBillWhatsAppRequested>(_onWhatsAppRequested);
     on<SplitBillCopyRequested>(_onCopyRequested);
   }
 
   /// The synthetic implicit-remainder participant — never appears in
-  /// [SplitBillState.participants], never PATCH-able as a real assignment
+  /// [SplitBillState.participants], never allocatable as a real assignment
   /// (the backend rejects it with a 400).
   static const String you = 'You';
 
   static const List<double> _fractionCycle = [1, 0.5, 1 / 3];
 
-  // bill_split_line.fraction is NUMERIC(5,4) — 1/3 round-trips through the
-  // backend as 0.3333, not Dart's 0.3333333333333333 (diff ≈ 3.33e-5). The
-  // tolerance must comfortably clear that DB-rounding gap while staying tight
-  // enough that the three cycle values (1, 0.5, 1/3) never collide with each
-  // other. Ported verbatim from `bill-split-dialog.tsx`'s `FRACTION_EPSILON`.
-  static const double _fractionEpsilon = 1e-3;
+  // bill_split_line.units is NUMERIC(9,4) — 1/3 round-trips through the backend
+  // as 0.3333, not Dart's 0.3333333333333333 (diff ≈ 3.33e-5). The tolerance
+  // must comfortably clear that DB-rounding gap while staying tight enough that
+  // the three cycle values (1, 0.5, 1/3) never collide with each other. Ported
+  // verbatim from `bill-split-dialog.tsx`'s `EPSILON`.
+  static const double _epsilon = 1e-3;
 
   static const int _maxParticipantNameLength = 40;
 
@@ -92,7 +97,7 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
         _splits.getSummary(invoiceId, splitId),
       ]);
       final detail = results[0]! as InvoiceDetail;
-      final assignments = results[1]! as List<SplitAssignment>;
+      final allocations = results[1]! as List<SplitAllocation>;
       final summary = results[2]! as SplitSummary;
       emit(
         state.copyWith(
@@ -103,8 +108,8 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
           currency: detail.currency,
           transactionDate: detail.transactionDate,
           lines: _assignableLines(detail),
-          participants: _distinctNames(assignments),
-          assignments: assignments,
+          participants: _distinctNames(allocations),
+          allocations: allocations,
           summary: summary,
         ),
       );
@@ -139,11 +144,11 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     }
   }
 
-  List<String> _distinctNames(List<SplitAssignment> assignments) {
+  List<String> _distinctNames(List<SplitAllocation> allocations) {
     final names = <String>[];
-    for (final assignment in assignments) {
-      if (!names.contains(assignment.participantName)) {
-        names.add(assignment.participantName);
+    for (final allocation in allocations) {
+      if (!names.contains(allocation.participantName)) {
+        names.add(allocation.participantName);
       }
     }
     return names;
@@ -177,10 +182,11 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
   }
 
   // Optimistically drops the chip + reassigns the active participant back to
-  // "You" if it was active, then unassigns every line the removed person
-  // held. Always refreshes afterward (mirrors `removeParticipant`'s
-  // Promise.all-then-refresh-then-throw shape); a notice + full local-list
-  // revert only fires if one or more of the unassign calls actually failed.
+  // "You" if it was active, then strips the removed person from every line they
+  // held by re-committing that line's remaining allocations. Always refreshes
+  // afterward (mirrors `removeParticipant`'s Promise.all-then-refresh-then-throw
+  // shape); a notice + full local-list revert only fires if one or more of the
+  // re-commit calls actually failed.
   Future<void> _onParticipantRemoved(
     SplitBillParticipantRemoved event,
     Emitter<SplitBillState> emit,
@@ -188,6 +194,13 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     final name = event.name;
     final wasActive = state.activeParticipant == name;
     final previousParticipants = state.participants;
+    final lineIds = {
+      for (final a in state.allocations)
+        if (a.participantName == name) a.lineId,
+    };
+    final kept = {
+      for (final lineId in lineIds) lineId: _othersOf(lineId, name),
+    };
     emit(
       state.copyWith(
         participants: previousParticipants.where((p) => p != name).toList(),
@@ -197,12 +210,10 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     );
     final splitId = state.splitId;
     if (splitId == null) return;
-    final lineIds = [
-      for (final assignment in state.assignments)
-        if (assignment.participantName == name) assignment.lineId,
-    ];
-    final results = await Future.wait(
-        [for (final lineId in lineIds) _tryUnassign(splitId, lineId)],);
+    final results = await Future.wait([
+      for (final entry in kept.entries)
+        _tryCommit(splitId, entry.key, entry.value),
+    ]);
     await _refreshSplitState(emit);
     if (results.any((ok) => !ok)) {
       emit(
@@ -215,29 +226,124 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     }
   }
 
-  Future<bool> _tryUnassign(String splitId, String lineId) async {
-    try {
-      await _splits.unassignLine(invoiceId, splitId, lineId);
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // "You" is the synthetic implicit remainder owner, not a PATCH-able
-  // participant — while active, a tap can only give a line back to you
-  // (unassign), never cycle a fraction under a literal "You" assignment row.
-  // Ports `bill-split-dialog.tsx`'s `handleLineTap` exactly.
+  // "You" is the synthetic implicit remainder owner, not an allocatable
+  // participant — while active, a single-unit tap can only give the line back
+  // to you (clear its allocations). Ports `bill-split-dialog.tsx`'s
+  // `cycleShare`/`resetLine` split for single-unit lines.
   Future<void> _onLineTapped(
     SplitBillLineTapped event,
     Emitter<SplitBillState> emit,
   ) async {
+    final line = _lineById(event.lineId);
+    if (line == null) return;
+    if (state.activeParticipant == you) {
+      await _resetLine(emit, line);
+      return;
+    }
+    await _cycleShare(emit, line);
+  }
+
+  Future<void> _onLineStepped(
+    SplitBillLineStepped event,
+    Emitter<SplitBillState> emit,
+  ) async {
+    final line = _lineById(event.lineId);
+    if (line == null || state.activeParticipant == you) return;
+    await _stepUnits(emit, line, event.delta);
+  }
+
+  Future<void> _onLineReset(
+    SplitBillLineReset event,
+    Emitter<SplitBillState> emit,
+  ) async {
+    final line = _lineById(event.lineId);
+    if (line == null) return;
+    await _resetLine(emit, line);
+  }
+
+  // Multi-unit lines: nudge the active participant's unit count, capped by
+  // what's left after the other owners. Ports `stepUnits`.
+  Future<void> _stepUnits(
+    Emitter<SplitBillState> emit,
+    InvoiceLineDetail line,
+    int delta,
+  ) async {
+    final active = state.activeParticipant;
+    final others = _othersOf(line.id, active);
+    final otherUnits = others.fold<double>(0, (sum, a) => sum + a.units);
+    final capacity = line.quantity - otherUnits;
+    final next =
+        (state.unitsFor(line.id, active) + delta).clamp(0.0, capacity);
+    await _commit(emit, line.id, [
+      ...others,
+      if (next > _epsilon)
+        LineAllocation(participantName: active, units: next),
+    ]);
+  }
+
+  // Single-unit lines keep the tap-to-cycle share: assign in full, then ½, ⅓,
+  // then release. One owner at a time (remainder → You), so this replaces the
+  // set. Ports `cycleShare`.
+  Future<void> _cycleShare(
+    Emitter<SplitBillState> emit,
+    InvoiceLineDetail line,
+  ) async {
+    final active = state.activeParticipant;
+    final owns =
+        state.allocationsFor(line.id).any((a) => a.participantName == active);
+    if (!owns) {
+      await _commit(
+          emit, line.id, [LineAllocation(participantName: active, units: 1)],);
+      return;
+    }
+    final mine = state.unitsFor(line.id, active);
+    final index =
+        _fractionCycle.indexWhere((f) => (f - mine).abs() < _epsilon);
+    final nextIndex = index + 1;
+    final next =
+        nextIndex < _fractionCycle.length ? _fractionCycle[nextIndex] : 0.0;
+    await _commit(
+      emit,
+      line.id,
+      next > _epsilon
+          ? [LineAllocation(participantName: active, units: next)]
+          : const [],
+    );
+  }
+
+  Future<void> _resetLine(
+    Emitter<SplitBillState> emit,
+    InvoiceLineDetail line,
+  ) async {
+    if (state.allocationsFor(line.id).isEmpty) return;
+    await _commit(emit, line.id, const []);
+  }
+
+  List<LineAllocation> _othersOf(String lineId, String name) => [
+        for (final a in state.allocationsFor(lineId))
+          if (a.participantName != name)
+            LineAllocation(participantName: a.participantName, units: a.units),
+      ];
+
+  InvoiceLineDetail? _lineById(String lineId) {
+    for (final line in state.lines) {
+      if (line.id == lineId) return line;
+    }
+    return null;
+  }
+
+  // Replace a line's whole allocation set, then refetch — every split gesture
+  // reduces to "here is the new set for this line".
+  Future<void> _commit(
+    Emitter<SplitBillState> emit,
+    String lineId,
+    List<LineAllocation> allocations,
+  ) async {
     final splitId = state.splitId;
     if (splitId == null) return;
-    final assignment = state.assignmentFor(event.lineId);
     emit(state.copyWith(notice: null));
     try {
-      await _applyLineTap(splitId, event.lineId, assignment);
+      await _splits.setLineAllocations(invoiceId, splitId, lineId, allocations);
       await _refreshSplitState(emit);
     } catch (_) {
       emit(state.copyWith(
@@ -245,36 +351,34 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     }
   }
 
-  Future<void> _applyLineTap(
+  Future<bool> _tryCommit(
     String splitId,
     String lineId,
-    SplitAssignment? assignment,
+    List<LineAllocation> allocations,
   ) async {
-    if (state.activeParticipant == you) {
-      if (assignment != null) await _splits.unassignLine(invoiceId, splitId, lineId);
-      return;
-    }
-    if (assignment == null || assignment.participantName != state.activeParticipant) {
-      await _splits.assignLine(invoiceId, splitId, lineId, state.activeParticipant);
-      return;
-    }
-    final nextFraction = _nextFraction(assignment.fraction);
-    if (nextFraction == null) {
-      await _splits.unassignLine(invoiceId, splitId, lineId);
-    } else {
-      await _splits.assignLine(
-          invoiceId, splitId, lineId, state.activeParticipant,
-          fraction: nextFraction,);
+    try {
+      await _splits.setLineAllocations(invoiceId, splitId, lineId, allocations);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
-  /// Null once the cycle runs past its end — the caller unassigns instead.
-  static double? _nextFraction(double fraction) {
-    final index = _fractionCycle
-        .indexWhere((f) => (f - fraction).abs() < _fractionEpsilon);
-    final nextIndex = index + 1;
-    if (nextIndex >= _fractionCycle.length) return null;
-    return _fractionCycle[nextIndex];
+  Future<void> _onShareLinkRequested(
+    SplitBillShareLinkRequested event,
+    Emitter<SplitBillState> emit,
+  ) async {
+    final splitId = state.splitId;
+    if (splitId == null) return;
+    emit(state.copyWith(notice: null));
+    try {
+      final url = await _splits.createShareLink(invoiceId, splitId);
+      emit(state.copyWith(shareUrl: url));
+      await _share.share(url);
+    } catch (_) {
+      emit(state.copyWith(
+          notice: 'Couldn’t create a share link — please try again.',),);
+    }
   }
 
   Future<void> _onWhatsAppRequested(
@@ -309,27 +413,27 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     }
   }
 
-  // Refetches assignments + summary from the backend and grows (never
+  // Refetches allocations + summary from the backend and grows (never
   // shrinks) [SplitBillState.participants] with any newly-observed names —
-  // the fee-pool math and the assignment set of record both live server-side.
+  // the fee-pool math and the allocation set of record both live server-side.
   Future<void> _refreshSplitState(Emitter<SplitBillState> emit) async {
     final splitId = state.splitId;
     if (splitId == null) return;
-    final assignments = await _splits.getSplit(invoiceId, splitId);
+    final allocations = await _splits.getSplit(invoiceId, splitId);
     final summary = await _splits.getSummary(invoiceId, splitId);
     emit(
       state.copyWith(
-        assignments: assignments,
+        allocations: allocations,
         summary: summary,
-        participants: _growParticipants(state.participants, assignments),
+        participants: _growParticipants(state.participants, allocations),
       ),
     );
   }
 
   List<String> _growParticipants(
-      List<String> current, List<SplitAssignment> assignments,) {
+      List<String> current, List<SplitAllocation> allocations,) {
     final grown = [...current];
-    for (final name in _distinctNames(assignments)) {
+    for (final name in _distinctNames(allocations)) {
       if (!grown.contains(name)) grown.add(name);
     }
     return grown;

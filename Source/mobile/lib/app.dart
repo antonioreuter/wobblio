@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:wobblio/core/bloc/auth/auth_bloc.dart';
+import 'package:wobblio/core/ports/deep_link_source.dart';
 import 'package:wobblio/ui/auth/auth_gate.dart';
+import 'package:wobblio/ui/deep_link/deep_link_listener.dart';
 import 'package:wobblio/ui/design_system/aurora_background.dart';
 import 'package:wobblio/ui/theme/app_theme.dart';
 
@@ -10,11 +12,16 @@ import 'package:wobblio/ui/theme/app_theme.dart';
 /// that drives the [AuthGate] router. The bloc is created and bootstrapped at
 /// the composition root (`main.dart`) and provided here for the widget tree.
 /// [AuroraBackground] mounts once here (behind every pre-auth and
-/// authenticated screen) rather than per-screen.
+/// authenticated screen) rather than per-screen. A [DeepLinkListener] wraps the
+/// router so `/s/{token}` share links open the public shared-split page over
+/// whatever [AuthGate] is showing (works signed-out).
 class WobblioApp extends StatelessWidget {
-  const WobblioApp({super.key, required this.authBloc});
+  WobblioApp({super.key, required this.authBloc, required this.deepLinks});
 
   final AuthBloc authBloc;
+  final IDeepLinkSource deepLinks;
+
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +30,7 @@ class WobblioApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Wobblio',
         debugShowCheckedModeBanner: false,
+        navigatorKey: _navigatorKey,
         theme: AppTheme.dark,
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.dark,
@@ -39,7 +47,11 @@ class WobblioApp extends StatelessWidget {
             ],
           ),
         ),
-        home: const AuthGate(),
+        home: DeepLinkListener(
+          source: deepLinks,
+          navigatorKey: _navigatorKey,
+          child: const AuthGate(),
+        ),
       ),
     );
   }

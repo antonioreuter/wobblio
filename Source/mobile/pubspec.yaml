@@ -27,6 +27,7 @@ dependencies:
   flutter_lucide: ^1.11.0            # Lucide glyph set, matching the webapp's icon language (17a) — lucide_icons is abandoned and incompatible with Flutter's final IconData
   share_plus: ^10.1.4               # native OS share sheet for a receipt's share link (18b)
   shared_preferences: ^2.3.3        # split-id cache for the non-idempotent POST /invoices/{id}/splits (18h)
+  app_links: ^6.3.2                  # universal/app-link + custom-scheme deep links → public /s/{token} shared-split page (18h)
   fl_chart: ^0.69.2                 # price-trend line chart on the Reports screen (18e)
 
 dev_dependencies:

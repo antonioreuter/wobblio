@@ -8,6 +8,7 @@ import 'package:wobblio/core/auth/auth_tokens.dart';
 import 'package:wobblio/core/auth/user_profile.dart';
 import 'package:wobblio/core/bloc/auth/auth_bloc.dart';
 import 'package:wobblio/core/ports/cognito_authenticator.dart';
+import 'package:wobblio/core/ports/deep_link_source.dart';
 import 'package:wobblio/core/ports/profile_repository.dart';
 import 'package:wobblio/core/ports/secure_token_store.dart';
 
@@ -34,6 +35,13 @@ class _UnusedProfiles implements IProfileRepository {
   Future<UserProfile> fetchProfile() => throw UnimplementedError();
 }
 
+class _NoDeepLinks implements IDeepLinkSource {
+  @override
+  Future<Uri?> initialLink() async => null;
+  @override
+  Stream<Uri> get links => const Stream<Uri>.empty();
+}
+
 void main() {
   testWidgets('app boots to the sign-in screen when no session is persisted',
       (tester) async {
@@ -47,7 +55,9 @@ void main() {
     )..add(const AuthBootstrapRequested());
     addTearDown(bloc.close);
 
-    await tester.pumpWidget(WobblioApp(authBloc: bloc));
+    await tester.pumpWidget(
+      WobblioApp(authBloc: bloc, deepLinks: _NoDeepLinks()),
+    );
     // Flush the async bootstrap (store read -> AuthSignedOut), then rebuild.
     await tester.pump();
     await tester.pump();
