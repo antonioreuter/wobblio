@@ -15,10 +15,7 @@
     "test:e2e": "playwright test",
     "skill:hexagonal-architecture-validator": "ts-node --skip-project --compiler-options '{\"module\":\"CommonJS\",\"esModuleInterop\":true}' ../../.claude/skills/hexagonal-architecture-validator/scripts/validate-hexagonal.ts",
     "validate:security": "ts-node --skip-project --compiler-options '{\"module\":\"CommonJS\",\"esModuleInterop\":true}' ../../.claude/skills/gdpr-security-auditor/scripts/audit-security.ts",
-    "replay": "STAGE=local ts-node -r tsconfig-paths/register src/local/replay-receipt.ts",
-    "compare:pipelines": "STAGE=local ts-node -r tsconfig-paths/register src/local/evaluate-pipelines.ts",
-    "corpus:pull": "ts-node -r tsconfig-paths/register src/local/pull-benchmark-corpus.ts",
-    "benchmark:vision-cost": "STAGE=local ts-node -r tsconfig-paths/register src/local/benchmark-vision-cost.ts"
+    "replay": "STAGE=local ts-node -r tsconfig-paths/register src/local/replay-receipt.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.600.0",

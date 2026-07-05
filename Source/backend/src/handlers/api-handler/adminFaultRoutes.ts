@@ -68,7 +68,7 @@ export async function handleAdminFaultRoute(
 function buildService(db: PoolClient): AdminFaultService {
   return new AdminFaultService(
     new FaultAdminRepositoryAdapter(db),
-    new SqsIngestionQueueAdapter(REGION, process.env.INGEST_QUEUE_URL!),
+    new SqsIngestionQueueAdapter(REGION, process.env.AGENTIC_QUEUE_URL!),
     new NotificationRepositoryAdapter(db),
     new MockPushAdapter(),
     new AdminAuditLogAdapter(db),

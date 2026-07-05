@@ -65,27 +65,17 @@ export class WobblioBackendStack extends Stack {
       `arn:aws:ssm:${this.region}:${this.account}:parameter${configParamName(config.stage, relativeKeyOrGlob)}`;
 
     // ── SQS Queues ────────────────────────────────────────────────────────────
-    const ingestionDlq = new sqs.Queue(this, 'IngestionDlq', {
-      queueName: config.resourceName('ingestion-dlq'),
-      retentionPeriod: Duration.days(14),
-      encryption: sqs.QueueEncryption.KMS,
-      encryptionMasterKey: dbStack.kmsKey,
-      enforceSSL: true,
-    });
-
-    const ingestionQueue = new sqs.Queue(this, 'IngestionQueue', {
-      queueName: config.resourceName('ingestion'),
-      // Must stay >= the ingestion-worker Lambda timeout (120s, raised for slow PDF/Sonnet
-      // parses) so a message isn't redelivered while still being processed.
-      visibilityTimeout: Duration.seconds(180),
-      encryption: sqs.QueueEncryption.KMS,
-      encryptionMasterKey: dbStack.kmsKey,
-      enforceSSL: true,
-      deadLetterQueue: {
-        queue: ingestionDlq,
-        maxReceiveCount: 3,
-      },
-    });
+    // The ingestion queue + worker live in WobblioDataAiPipelineStack (the agentic pipeline).
+    // Its queue/DLQ names are deterministic (config.resourceName), so this stack references them
+    // by name for the api-handler's confirm/enqueue, admin DLQ, and troubleshooting grants.
+    const agenticQueueName = config.resourceName('agentic');
+    const agenticDlqName = config.resourceName('agentic-dlq');
+    const agenticQueueArn = `arn:aws:sqs:${this.region}:${this.account}:${agenticQueueName}`;
+    const agenticDlqArn = `arn:aws:sqs:${this.region}:${this.account}:${agenticDlqName}`;
+    const agenticQueueUrl = `https://sqs.${this.region}.amazonaws.com/${this.account}/${agenticQueueName}`;
+    const agenticDlqUrl = `https://sqs.${this.region}.amazonaws.com/${this.account}/${agenticDlqName}`;
+    const agenticWorkerFunctionName = config.resourceName('agentic-worker');
+    const agenticWorkerLogGroupName = `/aws/lambda/${agenticWorkerFunctionName}`;
 
     const analyticsEventsDlq = new sqs.Queue(this, 'AnalyticsEventsDlq', {
       queueName: config.resourceName('analytics-events-dlq'),
@@ -181,7 +171,10 @@ export class WobblioBackendStack extends Stack {
     const apiHandlerFn = makeLambda('api-handler', 25, {
       UPLOADS_BUCKET:         storageStack.uploadsBucket.bucketName,
       EXPORTS_BUCKET:         storageStack.exportsBucket.bucketName,
-      INGEST_QUEUE_URL:       ingestionQueue.queueUrl,
+      AGENTIC_QUEUE_URL:      agenticQueueUrl,
+      AGENTIC_DLQ_URL:        agenticDlqUrl,
+      AGENTIC_WORKER_LOG_GROUP:      agenticWorkerLogGroupName,
+      AGENTIC_WORKER_FUNCTION_NAME:  agenticWorkerFunctionName,
       BILLING_ARCHIVE_BUCKET: storageStack.billingArchiveBucket.bucketName,
       WEB_APP_URL:            webAppUrl,
       COGNITO_USER_POOL_ID:   authStack.userPool.userPoolId,
@@ -202,14 +195,6 @@ export class WobblioBackendStack extends Stack {
       }));
     }
 
-    // 120s: PDF receipts parse on the document-capable insight model (Sonnet), a single
-    // Converse call of ~20-25s (plus a possible schema retry) — well over the 30s default,
-    // which timed PDFs out mid-pipeline and looped them in PROCESSING. Images (Qwen) are
-    // far faster but share the worker. Queue visibilityTimeout above is kept >= this.
-    const ingestionWorkerFn = makeLambda('ingestion-worker', 5, {
-      UPLOADS_BUCKET: storageStack.uploadsBucket.bucketName,
-    }, 120);
-
     // §14 GDPR data export worker: builds the ZIP (JSON+CSV per table + receipts/) and
     // uploads it to the exports bucket. 90s covers a heavy multi-year household export.
     const exportWorkerFn = makeLambda('export-worker', 2, {
@@ -227,10 +212,9 @@ export class WobblioBackendStack extends Stack {
     const cronWeeklyAdvisorFn = makeLambda('cron-weekly-advisor', 2, {}, 300);
 
     // 120s: a single Logs Insights query (StartQuery + poll) over the prior day's
-    // ingestion-worker logs, rolling per-status averages into kpi_daily (§ observability).
-    const ingestionLogGroupName = `/aws/lambda/${ingestionWorkerFn.functionName}`;
+    // agentic-worker logs, rolling per-status averages into kpi_daily (§ observability).
     const cronIngestionMetricsRollupFn = makeLambda(
-      'cron-ingestion-metrics-rollup', 2, { INGESTION_LOG_GROUP: ingestionLogGroupName }, 120,
+      'cron-ingestion-metrics-rollup', 2, { INGESTION_LOG_GROUP: agenticWorkerLogGroupName }, 120,
     );
 
     // Data retention (cron-data-retention): purge old rows from notification, invoice_share,
@@ -266,15 +250,6 @@ export class WobblioBackendStack extends Stack {
     // owner's RLS scope so a token exposes only its one split's per-person breakdown.
     const shareBillSplitFn = makeLambda('share-bill-split', 5);
 
-    // ── SQS event source on ingestion worker ─────────────────────────────────
-    ingestionWorkerFn.addEventSource(
-      new SqsEventSource(ingestionQueue, {
-        batchSize: 1,
-        maxConcurrency: 5,
-        reportBatchItemFailures: true,
-      }),
-    );
-
     // ── SQS event source on export worker (§14) ──────────────────────────────
     exportWorkerFn.addEventSource(
       new SqsEventSource(exportQueue, {
@@ -290,14 +265,10 @@ export class WobblioBackendStack extends Stack {
     storageStack.uploadsBucket.grantPut(apiHandlerFn);
     storageStack.uploadsBucket.grantRead(apiHandlerFn);
     storageStack.uploadsBucket.grantDelete(apiHandlerFn);
-    storageStack.uploadsBucket.grantRead(ingestionWorkerFn);
     storageStack.uploadsBucket.grantRead(shareInvoiceFn);
     storageStack.exportsBucket.grantReadWrite(apiHandlerFn);
     storageStack.billingArchiveBucket.grantWrite(apiHandlerFn);
     storageStack.analyticsBucket.grantWrite(cronBudgetResetFn);
-
-    ingestionQueue.grantSendMessages(apiHandlerFn);
-    ingestionQueue.grantConsumeMessages(ingestionWorkerFn);
 
     // §14 GDPR export worker: reads receipt images from uploads, writes the ZIP to exports.
     storageStack.uploadsBucket.grantRead(exportWorkerFn);
@@ -306,49 +277,28 @@ export class WobblioBackendStack extends Stack {
     exportQueue.grantConsumeMessages(exportWorkerFn);
     apiHandlerFn.addEnvironment('EXPORT_QUEUE_URL', exportQueue.queueUrl);
 
-    // Admin DLQ panel (admin-console 05): the api-handler reads + deletes DLQ
-    // messages and replays them onto the main queue (send grant above). No
-    // SendMessage on the DLQ itself — least privilege.
-    ingestionDlq.grantConsumeMessages(apiHandlerFn);
-    apiHandlerFn.addEnvironment('INGEST_DLQ_URL', ingestionDlq.queueUrl);
-    apiHandlerFn.addEnvironment('INGESTION_WORKER_LOG_GROUP', ingestionLogGroupName);
-
-    // Admin Troubleshooting page: the api-handler reads worker logs (Logs Insights),
-    // flips its log level live (Lambda env update — read-merge-write), snapshots
-    // queue depth, and reads its error-rate metrics. Resource-scoped where the action
-    // allows; '*' only for actions that do not support resource-level IAM.
-    apiHandlerFn.addEnvironment('INGESTION_WORKER_FUNCTION_NAME', ingestionWorkerFn.functionName);
-
-    // Admin Troubleshooting page — Agentic Pipeline section: the agentic worker's function/log
-    // group name is deterministic (config.resourceName), unlike its queue URLs, which live in a
-    // different stack (WobblioDataAiPipelineStack) deployed after this one and are read from SSM
-    // at request time instead (see adminTroubleshootingRoutes.ts).
-    const agenticWorkerFunctionName = config.resourceName('agentic-worker');
-    const agenticWorkerLogGroupName = `/aws/lambda/${agenticWorkerFunctionName}`;
-    apiHandlerFn.addEnvironment('AGENTIC_WORKER_LOG_GROUP', agenticWorkerLogGroupName);
+    // Ingestion admin grants — the pipeline (queue/DLQ/worker) lives in
+    // WobblioDataAiPipelineStack (deployed first); its resource names are deterministic, so
+    // they're referenced by ARN here. Env URLs/names are set on api-handler above.
+    //   • Confirm/enqueue + fault reprocess + DLQ replay → SendMessage on the queue.
+    //   • Admin DLQ panel (admin-console 05) → Receive/Delete on the DLQ.
+    //   • Admin Troubleshooting → queue depth (GetQueueAttributes), worker logs (Logs Insights),
+    //     live log-level flip (Lambda env read-merge-write), error-rate metrics.
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['sqs:GetQueueAttributes'],
-      resources: [
-        `arn:aws:sqs:${this.region}:${this.account}:${config.resourceName('agentic')}`,
-        `arn:aws:sqs:${this.region}:${this.account}:${config.resourceName('agentic-dlq')}`,
-      ],
+      resources: [agenticQueueArn, agenticDlqArn],
     }));
-    // Confirm-time routing (SqsInvoiceIngestionQueueAdapter) sends here when
-    // features/agentic_pipeline_enabled is on — grant was missing, only
-    // GetQueueAttributes (admin panel) was wired when the queue moved to
-    // WobblioDataAiPipelineStack.
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['sqs:SendMessage'],
-      resources: [`arn:aws:sqs:${this.region}:${this.account}:${config.resourceName('agentic')}`],
+      resources: [agenticQueueArn],
+    }));
+    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['sqs:ReceiveMessage', 'sqs:DeleteMessage'],
+      resources: [agenticDlqArn],
     }));
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['logs:StartQuery'],
       resources: [`arn:aws:logs:${this.region}:${this.account}:log-group:${agenticWorkerLogGroupName}:*`],
-    }));
-    ingestionQueue.grant(apiHandlerFn, 'sqs:GetQueueAttributes');
-    apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['logs:StartQuery'],
-      resources: [`arn:aws:logs:${this.region}:${this.account}:log-group:${ingestionLogGroupName}:*`],
     }));
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['logs:GetQueryResults', 'logs:StopQuery', 'cloudwatch:GetMetricData'],
@@ -356,7 +306,7 @@ export class WobblioBackendStack extends Stack {
     }));
     apiHandlerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['lambda:GetFunctionConfiguration', 'lambda:UpdateFunctionConfiguration'],
-      resources: [ingestionWorkerFn.functionArn],
+      resources: [`arn:aws:lambda:${this.region}:${this.account}:function:${agenticWorkerFunctionName}`],
     }));
     NagSuppressions.addResourceSuppressions(apiHandlerFn, [
       {
@@ -367,7 +317,6 @@ export class WobblioBackendStack extends Stack {
     ], true);
 
     dbStack.kmsKey.grantEncryptDecrypt(apiHandlerFn);
-    dbStack.kmsKey.grantEncryptDecrypt(ingestionWorkerFn);
     dbStack.kmsKey.grantEncryptDecrypt(waitlistStatusFn);
     dbStack.kmsKey.grantEncryptDecrypt(analyticsEventsFn);
     dbStack.kmsKey.grantEncryptDecrypt(exportWorkerFn);
@@ -383,7 +332,6 @@ export class WobblioBackendStack extends Stack {
       dbSecretArn,
     );
     dbSecret.grantRead(apiHandlerFn);
-    dbSecret.grantRead(ingestionWorkerFn);
     dbSecret.grantRead(cronWaitlistReleaseFn);
     dbSecret.grantRead(cronReleaseHeldLocationsFn);
     dbSecret.grantRead(cronBudgetResetFn);
@@ -402,7 +350,7 @@ export class WobblioBackendStack extends Stack {
     cronIngestionMetricsRollupFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['logs:StartQuery'],
       resources: [
-        `arn:aws:logs:${this.region}:${this.account}:log-group:${ingestionLogGroupName}:*`,
+        `arn:aws:logs:${this.region}:${this.account}:log-group:${agenticWorkerLogGroupName}:*`,
       ],
     }));
     cronIngestionMetricsRollupFn.addToRolePolicy(new iam.PolicyStatement({
@@ -424,7 +372,7 @@ export class WobblioBackendStack extends Stack {
         `arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`,
       ],
     });
-    [apiHandlerFn, ingestionWorkerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, shareInvoiceFn, shareShoppingListFn, shareBillSplitFn, exportWorkerFn]
+    [apiHandlerFn, cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn, cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, shareInvoiceFn, shareShoppingListFn, shareBillSplitFn, exportWorkerFn]
       .forEach(fn => fn.addToRolePolicy(ssmPolicy));
 
     // SSM: waitlist cap — cron-waitlist-release and api-handler need this
@@ -459,45 +407,13 @@ export class WobblioBackendStack extends Stack {
       // per-role upload caps remain. Mirrors QUOTA_PARAMS in core/domain/quotaConfig.ts.
       ...['standard', 'premium', 'tester', 'admin'].map((r) => `${r}_uploads_per_week`),
     ];
-    // The ingestion-worker resolves the same allowance to charge credits on success, so
-    // it loads the whole quota batch too — a missing grant would roll the ingestion back.
+    // api-handler reads the quota caps for /me/usage and admin views. The agentic worker
+    // resolves the same allowance to charge credits, granted in WobblioDataAiPipelineStack.
     const quotaCapSsmPolicy = new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParameters'],
       resources: quotaCapPaths.map((p) => configParamArn(`quotas/${p}`)),
     });
-    [apiHandlerFn, ingestionWorkerFn].forEach((fn) => fn.addToRolePolicy(quotaCapSsmPolicy));
-
-    // SSM: device push platform ARNs (16f) — the ingestion-worker reads the FCM/APNs
-    // platform-application ARNs to publish terminal-status pushes. Both params enumerated
-    // (no wildcard) so cdk-nag IAM5 stays clean; a missing param simply means that platform
-    // is unconfigured and is skipped (best-effort, no delivery).
-    ingestionWorkerFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['ssm:GetParameter', 'ssm:GetParameters'],
-      resources: [
-        configParamArn('push/fcm_platform_arn'),
-        configParamArn('push/apns_platform_arn'),
-      ],
-    }));
-
-    // SNS: device push (16f). CreatePlatformEndpoint registers a device token against the
-    // platform app; Publish delivers to the resulting endpoint. The platform apps are created
-    // out-of-band (runbook below) so their exact ARNs aren't known at synth — scope to this
-    // account+region's platform apps + their endpoints, with a matching IAM5 suppression.
-    const snsPushResources = [
-      `arn:aws:sns:${this.region}:${this.account}:app/*`,
-      `arn:aws:sns:${this.region}:${this.account}:endpoint/*`,
-    ];
-    ingestionWorkerFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['sns:CreatePlatformEndpoint', 'sns:Publish'],
-      resources: snsPushResources,
-    }));
-    NagSuppressions.addResourceSuppressions(ingestionWorkerFn, [
-      {
-        id: 'AwsSolutions-IAM5',
-        reason: 'SNS platform applications + their device endpoints are created out-of-band (cannot be made via CloudFormation); their ARNs are not known at synth, so the grant is scoped to this account+region\'s app/* and endpoint/* only',
-        appliesTo: snsPushResources.map((r) => `Resource::${r}`),
-      },
-    ], true);
+    apiHandlerFn.addToRolePolicy(quotaCapSsmPolicy);
 
     // ── SNS platform-application runbook (manual, 16f) ──────────────────────────────────
     // SNS platform apps CANNOT be created via CloudFormation. Once FCM/APNs credentials land,
@@ -639,8 +555,12 @@ export class WobblioBackendStack extends Stack {
     );
     cronWaitlistReleaseFn.addEnvironment('SES_FROM_ADDRESS', 'noreply@wobblio.com');
 
-    // SES + SNS: export-worker sends the export-ready email + push (§14). Same
-    // account-scoped identity wildcard and push platform-app pattern as ingestion-worker.
+    // SES + SNS: export-worker sends the export-ready email + push (§14). Account-scoped
+    // identity wildcard + push platform-app pattern (apps created out-of-band, see runbook).
+    const snsPushResources = [
+      `arn:aws:sns:${this.region}:${this.account}:app/*`,
+      `arn:aws:sns:${this.region}:${this.account}:endpoint/*`,
+    ];
     exportWorkerFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['ses:SendEmail', 'ses:SendRawEmail'],
@@ -665,23 +585,6 @@ export class WobblioBackendStack extends Stack {
         appliesTo: snsPushResources.map((r) => `Resource::${r}`),
       },
     ], true);
-
-    // Ingestion worker invokes the vision/auxiliary/embedder models (ids from SSM).
-    grantBedrockInference(ingestionWorkerFn);
-
-    // SSM: ingestion worker resolves swappable model IDs (vision/auxiliary/embedder/insight)
-    // and the per-tenant daily AI-spend cap at runtime, one GetParameter per param.
-    ingestionWorkerFn.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['ssm:GetParameter'],
-        resources: [
-          configParamArn('models/*'),
-          // Per-tenant daily AI-spend cap. Not yet routed through stageConfig (flat),
-          // so this grant stays flat — see the stage-scoping follow-up.
-          `arn:aws:ssm:${this.region}:${this.account}:parameter/wobblio/config/ai/*`,
-        ],
-      }),
-    );
 
     // ── API Gateway ───────────────────────────────────────────────────────────
     const apiAccessLogGroup = new logs.LogGroup(this, 'ApiGwAccessLogs', {
@@ -940,19 +843,19 @@ export class WobblioBackendStack extends Stack {
     });
 
     const allLambdas = [
-      apiHandlerFn, ingestionWorkerFn, exportWorkerFn,
+      apiHandlerFn, exportWorkerFn,
       cronBudgetResetFn, cronFxRateFetchFn, cronWaitlistReleaseFn, cronReleaseHeldLocationsFn,
       cronWeeklyAdvisorFn, cronIngestionMetricsRollupFn, cronDataRetentionFn, waitlistStatusFn, analyticsEventsFn, shareInvoiceFn,
       shareShoppingListFn, shareBillSplitFn,
     ];
 
     // ── Lambda log retention ──────────────────────────────────────────────────
-    // The ingestion worker keeps 7 days so the daily kpi_daily roll-up has a debug
-    // window beyond the 24h it actually queries; everything else stays at 3 days.
+    // All api-side Lambdas keep 3 days. (The agentic ingestion worker sets its own 7-day
+    // retention in WobblioDataAiPipelineStack, giving the daily kpi_daily roll-up a debug window.)
     allLambdas.forEach(fn =>
       new logs.LogRetention(this, `${fn.node.id}LogRetention`, {
         logGroupName: `/aws/lambda/${fn.functionName}`,
-        retention: fn === ingestionWorkerFn ? logs.RetentionDays.ONE_WEEK : logs.RetentionDays.THREE_DAYS,
+        retention: logs.RetentionDays.THREE_DAYS,
       }),
     );
 

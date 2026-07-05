@@ -8,7 +8,7 @@
  */
 import { SQSClient, ReceiveMessageCommand, DeleteMessageCommand } from '@aws-sdk/client-sqs';
 import type { SQSEvent, Context } from 'aws-lambda';
-import { handler as ingestionWorker } from '@handlers/ingestion-worker';
+import { handler as ingestionWorker } from '@handlers/agentic-worker';
 
 // Local mirror of the SQS event-source maxConcurrency: run this many worker loops in
 // parallel so a burst of uploads parses concurrently. Override with LOCAL_POLLER_CONCURRENCY.

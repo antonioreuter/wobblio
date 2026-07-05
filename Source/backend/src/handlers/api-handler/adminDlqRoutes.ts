@@ -106,11 +106,11 @@ function bodyLimit(event: APIGatewayProxyEvent): number {
   return Number(parseJsonBody(event.body).limit ?? 100);
 }
 
-// Best-effort deep link to the ingestion-worker log group, filtered by the failed
+// Best-effort deep link to the agentic-worker log group, filtered by the failed
 // invoice id, so an operator can jump from a DLQ row to the failure logs. Null when
 // the log-group env is unset or the body carried no invoice id.
 function withLogLink(message: DlqMessage): DlqMessage & { logsUrl: string | null } {
-  const logGroup = process.env.INGESTION_WORKER_LOG_GROUP;
+  const logGroup = process.env.AGENTIC_WORKER_LOG_GROUP;
   if (!logGroup || !message.invoiceId) return { ...message, logsUrl: null };
   const group = encodeURIComponent(logGroup);
   const query = encodeURIComponent(`"${message.invoiceId}"`);
@@ -123,8 +123,8 @@ function withLogLink(message: DlqMessage): DlqMessage & { logsUrl: string | null
 function buildService(db: PoolClient): DlqAdminService {
   const queue = new SqsDeadLetterQueueAdapter(
     REGION,
-    process.env.INGEST_DLQ_URL!,
-    process.env.INGEST_QUEUE_URL!,
+    process.env.AGENTIC_DLQ_URL!,
+    process.env.AGENTIC_QUEUE_URL!,
   );
   return new DlqAdminService(queue, new AdminAuditLogAdapter(db));
 }

@@ -44,11 +44,6 @@ export interface BedrockConverseResult {
   outputTokens: number;
   modelId: string;
   durationMs: number;
-  // Prompt-caching usage, populated only by cache-capable adapters (Claude/Nova). When the
-  // cached prefix is a HIT these are read at ~0.1× cost; on the first call the prefix is a
-  // WRITE at ~1.25×. Absent (undefined) means caching was not used for this call.
-  cacheReadInputTokens?: number;
-  cacheWriteInputTokens?: number;
 }
 
 export interface IBedrockConverse {

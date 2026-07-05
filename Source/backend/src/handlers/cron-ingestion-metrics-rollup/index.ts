@@ -6,11 +6,9 @@ import { CloudWatchLogsTimingSourceAdapter } from '@infrastructure/adapters/obse
 import { CloudWatchLogsAiUsageAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsAiUsageAdapter';
 import { CloudWatchLogsReprocessAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsReprocessAdapter';
 import { BusinessKpiDbAdapter } from '@infrastructure/adapters/observability/BusinessKpiDbAdapter';
-import { PipelineKpiDbAdapter } from '@infrastructure/adapters/observability/PipelineKpiDbAdapter';
 import { KpiDailyRepositoryAdapter } from '@infrastructure/adapters/observability/KpiDailyRepositoryAdapter';
 import { IngestionMetricsRollupService } from '@core/services/observability/IngestionMetricsRollupService';
 import { BusinessKpiRollupService } from '@core/services/observability/BusinessKpiRollupService';
-import { PipelineKpiRollupService } from '@core/services/observability/PipelineKpiRollupService';
 import { AiSpendRollupService } from '@core/services/observability/AiSpendRollupService';
 import { ReprocessCrossWeekRollupService } from '@core/services/observability/ReprocessCrossWeekRollupService';
 
@@ -50,7 +48,6 @@ async function runForDate(pool: Pool, metricDate: string, log: LambdaLogger): Pr
       new CloudWatchLogsTimingSourceAdapter(REGION, ingestionLogGroup), kpiWriter,
     ).run(metricDate)],
     ['business', new BusinessKpiRollupService(new BusinessKpiDbAdapter(pool), kpiWriter).run(metricDate)],
-    ['pipeline_comparison', new PipelineKpiRollupService(new PipelineKpiDbAdapter(pool), kpiWriter).run(metricDate)],
     ['ai_spend', new AiSpendRollupService(
       new CloudWatchLogsAiUsageAdapter(REGION, ingestionLogGroup), kpiWriter,
     ).run(metricDate)],

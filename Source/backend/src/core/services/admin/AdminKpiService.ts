@@ -8,7 +8,6 @@ import {
   INGESTION_PROCESSING_METRIC,
   INGESTION_COUNT_METRIC,
 } from '@core/domain/businessKpis';
-import { PIPELINE_METRICS } from '@core/domain/pipelineKpis';
 
 const DEFAULT_RANGE_DAYS = 90;
 const DEFAULT_METRICS = [
@@ -18,7 +17,6 @@ const DEFAULT_METRICS = [
   OPERATIONAL_EFFICIENCY_METRIC,
   INGESTION_PROCESSING_METRIC,
   INGESTION_COUNT_METRIC,
-  ...Object.values(PIPELINE_METRICS),
 ];
 
 export interface KpiQueryResult {

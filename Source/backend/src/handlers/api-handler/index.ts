@@ -736,7 +736,7 @@ async function handleConfirm(
   log: LambdaLogger,
 ): Promise<APIGatewayProxyResult> {
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
-  const queueUrl = process.env.INGEST_QUEUE_URL!;
+  const queueUrl = process.env.AGENTIC_QUEUE_URL!;
   const service = new ConfirmService(
     new InvoiceRepositoryAdapter(db),
     new S3FileStorageAdapter(REGION, uploadsBucket),

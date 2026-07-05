@@ -5,16 +5,28 @@ import type { CurrencyHarmonizationService } from '../fx/CurrencyHarmonizationSe
 import type { MerchantResolution } from '../../ports/data-intelligence/IMerchantResolver';
 import type { NormalizedLine } from '../../ports/data-intelligence/IProductNormalizer';
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
-import { decideStatus, isArithmeticConsistent, type ParsedLine, type ParsedReceipt } from '../../domain/ingestion';
+import { decideStatus, isArithmeticConsistent, type InvoiceStatus, type ParsedLine, type ParsedReceipt } from '../../domain/ingestion';
 import { assessInvoiceIntegrity } from '../../domain/invoiceGlobalEligibility';
 import { depositCategoryFor, discountCategoryFor } from '../../domain/categoryTaxonomy';
 import { buildPriceObservations, type ContributorContext, type ObservationLine } from '../../domain/priceObservation';
 import type { ResolvedIngestionLocation } from '../../domain/region';
-import type { IngestionOutcome } from './IngestionService';
+import type { FailureReasonCode } from '../../domain/failureReasons';
+
+// The outcome of running one receipt through the pipeline (process() = extract() + finalize()).
+// Consumed by the ingestion worker shell for charging, telemetry, and post-commit side effects.
+export interface IngestionOutcome {
+  handled: boolean; // false => duplicate SQS delivery, skipped
+  status?: InvoiceStatus;
+  // Set when the model returned an `unreadable` verdict (§03.2): the user-fault reason the
+  // invoice was failed with. The model still ran, so the run is charged.
+  failureReasonCode?: FailureReasonCode;
+  receipt?: ParsedReceipt; // the vision-parse result, for debug logging at the handler
+  // Emission-gate decision (§6.5), for plain structured logging at the handler.
+  emissionGate?: { suppressed: boolean; integral: boolean; reasons: string[] };
+}
 
 // The canonicalized output of the extraction stages (vision parse → merchant → product →
-// classify → tag), the single input both pipelines hand to the finalizer. Keeping this
-// shared guarantees LEGACY and STRANDS behave identically downstream (the A/B premise).
+// classify → tag), the single input the coordinator hands to the finalizer.
 export interface ExtractionResult {
   receipt: ParsedReceipt;
   location: ResolvedIngestionLocation;
@@ -38,8 +50,8 @@ export type ExtractOutcome =
   | { kind: 'ready'; extraction: ExtractionResult; context: ContributorContext };
 
 // Stage 6 of §6: duplicate/integrity gates, status decision, tenant persistence, de-identified
-// price emission, and ledger completion. Extracted from IngestionService so the legacy and
-// agentic workers share one downstream path. Runs inside the caller's open tenant transaction.
+// price emission, and ledger completion. The shared downstream path after canonicalization.
+// Runs inside the caller's open tenant transaction.
 export class InvoiceFinalizer {
   constructor(
     private readonly invoiceRepo: IInvoiceRepository,

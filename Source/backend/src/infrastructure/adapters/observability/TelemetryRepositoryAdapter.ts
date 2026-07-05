@@ -10,12 +10,11 @@ export class TelemetryRepositoryAdapter implements ITelemetryRepository {
   async recordInvoiceTelemetry(record: InvoiceTelemetryRecord): Promise<void> {
     await this.client.query(
       `INSERT INTO invoice_telemetry
-         (tenant_id, invoice_id, pipeline_type, processing_ms, input_tokens, output_tokens, cost_usd, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         (tenant_id, invoice_id, processing_ms, input_tokens, output_tokens, cost_usd, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
         record.tenantId,
         record.invoiceId,
-        record.pipelineType,
         record.processingMs,
         record.inputTokens,
         record.outputTokens,

@@ -169,6 +169,28 @@ export class WobblioDataAiPipelineStack extends Stack {
       resources: bedrockResources,
     }));
 
+    // SSM: device push platform ARNs (16f) — the worker reads the FCM/APNs platform-app ARNs to
+    // publish terminal-status pushes. Enumerated (no wildcard) so cdk-nag IAM5 stays clean; a
+    // missing param means that platform is unconfigured and is skipped (best-effort, no delivery).
+    agenticWorkerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+      resources: [
+        configParamArn('push/fcm_platform_arn'),
+        configParamArn('push/apns_platform_arn'),
+      ],
+    }));
+
+    // SNS: device push (16f). Platform apps are created out-of-band (their ARNs aren't known at
+    // synth), so scope to this account+region's app/* + endpoint/* with a matching suppression.
+    const snsPushResources = [
+      `arn:aws:sns:${this.region}:${this.account}:app/*`,
+      `arn:aws:sns:${this.region}:${this.account}:endpoint/*`,
+    ];
+    agenticWorkerFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['sns:CreatePlatformEndpoint', 'sns:Publish'],
+      resources: snsPushResources,
+    }));
+
     // ── Cross-stack export: agentic queue/DLQ URLs ───────────────────────────────
     // Written into the stage-scoped config namespace so the backend (routing adapter, 04, and
     // the admin Troubleshooting page) reads them without a hard CDK dependency from
@@ -227,6 +249,11 @@ export class WobblioDataAiPipelineStack extends Stack {
           `Resource::${configParamArn('features/*')}`,
           `Resource::${configParamArn('quotas/*')}`,
         ],
+      },
+      {
+        id: 'AwsSolutions-IAM5',
+        reason: 'SNS platform applications + their device endpoints are created out-of-band (cannot be made via CloudFormation); their ARNs are not known at synth, so the grant is scoped to this account+region\'s app/* and endpoint/* only',
+        appliesTo: snsPushResources.map((r) => `Resource::${r}`),
       },
     ], true);
 

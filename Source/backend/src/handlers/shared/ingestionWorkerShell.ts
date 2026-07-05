@@ -19,23 +19,19 @@ import type { InvoiceStatus } from '@core/domain/ingestion';
 import { buildIngestionPush } from '@core/domain/pushNotification';
 import { friendlyFailureMessage } from '@core/domain/failureReasons';
 import { weekStart } from '@core/domain/week';
-import type { IngestionOutcome } from '@core/services/ingestion/IngestionService';
+import type { IngestionOutcome } from '@core/services/ingestion/InvoiceFinalizer';
 import type { InvoiceTelemetryRecord } from '@core/ports/observability/ITelemetryRepository';
 import type { QuotaType } from '@core/ports/quota/IQuotaRepository';
 import type { IngestionMessage } from '@core/ports/ingestion/IIngestionQueue';
 
-// The transaction shell shared by the legacy and agentic ingestion workers (Non-Functional
-// 01 §1): unified transaction (process → charge → telemetry → COMMIT), post-COMMIT side
-// effects, and the failure path (rollback → user-fault / quarantine / DLQ). The only
-// per-pipeline differences are which service runs and the telemetry `pipeline_type`.
+// The ingestion worker transaction shell (Non-Functional 01 §1): unified transaction
+// (process → charge → telemetry → COMMIT), post-COMMIT side effects, and the failure path
+// (rollback → user-fault / quarantine / DLQ).
 
-// Anything a pipeline service can be driven as — both IngestionService and
-// AgenticIngestionService satisfy this.
+// Anything a pipeline service can be driven as — AgenticIngestionService satisfies this.
 export interface IngestionPipeline {
   process(message: IngestionMessage): Promise<IngestionOutcome>;
 }
-
-export type PipelineType = InvoiceTelemetryRecord['pipelineType'];
 
 // Budgets a freshly-parsed invoice can move; only PARSED/NEEDS_REVIEW invoices count.
 const COUNTS_TOWARD_BUDGET = new Set(['PARSED', 'NEEDS_REVIEW']);
@@ -67,7 +63,6 @@ export interface RecordContext {
 export async function runIngestionRecord(
   ctx: RecordContext,
   buildService: (client: PoolClient, meter: TokenMeter) => IngestionPipeline,
-  pipelineType: PipelineType,
 ): Promise<boolean> {
   const { record, client, workerStart, log } = ctx;
   try {
@@ -90,7 +85,7 @@ export async function runIngestionRecord(
 
     // Per-invoice cost & performance telemetry (Non-Functional 01), in the same transaction so
     // it is atomic + RLS-scoped. Only for handled runs (a duplicate delivery did no real work).
-    const telemetry = buildTelemetry(message, meter, workerStart, outcome, pipelineType);
+    const telemetry = buildTelemetry(message, meter, workerStart, outcome);
     if (telemetry) await new TelemetryRepositoryAdapter(client).recordInvoiceTelemetry(telemetry);
 
     await client.query('COMMIT');
@@ -107,13 +102,11 @@ function buildTelemetry(
   meter: TokenMeter,
   workerStart: number,
   outcome: IngestionOutcome,
-  pipelineType: PipelineType,
 ): InvoiceTelemetryRecord | undefined {
   if (!outcome.handled) return undefined;
   return {
     tenantId: message.tenantId,
     invoiceId: message.invoiceId,
-    pipelineType,
     processingMs: Date.now() - workerStart,
     inputTokens: meter.inputTotal,
     outputTokens: meter.outputTotal,
@@ -155,7 +148,6 @@ async function runPostCommit(
   if (telemetry) {
     log.info('invoice_processed', {
       invoiceId: telemetry.invoiceId,
-      pipelineType: telemetry.pipelineType,
       processingMs: telemetry.processingMs,
       tokensConsumed: { input: telemetry.inputTokens, output: telemetry.outputTokens },
       costUsd: telemetry.costUsd,

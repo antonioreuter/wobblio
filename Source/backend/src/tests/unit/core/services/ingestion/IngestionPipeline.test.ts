@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { MockedObject } from 'vitest';
-import { IngestionService } from '@core/services/ingestion/IngestionService';
-import type { VisionParseService } from '@core/services/ingestion/VisionParseService';
+import { AgenticIngestionService } from '@core/services/ingestion/AgenticIngestionService';
+import { ExtractionPreparer } from '@core/services/ingestion/ExtractionPreparer';
+import { InvoiceFinalizer } from '@core/services/ingestion/InvoiceFinalizer';
+import { InvoiceCoordinator } from '@core/services/ingestion/agentic/InvoiceCoordinator';
+import { OcrParserTool } from '@core/services/ingestion/agentic/tools/OcrParserTool';
+import { MerchantResolverTool } from '@core/services/ingestion/agentic/tools/MerchantResolverTool';
+import { ProductNormalizerTool } from '@core/services/ingestion/agentic/tools/ProductNormalizerTool';
+import { InvoiceClassifierTool } from '@core/services/ingestion/agentic/tools/InvoiceClassifierTool';
+import { SearchTagGeneratorTool } from '@core/services/ingestion/agentic/tools/SearchTagGeneratorTool';
+import { CurrencyHarmonizationService } from '@core/services/fx/CurrencyHarmonizationService';
+import type { IReceiptParser } from '@core/ports/ingestion/IReceiptParser';
 import type { ITenantContext } from '@core/ports/identity/ITenantContext';
 import type { IIngestionLedger } from '@core/ports/ingestion/IIngestionLedger';
 import type { IS3FileStorage } from '@core/ports/ingestion/IS3FileStorage';
@@ -45,7 +54,7 @@ const normalizedLine = (lowConfidence = false): NormalizedLine => ({
   lowConfidence,
 });
 
-describe('IngestionService', () => {
+describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () => {
   let tenantContext: MockedObject<ITenantContext>;
   let ledger: MockedObject<IIngestionLedger>;
   let storage: MockedObject<IS3FileStorage>;
@@ -60,7 +69,7 @@ describe('IngestionService', () => {
   let contributorContext: MockedObject<IContributorContextRepository>;
   let regionReference: MockedObject<IRegionReference>;
   let uploadLimits: MockedObject<IUploadLimitsProvider>;
-  let sut: IngestionService;
+  let sut: AgenticIngestionService;
 
   beforeEach(() => {
     tenantContext = { setTenantId: vi.fn() };
@@ -106,14 +115,22 @@ describe('IngestionService', () => {
       getMaxPdfBytes: vi.fn().mockResolvedValue(4_500_000),
       getMaxPdfPages: vi.fn().mockResolvedValue(10),
     };
-    sut = new IngestionService(
-      tenantContext, ledger, storage,
-      visionParser as unknown as VisionParseService,
-      documentParser as unknown as VisionParseService,
-      merchantResolver, productNormalizer, classifier, tagGenerator, invoiceRepo,
-      priceObservationStore, contributorContext, regionReference, uploadLimits,
-      { upsertDaily: vi.fn(), latestOnOrBefore: vi.fn().mockResolvedValue(1) },
+    const fxRates = { upsertDaily: vi.fn(), latestOnOrBefore: vi.fn().mockResolvedValue(1) };
+    const preparer = new ExtractionPreparer(
+      tenantContext, ledger, storage, invoiceRepo, contributorContext, regionReference, uploadLimits,
+      new OcrParserTool(visionParser as unknown as IReceiptParser, documentParser as unknown as IReceiptParser),
     );
+    const coordinator = new InvoiceCoordinator(
+      new MerchantResolverTool(merchantResolver),
+      new ProductNormalizerTool(productNormalizer),
+      new InvoiceClassifierTool(classifier),
+      new SearchTagGeneratorTool(tagGenerator),
+      { recordStageOutcome: vi.fn() },
+    );
+    const finalizer = new InvoiceFinalizer(
+      invoiceRepo, priceObservationStore, ledger, new CurrencyHarmonizationService(fxRates),
+    );
+    sut = new AgenticIngestionService(preparer, coordinator, finalizer);
   });
 
   const arrangeHappyPath = (parseConfidence = 0.9, lowConfidence = false) => {

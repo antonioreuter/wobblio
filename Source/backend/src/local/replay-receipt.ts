@@ -22,7 +22,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../../config/local.env') })
 import { Pool } from 'pg';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import type { SQSEvent, Context } from 'aws-lambda';
-import { handler as ingestionWorker } from '@handlers/ingestion-worker';
+import { handler as ingestionWorker } from '@handlers/agentic-worker';
 
 const EXT_TO_TYPE: Record<string, string> = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', pdf: 'application/pdf',

@@ -13,7 +13,6 @@ import { handleAdminTroubleshootingRoute } from './adminTroubleshootingRoutes';
 import { handleAdminQuotaRoute } from './adminQuotaRoutes';
 import { handleAdminQuotaConfigRoute } from './adminQuotaConfigRoutes';
 import { handleAdminFaultRoute } from './adminFaultRoutes';
-import { handleAdminFeatureRoute } from './adminFeatureRoutes';
 
 // Admin-console backend entry. The FIRST line is the server-side ADMIN guard —
 // independent of the edge middleware in Source/admin, both must pass (admin-console
@@ -44,7 +43,6 @@ export async function handleAdminRoute(
   if (path.startsWith('/admin/models')) return handleAdminModelRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/curation')) return handleAdminCurationRoute(db, user, path, method, event, log);
   if (path.startsWith('/admin/faults')) return handleAdminFaultRoute(db, user, path, method, event, log);
-  if (path.startsWith('/admin/features')) return handleAdminFeatureRoute(db, user, path, method, event, log);
   if (path === '/admin/kpis' || path.startsWith('/admin/ai-spend')) return handleAdminAnalyticsRoute(db, path, method, event);
 
   return json(404, { message: 'Not Found' });

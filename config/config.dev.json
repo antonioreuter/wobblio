@@ -24,8 +24,6 @@
   "tags/dedicated_call_enabled": "false",
   "tags/vocabulary": "[]",
 
-  "features/agentic_pipeline_enabled": "true",
-
   "billing/mock_premium_whitelist": "-",
 
   "ai/daily_spend_cap": "0.10",

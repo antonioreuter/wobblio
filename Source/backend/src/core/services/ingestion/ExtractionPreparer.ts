@@ -7,7 +7,7 @@ import type { IRegionReference } from '../../ports/data-intelligence/IRegionRefe
 import type { IUploadLimitsProvider } from '../../ports/quota/IUploadLimitsProvider';
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
 import type { OcrParserTool } from './agentic/tools/OcrParserTool';
-import type { IngestionOutcome } from './IngestionService';
+import type { IngestionOutcome } from './InvoiceFinalizer';
 import { isUnreadableVerdict, type ParsedReceipt } from '../../domain/ingestion';
 import { resolveIngestionLocation, type LocationCandidate, type ResolvedIngestionLocation } from '../../domain/region';
 import { attachmentFormatFromKey, type UploadFormat } from '../../domain/uploadFormat';
@@ -17,8 +17,7 @@ import type { ContributorContext } from '../../domain/priceObservation';
 
 // The shared, pipeline-agnostic front of the §6 pipeline: idempotency claim, pre-AI upload
 // validation, vision/PDF parse, the `unreadable` early-exit, and location resolution — the
-// inputs both the legacy direct extractor and the agentic coordinator need before the
-// canonicalization stages. Extracted from IngestionService so both stay in lock-step.
+// shared front the agentic coordinator runs before the canonicalization stages.
 export type PrepareResult =
   | { kind: 'duplicate' } // duplicate SQS delivery (ledger already claimed)
   | { kind: 'unreadable'; outcome: IngestionOutcome } // model judged the image unreadable

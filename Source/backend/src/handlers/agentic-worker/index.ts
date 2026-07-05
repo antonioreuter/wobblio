@@ -41,10 +41,10 @@ import { VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION } from '../../prompts/
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 
-// Agentic ingestion pipeline (pipeline_type='STRANDS', Non-Functional 01 §3). Shares the
-// transaction shell, charging, telemetry, and failure handling with the legacy worker; the
-// only difference is the service: a tool-based coordinator (deterministic forced order) over
-// the same domain services, between the shared ExtractionPreparer and InvoiceFinalizer.
+// The ingestion worker (Non-Functional 01 §3). runIngestionRecord owns the transaction shell,
+// charging, telemetry, and failure handling; this handler wires the service — a tool-based
+// coordinator (deterministic forced order) over the domain services, between the shared
+// ExtractionPreparer and InvoiceFinalizer.
 export const handler = async (event: SQSEvent, context: Context): Promise<SQSBatchResponse> => {
   const log = createLambdaLogger('agentic-worker', context.awsRequestId);
   const pool = await buildPool(process.env.DB_SECRET_ARN!, process.env.DB_HOST!, process.env.DB_PORT!);
@@ -113,7 +113,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
     const workerStart = Date.now();
     const client = await pool.connect();
     try {
-      const retry = await runIngestionRecord({ record, client, pool, workerStart, log }, buildService, 'STRANDS');
+      const retry = await runIngestionRecord({ record, client, pool, workerStart, log }, buildService);
       if (retry) batchItemFailures.push({ itemIdentifier: record.messageId });
     } finally {
       client.release();

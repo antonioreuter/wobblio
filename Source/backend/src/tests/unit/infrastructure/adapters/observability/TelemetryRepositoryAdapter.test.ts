@@ -15,7 +15,6 @@ describe('TelemetryRepositoryAdapter', () => {
     await repo.recordInvoiceTelemetry({
       tenantId: 'tenant-1',
       invoiceId: 'inv-1',
-      pipelineType: 'LEGACY',
       processingMs: 4250,
       inputTokens: 1200,
       outputTokens: 400,
@@ -25,11 +24,10 @@ describe('TelemetryRepositoryAdapter', () => {
 
     const sql = query.mock.calls[0][0] as string;
     expect(sql).toContain('INSERT INTO invoice_telemetry');
-    expect(sql).toContain('tenant_id, invoice_id, pipeline_type, processing_ms, input_tokens, output_tokens, cost_usd, status');
+    expect(sql).toContain('tenant_id, invoice_id, processing_ms, input_tokens, output_tokens, cost_usd, status');
     expect(query).toHaveBeenCalledWith(expect.any(String), [
       'tenant-1',
       'inv-1',
-      'LEGACY',
       4250,
       1200,
       400,
