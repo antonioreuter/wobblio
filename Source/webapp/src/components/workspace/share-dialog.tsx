@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Copy, MessageCircle, Share2 } from 'lucide-react'
+import { Share2 } from 'lucide-react'
 import { eur, type Invoice } from './invoice-data'
+import { ShareLink } from './share-link'
 
 interface ShareDialogProps {
   invoice: Invoice
@@ -39,10 +40,8 @@ export function ShareDialog({ invoice, onClose, onCopy }: ShareDialogProps) {
     return () => { active = false }
   }, [invoice.id])
 
-  const link = linkState.status === 'ready' ? linkState.link : ''
-  const waText = encodeURIComponent(
-    `Here's our ${invoice.merchant} receipt (${eur(invoice.total)}) on Wobblio: ${link}`
-  )
+  const link = linkState.status === 'ready' ? linkState.link : null
+  const waText = `Here's our ${invoice.merchant} receipt (${eur(invoice.total)}) on Wobblio: ${link ?? ''}`
 
   if (typeof document === 'undefined') return null
 
@@ -72,35 +71,7 @@ export function ShareDialog({ invoice, onClose, onCopy }: ShareDialogProps) {
             Couldn’t create a share link — please close this and try again.
           </p>
         ) : (
-          <>
-            <div className="share-link">
-              <input
-                className="share-input"
-                readOnly
-                value={linkState.status === 'ready' ? link : 'Creating link…'}
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <button
-                type="button"
-                className="btn btn--outline share-copy"
-                onClick={() => onCopy(link)}
-                disabled={linkState.status !== 'ready'}
-                data-testid="share-copy-link"
-              >
-                <Copy size={15} /> Copy
-              </button>
-            </div>
-            <a
-              className="btn whatsapp-btn"
-              href={`https://wa.me/?text=${waText}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-disabled={linkState.status !== 'ready'}
-              onClick={(e) => { if (linkState.status !== 'ready') e.preventDefault() }}
-            >
-              <MessageCircle size={18} /> Share on WhatsApp
-            </a>
-          </>
+          <ShareLink link={link} waText={waText} onCopy={onCopy} copyTestId="share-copy-link" />
         )}
       </div>
     </div>,

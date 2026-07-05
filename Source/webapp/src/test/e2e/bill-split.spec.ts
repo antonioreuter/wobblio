@@ -88,19 +88,24 @@ test.describe('bill splitting', () => {
     await expect(page.getByTestId('split-summary')).toContainText('€1.75')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
 
-    // Remove "You" from the share (You active) → the whole item falls back to Alex,
-    // giving the WhatsApp export below a named owner.
+    // Remove "You" from the share (You active) → the whole item falls back to Alex.
     await page.getByTestId('split-chip-You').click()
     await breadLine.click()
     await expect(page.getByTestId('split-summary')).toContainText('Alex')
     await expect(page.getByTestId('split-summary')).toContainText('€3.50')
 
-    // WhatsApp export copies to the clipboard.
+    // Share the split: one action mints a public read-only link, shown in the standard
+    // share panel (the same ShareLink component as invoice sharing) with a Copy button.
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.getByTestId('split-copy-whatsapp').click()
+    await page.getByTestId('split-share-create').click()
+    await expect(page.getByTestId('split-share-link')).toBeVisible()
+    await expect
+      .poll(async () => page.getByTestId('split-share-link').locator('input').inputValue())
+      .toContain('/s/')
+    await page.getByTestId('split-share-copy').click()
     await expect
       .poll(async () => page.evaluate(() => navigator.clipboard.readText()), { timeout: 5000 })
-      .toContain('Alex')
+      .toContain('/s/')
 
     // Removing the participant chip unassigns their lines and the chip disappears
     // (also exercises the remove control's DOM structure — a sibling button next

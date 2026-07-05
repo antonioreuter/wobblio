@@ -158,14 +158,6 @@ export function useBillSplit(invoiceId: string) {
     if (results.some((res) => !res.ok)) throw new Error('Failed to remove one or more allocations')
   }, [state, invoiceId, refresh])
 
-  const fetchWhatsappText = useCallback(async (): Promise<string | null> => {
-    if (state.status !== 'ready') return null
-    const res = await fetch(`/api/invoices/${invoiceId}/splits/${state.splitId}/whatsapp`, { cache: 'no-store' })
-    if (!res.ok) return null
-    const data = (await res.json()) as { text: string }
-    return data.text
-  }, [state, invoiceId])
-
   // Mints a public read-only /s/<token> link for this split (7-day expiry). Same
   // pattern as invoice sharing — the backend returns the full unguessable URL.
   const createShareLink = useCallback(async (): Promise<string | null> => {
@@ -176,5 +168,5 @@ export function useBillSplit(invoiceId: string) {
     return data.shareUrl
   }, [state, invoiceId])
 
-  return { state, setLineAllocations, removeParticipant, fetchWhatsappText, createShareLink }
+  return { state, setLineAllocations, removeParticipant, createShareLink }
 }

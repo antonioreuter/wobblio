@@ -113,3 +113,6 @@ MCP_KB_DOCS.md
 local/**
 
 storybook-static/
+
+# Vision-cost benchmark corpus — real dev receipts pulled on-demand, never committed
+invoices/fixtures/benchmark-corpus/

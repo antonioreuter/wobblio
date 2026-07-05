@@ -13,7 +13,7 @@ const _sharedFixture = SharedSplit(
   date: '2026-06-30',
   currency: 'EUR',
   grandTotal: 10,
-  participants: const [
+  participants: [
     SplitParticipant(
       name: 'Sam',
       subtotal: 3,

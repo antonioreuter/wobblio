@@ -366,9 +366,9 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillLineTapped('l1'));
         await Future<void>.delayed(Duration.zero);
-        expect(splits.setCalls, [
-          ('l1', [const LineAllocation(participantName: 'Sam', units: 1)]),
-        ]);
+        expect(splits.setCalls.single.$1, 'l1');
+        expect(splits.setCalls.single.$2,
+            [const LineAllocation(participantName: 'Sam', units: 1)],);
         expect(bloc.state.unitsFor('l1', 'Sam'), 1);
         await bloc.close();
       });
@@ -396,7 +396,8 @@ void main() {
         bloc.add(const SplitBillLineTapped('l1')); // → clear
         await Future<void>.delayed(Duration.zero);
         expect(bloc.state.allocationsFor('l1'), isEmpty);
-        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
+        expect(splits.setCalls.last.$1, 'l1');
+        expect(splits.setCalls.last.$2, isEmpty);
         await bloc.close();
       });
 
@@ -420,7 +421,8 @@ void main() {
         bloc.add(const SplitBillLineTapped('l1')); // ⅓ → past the end → clear
         await Future<void>.delayed(Duration.zero);
 
-        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
+        expect(splits.setCalls.last.$1, 'l1');
+        expect(splits.setCalls.last.$2, isEmpty);
         expect(bloc.state.allocationsFor('l1'), isEmpty);
         await bloc.close();
       });
@@ -439,7 +441,8 @@ void main() {
         bloc.add(const SplitBillLineTapped('l1')); // You active → clear
         await Future<void>.delayed(Duration.zero);
         expect(bloc.state.allocationsFor('l1'), isEmpty);
-        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
+        expect(splits.setCalls.last.$1, 'l1');
+        expect(splits.setCalls.last.$2, isEmpty);
         await bloc.close();
       });
 
@@ -557,7 +560,8 @@ void main() {
         bloc.add(const SplitBillLineReset('l1'));
         await Future<void>.delayed(Duration.zero);
         expect(bloc.state.allocationsFor('l1'), isEmpty);
-        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
+        expect(splits.setCalls.last.$1, 'l1');
+        expect(splits.setCalls.last.$2, isEmpty);
         await bloc.close();
       });
     });
@@ -655,7 +659,8 @@ void main() {
         expect(bloc.state.participants, isNot(contains('Sam')));
         expect(bloc.state.activeParticipant, SplitBillBloc.you);
         // Sam was the sole owner of l1 → the line is re-committed empty.
-        expect(splits.setCalls.last, ('l1', const <LineAllocation>[]));
+        expect(splits.setCalls.last.$1, 'l1');
+        expect(splits.setCalls.last.$2, isEmpty);
         expect(bloc.state.allocationsFor('l1'), isEmpty);
         await bloc.close();
       });

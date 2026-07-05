@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
-import { Copy, Crown, Link2, Minus, MessageCircle, Plus, RotateCcw, Users, X } from 'lucide-react'
+import { Crown, Link2, Minus, Plus, RotateCcw, Users, X } from 'lucide-react'
 import { Avatar, Card } from '@/components/ds'
+import { ShareLink } from './share-link'
 import { useWorkspace } from './workspace-provider'
 import { fmtDate, fmtMoney, type Invoice } from './invoice-data'
 import { useBillSplit, type AssignableLine, type LineAllocationInput } from './use-bill-split'
@@ -59,10 +60,14 @@ interface BillSplitDialogProps {
 export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps) {
   const { showToast } = useWorkspace()
   const { data: session } = useSession()
-  const { state, setLineAllocations, removeParticipant, fetchWhatsappText, createShareLink } = useBillSplit(invoice.id)
+  const { state, setLineAllocations, removeParticipant, createShareLink } = useBillSplit(invoice.id)
   const [participants, setParticipants] = useState<string[]>([])
   const [activeParticipant, setActiveParticipant] = useState<string>(YOU)
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null)
+  // Lines where the account holder ("You") is an explicit equal sharer. You never persists as an
+  // allocation (it absorbs the remainder), so membership is tracked here instead of inferred from
+  // the remainder — inference conflates "leftover" with "equal share" and skews the split denominator.
+  const [youSharedLineIds, setYouSharedLineIds] = useState<Set<string>>(new Set())
   const [newName, setNewName] = useState('')
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
@@ -137,40 +142,41 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
     await commit(line.id, [...others, ...(next > EPSILON ? [{ participantName: activeParticipant, units: next }] : [])])
   }
 
-  // A single-unit line's sharers: the named people who hold a slice, plus You when the line
-  // is only partly assigned (You always absorbs the remainder). A fully-unassigned line has
-  // no explicit sharers — it belongs to You by default.
+  // The people currently sharing a single-unit line: its named holders (which the DB persists),
+  // plus You when You has been explicitly toggled in for this line.
   const sharersOf = (line: AssignableLine): string[] => {
     const named = allocationsFor(line.id).filter((a) => a.units > EPSILON).map((a) => a.participantName)
-    const remainder = line.quantity - allocationsFor(line.id).reduce((sum, a) => sum + a.units, 0)
-    return named.length > 0 && remainder > EPSILON ? [...named, YOU] : named
+    return youSharedLineIds.has(line.id) ? [...named, YOU] : named
   }
 
-  // Split a single-unit line evenly across a set of sharers (1/N each). Only named shares are
-  // persisted; You's slice is the reconciled remainder. No named sharers → the line is all You.
-  const applyEvenSplit = async (line: AssignableLine, sharers: string[]) => {
-    const named = sharers.filter((name) => name !== YOU)
-    if (named.length === 0) {
-      await commit(line.id, [])
-      return
-    }
-    const share = 1 / sharers.length
-    await commit(line.id, named.map((name) => ({ participantName: name, units: share })))
-  }
+  const setYouSharing = (lineId: string, sharing: boolean) =>
+    setYouSharedLineIds((prev) => {
+      const next = new Set(prev)
+      if (sharing) next.add(lineId)
+      else next.delete(lineId)
+      return next
+    })
 
-  // Single-unit lines: tapping toggles the active participant (named or You) in the line's
-  // sharer set, then re-splits evenly — so one item can be shared across two or more people.
+  // Single-unit lines: tapping toggles the active participant (named or You) in the line's sharer
+  // set, then splits the item evenly (1/N) so it can be shared across two or more people. Only
+  // named shares persist; You's slice is the reconciled remainder. The denominator is always
+  // exactly the number of people sharing, because membership is explicit, never inferred.
   const toggleShare = async (line: AssignableLine) => {
     setSelectedLineId(line.id)
     const sharers = sharersOf(line)
     const next = sharers.includes(activeParticipant)
       ? sharers.filter((name) => name !== activeParticipant)
       : [...sharers, activeParticipant]
-    await applyEvenSplit(line, next)
+    const named = next.filter((name) => name !== YOU)
+    const youShares = next.includes(YOU) && named.length > 0
+    setYouSharing(line.id, youShares)
+    const denominator = named.length + (youShares ? 1 : 0)
+    await commit(line.id, denominator === 0 ? [] : named.map((name) => ({ participantName: name, units: 1 / denominator })))
   }
 
   const resetLine = async (line: AssignableLine) => {
     setSelectedLineId(line.id)
+    setYouSharing(line.id, false)
     if (allocationsFor(line.id).length > 0) await commit(line.id, [])
   }
 
@@ -183,26 +189,15 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
         return
       }
       setShareUrl(url)
-      try {
-        await navigator.clipboard.writeText(url)
-        showToast('Share link copied — anyone with it can view the split.', 'success')
-      } catch {
-        // Clipboard can be blocked; the link is still shown for manual copy.
-      }
     } finally {
       setSharing(false)
     }
   }
 
-  const copyWhatsapp = async () => {
-    const text = await fetchWhatsappText()
-    if (!text) {
-      showToast("Couldn't build the WhatsApp export — please try again.", 'danger')
-      return
-    }
+  const copyShareUrl = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(text)
-      showToast('Split copied — paste it straight into WhatsApp.', 'success')
+      await navigator.clipboard.writeText(url)
+      showToast('Share link copied — anyone with it can view the split.', 'success')
     } catch {
       showToast("Couldn't copy to clipboard — please try again.", 'danger')
     }
@@ -483,23 +478,13 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
               <span className="split-section-title">Share this split</span>
             </div>
             {shareUrl ? (
-              <div className="share-link" data-testid="split-share-link">
-                <input
-                  className="share-input"
-                  readOnly
-                  value={shareUrl}
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-                <a
-                  className="btn btn--outline share-copy"
-                  href={`https://wa.me/?text=${encodeURIComponent(`Here's how we split ${invoice.merchant}: ${shareUrl}`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Share on WhatsApp"
-                >
-                  <MessageCircle size={15} /> WhatsApp
-                </a>
-              </div>
+              <ShareLink
+                link={shareUrl}
+                waText={`Here's how we split ${invoice.merchant}: ${shareUrl}`}
+                onCopy={copyShareUrl}
+                copyTestId="split-share-copy"
+                containerTestId="split-share-link"
+              />
             ) : (
               <button
                 type="button"
@@ -514,15 +499,6 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
             <p className="split-hint" style={{ marginTop: 6 }}>
               A read-only page anyone can open — like sharing a receipt. The link expires in 7 days.
             </p>
-
-            <button
-              type="button"
-              className="btn whatsapp-btn"
-              onClick={() => void copyWhatsapp()}
-              data-testid="split-copy-whatsapp"
-            >
-              <Copy size={18} /> Copy for WhatsApp
-            </button>
           </>
         )}
       </div>

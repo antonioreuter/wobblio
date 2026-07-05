@@ -26,6 +26,35 @@ reached from Invoice Detail.
 
 ## Deferred / known gaps
 
+- **18h re-synced (✅) 2026-07-05 — units model + steppers + share link + public page + deep link.**
+  The original 18h (below) shipped against the *old* single-participant `fraction` split contract.
+  The backend has since moved to a **units-based, multi-participant-per-line model plus public share
+  magic-links**, which broke the mobile screen against the live backend (it read `assignments`/
+  `fraction`; the API now returns `allocations`/`units`, replaced `PATCH .../lines/{lineId}` +
+  `DELETE .../assignment` with `PUT .../lines/{lineId}/allocations`, and added `POST .../share`). This
+  slice brings mobile to full webapp (`bill-split-dialog.tsx`) parity:
+  - Domain: `split_assignment.dart` → **`split_allocation.dart`** (`SplitAllocation {lineId,
+    participantName, units}` + `LineAllocation` input); new `shared_split.dart` (`SharedSplit`).
+  - `ISplitRepository`/`HttpSplitRepository`: `getSplit` reads `allocations`; **`setLineAllocations`**
+    (`PUT`, whole-line replace) replaces `assignLine`/`unassignLine`; new **`createShareLink`**
+    (`POST .../share`) and **`getSharedSplit`** (public `GET /shared-splits/{token}`).
+  - `SplitBillBloc`: multi-unit lines step with `+/−` (`_stepUnits`, capped by remainder), single-unit
+    lines keep the tap-cycle `[1, ½, ⅓]` (`_cycleShare`); participant-remove now re-commits each held
+    line's kept allocation set (no per-line DELETE); new share-link event surfaces the URL to the
+    native share sheet.
+  - **Public page + deep link (net-new):** `SharedSplitBloc` + `ui/shared_split/shared_split_screen.dart`
+    (read-only, ports `shared-split-view.tsx`; `notFound` on a 404). Reached via a full universal/app
+    link — new `IDeepLinkSource`/`AppLinksDeepLinkSource` (`app_links`), a root-navigator listener
+    (`ui/deep_link/deep_link_listener.dart`) that pushes `SharedSplitScreen` on `/s/{token}` **above
+    `AuthGate` (works signed-out)**, Android App-Links + host-scoped `wobblio://s` fallback filters,
+    and an iOS `Runner.entitlements` (`applinks:wobblio.app`).
+  - **External follow-ups (universal-link auto-verification only — custom scheme works now):** host
+    `assetlinks.json` (Android, needs release-cert SHA-256) + `apple-app-site-association` (iOS, Team+
+    bundle ID) under `wobblio.app/.well-known/` (webapp/CloudFront), and reference `Runner.entitlements`
+    from the Xcode Runner target's `CODE_SIGN_ENTITLEMENTS` build setting.
+  - Tests reworked (`split_bill_bloc_test.dart`) + added (`shared_split_bloc_test.dart`); `flutter
+    analyze` clean, full `flutter test` green.
+
 - **18h built (✅) 2026-07-02 — last of the 18d–18h block, all five slices now ✅.** This closes the
   "No Split-bill button" gap `18b`'s entry below flagged. New `lib/core/splitting/` domain models
   (`SplitAssignment`, `SplitItem`, `SplitParticipant`, `SplitSummary`, field-for-field mirrors of the
