@@ -49,9 +49,12 @@ selectable avatars** rendered on the line — one toggle per person (You + every
   filled/ringed; unselected are dimmed.
 - The denominator is always exactly the number of selected avatars; badges update live
   (`½`, `⅓`, `¼`, …) using the existing `fractionLabel`/`shareLabel` helpers.
-- "You" is a normal selectable avatar here (persisted as the reconciled remainder exactly as today —
-  the `youSharedLineIds` tracking in `bill-split-dialog.tsx:70` stays; it just gets a visible
-  toggle instead of being reachable only via the active-participant chip).
+- "You" is a normal selectable avatar here, persisted as the reconciled remainder exactly as today.
+  Because the chosen model is **even-split-only**, a single-unit line's leftover remainder means
+  exactly one thing — You holds an equal 1/N slice — so You's per-line membership is *derived from
+  the persisted allocations* (`sharersOf`) rather than tracked in ephemeral client state. This
+  replaces the old `youSharedLineIds` set on both surfaces and fixes a latent bug where that set,
+  lost on remount, would silently drop You from a shared line when another person was added.
 - Multi-unit lines (`quantity > 1`) keep the existing `+/−` stepper — that flow assigns *discrete
   units* to the active participant and is not the source of the confusion. The active-participant
   selector therefore remains, but only governs the stepper path.

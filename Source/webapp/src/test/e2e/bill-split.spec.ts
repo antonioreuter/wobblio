@@ -44,53 +44,46 @@ test.describe('bill splitting', () => {
     await expect(page.getByTestId('split-dialog')).toBeVisible()
     await expect(page.getByTestId('split-summary')).toBeVisible()
 
-    // Add a participant — auto-activates them as the tap target. The "on" active
-    // state lives on the wrapping chip <div> (the select/remove controls are
-    // sibling <button>s inside it, not nested), so locate via that wrapper.
+    // Add participants to the roster — no active-target step is needed anymore,
+    // single-quantity items are assigned by tapping people directly on the line.
     await page.getByTestId('split-participant-input').fill('Alex')
     await page.getByTestId('split-add-participant').click()
-    const alexChip = page.locator('div.split-chip', { has: page.getByTestId('split-chip-Alex') })
-    await expect(alexChip).toHaveClass(/on/)
+    await page.getByTestId('split-participant-input').fill('Bob')
+    await page.getByTestId('split-add-participant').click()
 
-    // Tapping the "Bread" line shares it with the active participant (Alex). The
-    // first tap gives Alex the whole item; "You" covers the rest.
-    const breadLine = page.locator('[data-testid^="split-assign-"]', { hasText: 'Bread' })
-    await breadLine.click()
+    // Each single-quantity line carries an inline sharer toggle per person. The
+    // "Bread" line's toggles live inside its .split-line container; locate by the
+    // visible person name on the pill.
+    const breadCard = page.locator('.split-line', { hasText: 'Bread' })
+    const sharer = (name: string) =>
+      breadCard.locator('[data-testid^="split-sharer-"]', { hasText: name })
 
-    // The tapped line shows a distinct selected/edited highlight so it's obvious
-    // which item is being associated to which people.
-    const breadCard = page.locator('.split-line', { has: breadLine })
+    // Tap Alex → Alex takes the whole item (denominator 1); "You" covers the rest.
+    await sharer('Alex').click()
+    // Tapping a sharer also highlights the line so it's obvious which item is being edited.
     await expect(breadCard).toHaveClass(/is-selected/)
-
-    // Summary reconciles: Alex owes for Bread, "You" covers the rest, and the
-    // total always equals the invoice total (computeSplitSummary's invariant).
     await expect(page.getByTestId('split-summary')).toContainText('Alex')
     await expect(page.getByTestId('split-summary')).toContainText('€3.50')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
 
-    // Share the SAME single-quantity item across a second person: add Bob (which
-    // auto-activates him) and tap Bread — it now splits ½ Alex + ½ Bob (€1.75 each).
-    await page.getByTestId('split-participant-input').fill('Bob')
-    await page.getByTestId('split-add-participant').click()
-    await breadLine.click()
+    // Tap Bob → the SAME single-quantity item now splits ½ Alex + ½ Bob (€1.75 each).
+    // This is the flow that was previously impossible on mobile and unintuitive on web.
+    await sharer('Bob').click()
     await expect(page.getByTestId('split-summary')).toContainText('€1.75')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
 
-    // Pull "You" into the share too → three-way even split (⅓ each ≈ €1.17).
-    await page.getByTestId('split-chip-You').click()
-    await breadLine.click()
+    // Tap "You" in → three-way even split (⅓ each ≈ €1.17).
+    await sharer('You').click()
     await expect(page.getByTestId('split-summary')).toContainText('€1.17')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
 
-    // Toggle Bob back out (Bob active) — Bread re-splits evenly between the rest.
-    await page.getByTestId('split-chip-Bob').click()
-    await breadLine.click()
+    // Toggle Bob back out → Bread re-splits evenly between the rest (Alex + You, €1.75).
+    await sharer('Bob').click()
     await expect(page.getByTestId('split-summary')).toContainText('€1.75')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
 
-    // Remove "You" from the share (You active) → the whole item falls back to Alex.
-    await page.getByTestId('split-chip-You').click()
-    await breadLine.click()
+    // Toggle "You" out → the whole item falls back to Alex.
+    await sharer('You').click()
     await expect(page.getByTestId('split-summary')).toContainText('Alex')
     await expect(page.getByTestId('split-summary')).toContainText('€3.50')
 

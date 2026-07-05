@@ -345,26 +345,16 @@ void main() {
       ],
     );
 
-    group('single-unit tap-cycle state machine', () {
-      test('You active + unassigned line → no-op (nothing to clear)', () async {
-        final splits = _FakeSplits();
-        final bloc = _build(splits: splits);
-        bloc.add(const SplitBillStarted());
-        await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1'));
-        await Future<void>.delayed(Duration.zero);
-        expect(splits.setCalls, isEmpty);
-        await bloc.close();
-      });
-
-      test('non-You active + unassigned line → assigns 1 unit', () async {
+    group('single-unit even-split toggle', () {
+      test('toggling a participant onto an unassigned line gives them the whole item',
+          () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantAdded('Sam'));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1'));
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam'));
         await Future<void>.delayed(Duration.zero);
         expect(splits.setCalls.single.$1, 'l1');
         expect(splits.setCalls.single.$2,
@@ -373,80 +363,52 @@ void main() {
         await bloc.close();
       });
 
-      test('full walk: unassigned → 1 → ½ → ⅓ → clear', () async {
+      test('toggling a second participant splits the single item ½ each — the flow '
+          'that was previously impossible on mobile', () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantAdded('Sam'));
         await Future<void>.delayed(Duration.zero);
-
-        bloc.add(const SplitBillLineTapped('l1')); // → 1
+        bloc.add(const SplitBillParticipantAdded('Zoe'));
         await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.unitsFor('l1', 'Sam'), 1);
-
-        bloc.add(const SplitBillLineTapped('l1')); // → ½
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam'));
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Zoe'));
         await Future<void>.delayed(Duration.zero);
         expect(bloc.state.unitsFor('l1', 'Sam'), 0.5);
-
-        bloc.add(const SplitBillLineTapped('l1')); // → ⅓
-        await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.unitsFor('l1', 'Sam'), closeTo(1 / 3, 1e-9));
-
-        bloc.add(const SplitBillLineTapped('l1')); // → clear
-        await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.allocationsFor('l1'), isEmpty);
-        expect(splits.setCalls.last.$1, 'l1');
-        expect(splits.setCalls.last.$2, isEmpty);
+        expect(bloc.state.unitsFor('l1', 'Zoe'), 0.5);
         await bloc.close();
       });
 
-      test(
-          'a NUMERIC(9,4) round-tripped 0.3333 (not exact 1/3) still matches '
-          'the ⅓ cycle index — next tap clears, not restarts at 1', () async {
-        final splits = _FakeSplits(
-          seedAllocations: {
-            'l1': const [
-              SplitAllocation(lineId: 'l1', participantName: 'Sam', units: 0.3333),
-            ],
-          },
-        );
-        final bloc = _build(splits: splits);
-        bloc.add(const SplitBillStarted());
-        await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.unitsFor('l1', 'Sam'), 0.3333);
-        bloc.add(const SplitBillParticipantSelected('Sam'));
-        await Future<void>.delayed(Duration.zero);
-
-        bloc.add(const SplitBillLineTapped('l1')); // ⅓ → past the end → clear
-        await Future<void>.delayed(Duration.zero);
-
-        expect(splits.setCalls.last.$1, 'l1');
-        expect(splits.setCalls.last.$2, isEmpty);
-        expect(bloc.state.allocationsFor('l1'), isEmpty);
-        await bloc.close();
-      });
-
-      test('You active + assigned line → clears the set, never re-assigns', () async {
+      test('toggling You into a two-named line makes it a three-way ⅓ split and '
+          'records You as a per-line sharer', () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantAdded('Sam'));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1')); // Sam takes it
+        bloc.add(const SplitBillParticipantAdded('Zoe'));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillParticipantSelected(SplitBillBloc.you));
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam'));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1')); // You active → clear
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Zoe'));
         await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.allocationsFor('l1'), isEmpty);
-        expect(splits.setCalls.last.$1, 'l1');
-        expect(splits.setCalls.last.$2, isEmpty);
+        bloc.add(const SplitBillLineSharerToggled('l1', SplitBillBloc.you));
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.unitsFor('l1', 'Sam'), closeTo(1 / 3, 1e-9));
+        expect(bloc.state.unitsFor('l1', 'Zoe'), closeTo(1 / 3, 1e-9));
+        // "You" never persists as an allocation — its membership is re-derived
+        // from the leftover remainder.
+        expect(bloc.state.unitsFor('l1', SplitBillBloc.you), 0);
+        expect(bloc.state.sharersOf('l1'),
+            containsAll(<String>['Sam', 'Zoe', SplitBillBloc.you]),);
         await bloc.close();
       });
 
-      test('tapping a line owned by a different participant reassigns it at 1 unit',
+      test('toggling a participant back off re-splits evenly among the rest',
           () async {
         final splits = _FakeSplits();
         final bloc = _build(splits: splits);
@@ -454,25 +416,65 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantAdded('Sam'));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1')); // Sam takes it at 1
-        await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantAdded('Zoe'));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1')); // Zoe steals it at 1
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam'));
         await Future<void>.delayed(Duration.zero);
-        expect(bloc.state.unitsFor('l1', 'Zoe'), 1);
-        expect(bloc.state.unitsFor('l1', 'Sam'), 0);
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Zoe')); // ½ each
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Zoe')); // Zoe off → Sam 1
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.unitsFor('l1', 'Sam'), 1);
+        expect(bloc.state.unitsFor('l1', 'Zoe'), 0);
         await bloc.close();
       });
 
-      test('a line-tap failure surfaces a notice', () async {
+      test('toggling the last sharer off clears the line', () async {
+        final splits = _FakeSplits();
+        final bloc = _build(splits: splits);
+        bloc.add(const SplitBillStarted());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillParticipantAdded('Sam'));
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam')); // Sam takes it
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam')); // off → clear
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.allocationsFor('l1'), isEmpty);
+        expect(splits.setCalls.last.$1, 'l1');
+        expect(splits.setCalls.last.$2, isEmpty);
+        await bloc.close();
+      });
+
+      test('toggling You out of a shared line drops You and re-splits the rest',
+          () async {
+        final splits = _FakeSplits();
+        final bloc = _build(splits: splits);
+        bloc.add(const SplitBillStarted());
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillParticipantAdded('Sam'));
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam')); // Sam 1
+        await Future<void>.delayed(Duration.zero);
+        bloc.add(const SplitBillLineSharerToggled('l1', SplitBillBloc.you)); // ½/½
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.unitsFor('l1', 'Sam'), 0.5);
+        expect(bloc.state.sharersOf('l1'), contains(SplitBillBloc.you));
+        bloc.add(const SplitBillLineSharerToggled('l1', SplitBillBloc.you)); // You off
+        await Future<void>.delayed(Duration.zero);
+        expect(bloc.state.unitsFor('l1', 'Sam'), 1);
+        expect(bloc.state.sharersOf('l1'), isNot(contains(SplitBillBloc.you)));
+        await bloc.close();
+      });
+
+      test('a toggle failure surfaces a notice', () async {
         final splits = _FakeSplits(setError: true);
         final bloc = _build(splits: splits);
         bloc.add(const SplitBillStarted());
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantAdded('Sam'));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1'));
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam'));
         await Future<void>.delayed(const Duration(milliseconds: 10));
         expect(bloc.state.notice, isNotNull);
         await bloc.close();
@@ -581,7 +583,7 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantAdded('Sam'));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1'));
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam'));
         await Future<void>.delayed(Duration.zero);
         expect(bloc.state.summary, cannedSummary);
         await bloc.close();
@@ -652,7 +654,7 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantAdded('Sam'));
         await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillLineTapped('l1'));
+        bloc.add(const SplitBillLineSharerToggled('l1', 'Sam'));
         await Future<void>.delayed(Duration.zero);
         bloc.add(const SplitBillParticipantRemoved('Sam'));
         await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -709,32 +711,6 @@ void main() {
       });
     });
 
-    group('WhatsApp share and copy', () {
-      test('WhatsApp requested calls ISharePresenter.share with the backend text', () async {
-        final share = _FakeShare();
-        final bloc = _build(share: share);
-        bloc.add(const SplitBillStarted());
-        await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillWhatsAppRequested());
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-        expect(share.shared, ['Split summary text']);
-        expect(share.copied, isEmpty);
-        await bloc.close();
-      });
-
-      test('Copy requested calls ISharePresenter.copyToClipboard with the backend text',
-          () async {
-        final share = _FakeShare();
-        final bloc = _build(share: share);
-        bloc.add(const SplitBillStarted());
-        await Future<void>.delayed(Duration.zero);
-        bloc.add(const SplitBillCopyRequested());
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-        expect(share.copied, ['Split summary text']);
-        expect(share.shared, isEmpty);
-        await bloc.close();
-      });
-    });
   });
 }
 

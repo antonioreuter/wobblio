@@ -1692,6 +1692,9 @@ button.split-chip { gap: 6px; padding: 4px 10px 4px 4px; cursor: pointer; }
   color: var(--text-primary);
 }
 .split-line-row:hover { background: var(--glass-highlight); }
+/* Single-unit lines are assigned via their inline sharer toggles, not by tapping the row. */
+.split-line-row--static { cursor: default; }
+.split-line-row--static:hover { background: none; }
 .split-line-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .split-line-qty { color: var(--text-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
 .split-line-amt { font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
@@ -1709,6 +1712,18 @@ button.split-chip { gap: 6px; padding: 4px 10px 4px 4px; cursor: pointer; }
   background: var(--brand); border: 1.5px solid var(--glass-bg); border-radius: 999px; padding: 2px 4px;
   font-variant-numeric: tabular-nums;
 }
+/* Single-unit lines: one toggle per person (You + roster). Tapping one includes/excludes that
+   person from the item's even split; "on" pills carry the live fraction badge on the avatar. */
+.split-sharers { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.split-sharer {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 3px 12px 3px 3px; border: 1px solid var(--glass-border); border-radius: 999px;
+  background: none; color: var(--text-secondary); font-size: 12px; font-weight: 600;
+  cursor: pointer; opacity: 0.6; transition: opacity 0.15s, border-color 0.15s, background 0.15s, color 0.15s;
+}
+.split-sharer:hover { opacity: 0.9; border-color: var(--text-secondary); }
+.split-sharer.on { opacity: 1; border-color: var(--brand); background: var(--brand-glow); color: var(--brand); }
+
 .split-stepper { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .split-stepper button {
   display: inline-flex; align-items: center; justify-content: center;

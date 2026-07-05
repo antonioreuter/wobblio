@@ -43,6 +43,32 @@ class SplitBillState extends Equatable {
   final String? shareUrl;
   final String? notice;
 
+  /// The people currently sharing single-unit [lineId]: its named holders (which
+  /// the backend persists), plus "You" when the named shares leave a remainder.
+  /// Every single-unit share is an even 1/N, so a leftover remainder means
+  /// exactly one thing — "You" holds an equal slice — letting You's membership
+  /// be derived from the persisted allocations rather than tracked separately
+  /// (which would be lost on a remount). Mirrors the webapp's `sharersOf`.
+  List<String> sharersOf(String lineId) {
+    final named = <String>[];
+    var assigned = 0.0;
+    for (final a in allocations) {
+      if (a.lineId != lineId) continue;
+      assigned += a.units;
+      if (a.units > SplitBillBloc._epsilon) named.add(a.participantName);
+    }
+    final youShares =
+        named.isNotEmpty && _quantityOf(lineId) - assigned > SplitBillBloc._epsilon;
+    return youShares ? [...named, SplitBillBloc.you] : named;
+  }
+
+  double _quantityOf(String lineId) {
+    for (final line in lines) {
+      if (line.id == lineId) return line.quantity;
+    }
+    return 1;
+  }
+
   /// Every allocation on [lineId] (may be empty, or several participants).
   List<SplitAllocation> allocationsFor(String lineId) =>
       [for (final a in allocations) if (a.lineId == lineId) a];

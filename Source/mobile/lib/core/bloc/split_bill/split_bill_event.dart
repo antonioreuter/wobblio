@@ -45,15 +45,18 @@ class SplitBillParticipantRemoved extends SplitBillEvent {
   List<Object?> get props => [name];
 }
 
-/// A single-unit line row tapped — drives the assign / fraction-cycle / clear
-/// state machine (see `SplitBillBloc._onLineTapped`).
-class SplitBillLineTapped extends SplitBillEvent {
-  const SplitBillLineTapped(this.lineId);
+/// A person's inline avatar toggled on a single-unit line — adds/removes [name]
+/// (a participant or "You") from that item's even split (see
+/// `SplitBillBloc._onLineSharerToggled`). The item is always divided 1/N across
+/// the people currently sharing it.
+class SplitBillLineSharerToggled extends SplitBillEvent {
+  const SplitBillLineSharerToggled(this.lineId, this.name);
 
   final String lineId;
+  final String name;
 
   @override
-  List<Object?> get props => [lineId];
+  List<Object?> get props => [lineId, name];
 }
 
 /// A multi-unit line's +/− stepper — nudges the active participant's unit
@@ -79,18 +82,9 @@ class SplitBillLineReset extends SplitBillEvent {
   List<Object?> get props => [lineId];
 }
 
-/// "Create share link" tapped — mints a public `/s/{token}` link and hands it
-/// to the native share sheet.
+/// "Share split" tapped — mints a public `/s/{token}` link and hands it to the
+/// native share sheet (which itself offers WhatsApp, copy, etc), exactly like
+/// invoice sharing.
 class SplitBillShareLinkRequested extends SplitBillEvent {
   const SplitBillShareLinkRequested();
-}
-
-/// "Share via WhatsApp" tapped.
-class SplitBillWhatsAppRequested extends SplitBillEvent {
-  const SplitBillWhatsAppRequested();
-}
-
-/// "Copy summary" tapped.
-class SplitBillCopyRequested extends SplitBillEvent {
-  const SplitBillCopyRequested();
 }

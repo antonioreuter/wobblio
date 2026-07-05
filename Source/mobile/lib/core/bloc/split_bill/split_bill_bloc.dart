@@ -20,7 +20,9 @@ part 'split_bill_state.dart';
 /// split-id resolve-with-cache-fallback dance (`_resolveSplitId`, working
 /// around `POST /invoices/{id}/splits`' lack of idempotency), and the
 /// units-based assignment state machine — multi-unit lines step with `+/−`
-/// (`_stepUnits`), single-unit lines tap-cycle `[1, ½, ⅓]` (`_cycleShare`).
+/// (`_stepUnits`), single-unit lines carry an inline per-person avatar toggle
+/// that shares the item evenly (1/N) across whoever is tapped in
+/// (`_onLineSharerToggled`, mirroring the webapp's `toggleShareFor`).
 /// Every mutation replaces a line's whole allocation set then refetches
 /// `allocations`+`summary` — the fee-pool-proportional-share math is
 /// server-only. Widgets stay logic-free
@@ -43,20 +45,16 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     on<SplitBillParticipantAdded>(_onParticipantAdded);
     on<SplitBillParticipantSelected>(_onParticipantSelected);
     on<SplitBillParticipantRemoved>(_onParticipantRemoved);
-    on<SplitBillLineTapped>(_onLineTapped);
+    on<SplitBillLineSharerToggled>(_onLineSharerToggled);
     on<SplitBillLineStepped>(_onLineStepped);
     on<SplitBillLineReset>(_onLineReset);
     on<SplitBillShareLinkRequested>(_onShareLinkRequested);
-    on<SplitBillWhatsAppRequested>(_onWhatsAppRequested);
-    on<SplitBillCopyRequested>(_onCopyRequested);
   }
 
   /// The synthetic implicit-remainder participant — never appears in
   /// [SplitBillState.participants], never allocatable as a real assignment
   /// (the backend rejects it with a 400).
   static const String you = 'You';
-
-  static const List<double> _fractionCycle = [1, 0.5, 1 / 3];
 
   // bill_split_line.units is NUMERIC(9,4) — 1/3 round-trips through the backend
   // as 0.3333, not Dart's 0.3333333333333333 (diff ≈ 3.33e-5). The tolerance
@@ -226,21 +224,35 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     }
   }
 
-  // "You" is the synthetic implicit remainder owner, not an allocatable
-  // participant — while active, a single-unit tap can only give the line back
-  // to you (clear its allocations). Ports `bill-split-dialog.tsx`'s
-  // `cycleShare`/`resetLine` split for single-unit lines.
-  Future<void> _onLineTapped(
-    SplitBillLineTapped event,
+  // Single-unit lines: toggle one person (a participant or "You") in/out of the
+  // item's sharer set, then split it evenly (1/N) across whoever remains. Only
+  // named shares persist; "You"'s slice is the reconciled remainder — from which
+  // its membership is re-derived (see [SplitBillState.sharersOf]), never tracked.
+  // Ports `bill-split-dialog.tsx`'s `toggleShareFor`.
+  Future<void> _onLineSharerToggled(
+    SplitBillLineSharerToggled event,
     Emitter<SplitBillState> emit,
   ) async {
     final line = _lineById(event.lineId);
     if (line == null) return;
-    if (state.activeParticipant == you) {
-      await _resetLine(emit, line);
-      return;
-    }
-    await _cycleShare(emit, line);
+    final name = event.name;
+    final sharers = state.sharersOf(line.id);
+    final next = sharers.contains(name)
+        ? [for (final n in sharers) if (n != name) n]
+        : [...sharers, name];
+    final named = [for (final n in next) if (n != you) n];
+    final youShares = next.contains(you) && named.isNotEmpty;
+    final denominator = named.length + (youShares ? 1 : 0);
+    await _commit(
+      emit,
+      line.id,
+      denominator == 0
+          ? const []
+          : [
+              for (final n in named)
+                LineAllocation(participantName: n, units: 1 / denominator),
+            ],
+    );
   }
 
   Future<void> _onLineStepped(
@@ -279,36 +291,6 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
       if (next > _epsilon)
         LineAllocation(participantName: active, units: next),
     ]);
-  }
-
-  // Single-unit lines keep the tap-to-cycle share: assign in full, then ½, ⅓,
-  // then release. One owner at a time (remainder → You), so this replaces the
-  // set. Ports `cycleShare`.
-  Future<void> _cycleShare(
-    Emitter<SplitBillState> emit,
-    InvoiceLineDetail line,
-  ) async {
-    final active = state.activeParticipant;
-    final owns =
-        state.allocationsFor(line.id).any((a) => a.participantName == active);
-    if (!owns) {
-      await _commit(
-          emit, line.id, [LineAllocation(participantName: active, units: 1)],);
-      return;
-    }
-    final mine = state.unitsFor(line.id, active);
-    final index =
-        _fractionCycle.indexWhere((f) => (f - mine).abs() < _epsilon);
-    final nextIndex = index + 1;
-    final next =
-        nextIndex < _fractionCycle.length ? _fractionCycle[nextIndex] : 0.0;
-    await _commit(
-      emit,
-      line.id,
-      next > _epsilon
-          ? [LineAllocation(participantName: active, units: next)]
-          : const [],
-    );
   }
 
   Future<void> _resetLine(
@@ -378,38 +360,6 @@ class SplitBillBloc extends Bloc<SplitBillEvent, SplitBillState> {
     } catch (_) {
       emit(state.copyWith(
           notice: 'Couldn’t create a share link — please try again.',),);
-    }
-  }
-
-  Future<void> _onWhatsAppRequested(
-    SplitBillWhatsAppRequested event,
-    Emitter<SplitBillState> emit,
-  ) async {
-    final splitId = state.splitId;
-    if (splitId == null) return;
-    emit(state.copyWith(notice: null));
-    try {
-      final text = await _splits.getWhatsAppText(invoiceId, splitId);
-      await _share.share(text);
-    } catch (_) {
-      emit(state.copyWith(
-          notice: 'Couldn’t build the WhatsApp export — please try again.',),);
-    }
-  }
-
-  Future<void> _onCopyRequested(
-    SplitBillCopyRequested event,
-    Emitter<SplitBillState> emit,
-  ) async {
-    final splitId = state.splitId;
-    if (splitId == null) return;
-    emit(state.copyWith(notice: null));
-    try {
-      final text = await _splits.getWhatsAppText(invoiceId, splitId);
-      await _share.copyToClipboard(text);
-    } catch (_) {
-      emit(state.copyWith(
-          notice: 'Couldn’t copy the summary — please try again.',),);
     }
   }
 

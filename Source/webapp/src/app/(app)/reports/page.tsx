@@ -9,7 +9,6 @@ import {
   LineChart,
   MAX_PRODUCTS,
   MONTHS,
-  PRESETS,
   PriceTrendsHelpButton,
   ProductSearch,
   RegionPicker,
@@ -20,6 +19,18 @@ import {
   type TrendProduct,
   type TrendUnit,
 } from '@/components/workspace'
+
+// Reports-local presets. The shared `Preset`/`PRESETS` are also driven by the invoices
+// filter (spend filtering) — the price-trends report is the only surface that needs the
+// 6-month window (the backend serves 26 weeks), so we widen here, not the shared type.
+type TrendPreset = Preset | '6m'
+const TREND_PRESETS: Array<[TrendPreset, string]> = [
+  ['30d', 'Last 30 days'],
+  ['month', 'This month'],
+  ['90d', 'Last 3 months'],
+  ['6m', 'Last 6 months'],
+  ['custom', 'Custom range'],
+]
 
 interface ChartSeries {
   id: string
@@ -60,7 +71,7 @@ export default function ReportsPage() {
   const [selected, setSelected] = useState<TrendProduct[]>([])
   const [country, setCountry] = useState('')
   const [region, setRegion] = useState('')
-  const [preset, setPreset] = useState<Preset>('90d')
+  const [preset, setPreset] = useState<TrendPreset>('90d')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
 
@@ -97,13 +108,13 @@ export default function ReportsPage() {
 
   const rangeDays =
     from && to ? Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) : 0
-  const rangeInvalid = preset === 'custom' && from !== '' && to !== '' && (rangeDays < 0 || rangeDays > 92)
+  const rangeInvalid = preset === 'custom' && from !== '' && to !== '' && (rangeDays < 0 || rangeDays > 183)
 
   const { series, labels, unitWarning } = useMemo(
     () => buildChart(comparison, selected, mode, preset, from, to, rangeInvalid),
     [comparison, selected, mode, preset, from, to, rangeInvalid],
   )
-  const rangeLabel = PRESETS.find(([v]) => v === preset)?.[1] ?? 'Last 3 months'
+  const rangeLabel = TREND_PRESETS.find(([v]) => v === preset)?.[1] ?? 'Last 3 months'
 
   return (
     <div className="pane">
@@ -153,9 +164,9 @@ export default function ReportsPage() {
             label="Date range"
             icon={<Calendar size={15} />}
             value={preset}
-            onChange={(e) => setPreset(e.target.value as Preset)}
+            onChange={(e) => setPreset(e.target.value as TrendPreset)}
           >
-            {PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {TREND_PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </FilterSelect>
         </div>
 
@@ -219,7 +230,7 @@ export default function ReportsPage() {
         <div className="filter-foot">
           <span className={`filter-hint ${rangeInvalid ? 'invalid' : ''}`}>
             <Clock size={13} />
-            {rangeInvalid ? 'Range can’t exceed 3 months.' : `${series.length} lines · max range 6 months`}
+            {rangeInvalid ? 'Range can’t exceed 6 months.' : `${series.length} lines · max range 6 months`}
           </span>
           <div className="filter-actions">
             <button
@@ -390,7 +401,7 @@ function buildChart(
   comparison: TrendComparison | null,
   products: TrendProduct[],
   mode: CompareMode,
-  preset: Preset,
+  preset: TrendPreset,
   from: string,
   to: string,
   rangeInvalid: boolean,
@@ -469,11 +480,14 @@ function daysBack(n: number): Date {
   return new Date(Date.now() - n * 86_400_000)
 }
 
-function inRange(d: Date, preset: Preset, from: string, to: string, rangeInvalid: boolean): boolean {
+function inRange(d: Date, preset: TrendPreset, from: string, to: string, rangeInvalid: boolean): boolean {
   const today = new Date()
   if (preset === '30d') return d >= daysBack(30)
+  if (preset === '6m') return d >= daysBack(183)
+  // The week axis is built from `${w}T00:00:00Z` (UTC), so the month comparison must be UTC
+  // on both sides — mixing local `today.getMonth()` mis-includes/drops a week near boundaries.
   if (preset === 'month')
-    return d.getUTCMonth() === today.getMonth() && d.getUTCFullYear() === today.getFullYear()
+    return d.getUTCMonth() === today.getUTCMonth() && d.getUTCFullYear() === today.getUTCFullYear()
   if (preset === 'custom' && !rangeInvalid && from && to)
     return d >= new Date(from) && d <= new Date(to)
   return d >= daysBack(90)

@@ -11,7 +11,7 @@
     "fileSummary": true,
     "directoryStructure": true,
     "files": true,
-    "removeComments": false,
+    "removeComments": true,
     "removeEmptyLines": true,
     "compress": true,
     "showLineNumbers": false,
@@ -19,6 +19,7 @@
     "copyToClipboard": true,
     "includeFullDirectoryStructure": false,
     "tokenCountTree": true,
+    "splitOutput": "500kb",
     "git": {
       "sortByChanges": true,
       "sortByChangesMaxCommits": 100,

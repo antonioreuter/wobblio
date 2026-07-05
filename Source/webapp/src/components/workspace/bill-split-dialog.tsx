@@ -64,10 +64,6 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
   const [participants, setParticipants] = useState<string[]>([])
   const [activeParticipant, setActiveParticipant] = useState<string>(YOU)
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null)
-  // Lines where the account holder ("You") is an explicit equal sharer. You never persists as an
-  // allocation (it absorbs the remainder), so membership is tracked here instead of inferred from
-  // the remainder — inference conflates "leftover" with "equal share" and skews the split denominator.
-  const [youSharedLineIds, setYouSharedLineIds] = useState<Set<string>>(new Set())
   const [newName, setNewName] = useState('')
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
@@ -143,40 +139,36 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
   }
 
   // The people currently sharing a single-unit line: its named holders (which the DB persists),
-  // plus You when You has been explicitly toggled in for this line.
+  // plus You when the named shares leave a remainder. Because every single-unit share is an even
+  // 1/N, a leftover remainder means exactly one thing — You holds an equal slice — so You's
+  // membership is derived from the persisted allocations, never tracked separately. That keeps it
+  // correct across a remount (there is no "list splits" endpoint to rehydrate ephemeral UI state).
   const sharersOf = (line: AssignableLine): string[] => {
-    const named = allocationsFor(line.id).filter((a) => a.units > EPSILON).map((a) => a.participantName)
-    return youSharedLineIds.has(line.id) ? [...named, YOU] : named
+    const allocs = allocationsFor(line.id)
+    const named = allocs.filter((a) => a.units > EPSILON).map((a) => a.participantName)
+    const assigned = allocs.reduce((sum, a) => sum + a.units, 0)
+    const youShares = named.length > 0 && line.quantity - assigned > EPSILON
+    return youShares ? [...named, YOU] : named
   }
 
-  const setYouSharing = (lineId: string, sharing: boolean) =>
-    setYouSharedLineIds((prev) => {
-      const next = new Set(prev)
-      if (sharing) next.add(lineId)
-      else next.delete(lineId)
-      return next
-    })
-
-  // Single-unit lines: tapping toggles the active participant (named or You) in the line's sharer
-  // set, then splits the item evenly (1/N) so it can be shared across two or more people. Only
-  // named shares persist; You's slice is the reconciled remainder. The denominator is always
-  // exactly the number of people sharing, because membership is explicit, never inferred.
-  const toggleShare = async (line: AssignableLine) => {
+  // Single-unit lines: each person (named or You) has an inline avatar toggle on the line itself.
+  // Tapping one adds/removes that person from the line's sharer set, then splits the item evenly
+  // (1/N) so it can be shared across two or more people — no need to first select an active chip.
+  // Only named shares persist; You's slice is the reconciled remainder.
+  const toggleShareFor = async (line: AssignableLine, name: string) => {
     setSelectedLineId(line.id)
     const sharers = sharersOf(line)
-    const next = sharers.includes(activeParticipant)
-      ? sharers.filter((name) => name !== activeParticipant)
-      : [...sharers, activeParticipant]
-    const named = next.filter((name) => name !== YOU)
+    const next = sharers.includes(name)
+      ? sharers.filter((n) => n !== name)
+      : [...sharers, name]
+    const named = next.filter((n) => n !== YOU)
     const youShares = next.includes(YOU) && named.length > 0
-    setYouSharing(line.id, youShares)
     const denominator = named.length + (youShares ? 1 : 0)
-    await commit(line.id, denominator === 0 ? [] : named.map((name) => ({ participantName: name, units: 1 / denominator })))
+    await commit(line.id, denominator === 0 ? [] : named.map((n) => ({ participantName: n, units: 1 / denominator })))
   }
 
   const resetLine = async (line: AssignableLine) => {
     setSelectedLineId(line.id)
-    setYouSharing(line.id, false)
     if (allocationsFor(line.id).length > 0) await commit(line.id, [])
   }
 
@@ -214,6 +206,13 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
       ? state.summary.participants.filter((p) => p.name !== YOU).reduce((sum, p) => sum + p.total, 0)
       : 0
   const grandTotal = state.status === 'ready' ? state.summary.grandTotal : 0
+
+  // The active-participant selector only drives the multi-unit +/− steppers now; single-unit lines
+  // carry their own inline sharer toggles. Only surface the "assigning to X" hint when a stepper
+  // line actually exists, so single-unit-only receipts don't imply a step that does nothing.
+  const hasMultiUnit =
+    state.status === 'ready' &&
+    state.lines.some((l) => !l.isDiscount && !l.isDepositOrFee && l.quantity > 1 + EPSILON)
 
   // A summary item carries only its own units, not the line's quantity, so its label needs
   // the parent line to tell a shared single item (½) from one unit of a multi-unit line (×1).
@@ -320,7 +319,9 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
 
             <div className="split-section-head">
               <span className="split-section-title">Assign items</span>
-              <span className="split-hint">assigning to <strong>{activeParticipant}</strong></span>
+              {hasMultiUnit && (
+                <span className="split-hint">+/− adds to <strong>{activeParticipant}</strong></span>
+              )}
             </div>
             <div className="split-lines">
               {state.lines
@@ -337,6 +338,11 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                     ...(remainder > EPSILON ? [{ name: YOU, units: remainder }] : []),
                   ]
 
+                  // Single-unit sharers: the explicit set, or You alone (the implicit owner) when
+                  // nothing is assigned. Every sharer's slice is an even 1/N of the item.
+                  const sharers = sharersOf(line)
+                  const effectiveOwners = sharers.length > 0 ? sharers : [YOU]
+
                   const isSelected = selectedLineId === line.id
 
                   return (
@@ -346,96 +352,124 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                       data-testid={`split-line-${line.id}`}
                     >
                       {isMulti ? (
-                        <button
-                          type="button"
-                          className="split-line-row"
-                          onClick={() => setSelectedLineId(line.id)}
-                          data-testid={`split-select-${line.id}`}
-                          aria-label={`${line.rawText}, ${money(line.lineTotal)} — select to edit; use +/− to share units`}
-                          aria-pressed={isSelected}
-                        >
-                          <span className="split-line-name">
-                            {line.rawText} <span className="split-line-qty">×{Number(line.quantity)}</span>
-                          </span>
-                          <span className="split-line-amt">{money(line.lineTotal)}</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="split-line-row"
-                          onClick={() => void toggleShare(line)}
-                          data-testid={`split-assign-${line.id}`}
-                          aria-pressed={isSelected}
-                          aria-label={
-                            activeParticipant === YOU
-                              ? `${line.rawText}, ${money(line.lineTotal)} — tap to add or remove You as a sharer`
-                              : `${line.rawText}, ${money(line.lineTotal)} — tap to share with ${activeParticipant}; tap again to remove`
-                          }
-                        >
-                          <span className="split-line-name">{line.rawText}</span>
-                          <span className="split-line-amt">{money(line.lineTotal)}</span>
-                        </button>
-                      )}
-
-                      <div className="split-alloc">
-                        <div className="split-owners">
-                          {owners.map((o) => (
-                            <span className="split-owner" key={o.name} title={`${o.name} ${shareLabel(o.units, line.quantity) || 'full'}`}>
-                              <Avatar
-                                initials={o.name === YOU ? youInitials : memberInitials({ fullName: o.name, email: '' })}
-                                size={22}
-                                background={participantColor(o.name, namedParticipants)}
-                              />
-                              {shareLabel(o.units, line.quantity) && (
-                                <span className="split-owner-badge">{shareLabel(o.units, line.quantity)}</span>
-                              )}
-                            </span>
-                          ))}
-                        </div>
-
-                        {isMulti && activeParticipant !== YOU && (
-                          <div className="split-stepper" data-testid={`split-stepper-${line.id}`}>
-                            <button
-                              type="button"
-                              aria-label={`Remove a ${line.rawText} from ${activeParticipant}`}
-                              disabled={myUnits <= EPSILON}
-                              onClick={() => void stepUnits(line, -1)}
-                              data-testid={`split-minus-${line.id}`}
-                            >
-                              <Minus size={14} />
-                            </button>
-                            <span className="split-stepper-val tabular" data-testid={`split-units-${line.id}`}>
-                              {Number(myUnits.toFixed(2))}
-                            </span>
-                            <button
-                              type="button"
-                              aria-label={`Add a ${line.rawText} to ${activeParticipant}`}
-                              disabled={remainder <= EPSILON}
-                              onClick={() => void stepUnits(line, 1)}
-                              data-testid={`split-plus-${line.id}`}
-                            >
-                              <Plus size={14} />
-                            </button>
-                          </div>
-                        )}
-                        {isMulti && activeParticipant === YOU && allocs.length > 0 && (
+                        <>
                           <button
                             type="button"
-                            className="split-reset"
-                            onClick={() => void resetLine(line)}
-                            aria-label={`Give all of ${line.rawText} back to you`}
-                            data-testid={`split-reset-${line.id}`}
+                            className="split-line-row"
+                            onClick={() => setSelectedLineId(line.id)}
+                            data-testid={`split-select-${line.id}`}
+                            aria-label={`${line.rawText}, ${money(line.lineTotal)} — select to edit; use +/− to share units`}
+                            aria-pressed={isSelected}
                           >
-                            <RotateCcw size={13} /> Reset
+                            <span className="split-line-name">
+                              {line.rawText} <span className="split-line-qty">×{Number(line.quantity)}</span>
+                            </span>
+                            <span className="split-line-amt">{money(line.lineTotal)}</span>
                           </button>
-                        )}
-                      </div>
+
+                          <div className="split-alloc">
+                            <div className="split-owners">
+                              {owners.map((o) => (
+                                <span className="split-owner" key={o.name} title={`${o.name} ${shareLabel(o.units, line.quantity) || 'full'}`}>
+                                  <Avatar
+                                    initials={o.name === YOU ? youInitials : memberInitials({ fullName: o.name, email: '' })}
+                                    size={22}
+                                    background={participantColor(o.name, namedParticipants)}
+                                  />
+                                  {shareLabel(o.units, line.quantity) && (
+                                    <span className="split-owner-badge">{shareLabel(o.units, line.quantity)}</span>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+
+                            {activeParticipant !== YOU ? (
+                              <div className="split-stepper" data-testid={`split-stepper-${line.id}`}>
+                                <button
+                                  type="button"
+                                  aria-label={`Remove a ${line.rawText} from ${activeParticipant}`}
+                                  disabled={myUnits <= EPSILON}
+                                  onClick={() => void stepUnits(line, -1)}
+                                  data-testid={`split-minus-${line.id}`}
+                                >
+                                  <Minus size={14} />
+                                </button>
+                                <span className="split-stepper-val tabular" data-testid={`split-units-${line.id}`}>
+                                  {Number(myUnits.toFixed(2))}
+                                </span>
+                                <button
+                                  type="button"
+                                  aria-label={`Add a ${line.rawText} to ${activeParticipant}`}
+                                  disabled={remainder <= EPSILON}
+                                  onClick={() => void stepUnits(line, 1)}
+                                  data-testid={`split-plus-${line.id}`}
+                                >
+                                  <Plus size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              allocs.length > 0 && (
+                                <button
+                                  type="button"
+                                  className="split-reset"
+                                  onClick={() => void resetLine(line)}
+                                  aria-label={`Give all of ${line.rawText} back to you`}
+                                  data-testid={`split-reset-${line.id}`}
+                                >
+                                  <RotateCcw size={13} /> Reset
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="split-line-row split-line-row--static">
+                            <span className="split-line-name">{line.rawText}</span>
+                            <span className="split-line-amt">{money(line.lineTotal)}</span>
+                          </div>
+
+                          <div className="split-alloc">
+                            <div className="split-sharers" data-testid={`split-sharers-${line.id}`}>
+                              {[YOU, ...namedParticipants].map((name) => {
+                                const on = effectiveOwners.includes(name)
+                                const badge = on ? shareLabel(1 / effectiveOwners.length, 1) : ''
+                                return (
+                                  <button
+                                    key={name}
+                                    type="button"
+                                    className={`split-sharer ${on ? 'on' : ''}`}
+                                    onClick={() => void toggleShareFor(line, name)}
+                                    data-testid={`split-sharer-${line.id}-${name}`}
+                                    aria-pressed={on}
+                                    aria-label={
+                                      on
+                                        ? `${name} is sharing ${line.rawText}; tap to remove`
+                                        : `Add ${name} to ${line.rawText}`
+                                    }
+                                  >
+                                    <span className="split-owner">
+                                      <Avatar
+                                        initials={name === YOU ? youInitials : memberInitials({ fullName: name, email: '' })}
+                                        size={22}
+                                        background={participantColor(name, namedParticipants)}
+                                      />
+                                      {badge && <span className="split-owner-badge">{badge}</span>}
+                                    </span>
+                                    {name}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )
                 })}
             </div>
             <p className="split-progress">
-              {money(assignedToOthers)} of {money(grandTotal)} assigned · use +/− for quantities, tap a single item to share it evenly
+              {money(assignedToOthers)} of {money(grandTotal)} assigned · tap the people on a single item to split it evenly; use +/− for multi-quantity lines
             </p>
 
             <div className="split-summary" data-testid="split-summary">
