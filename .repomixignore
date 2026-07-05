@@ -1,0 +1,61 @@
+# Node & Package Managers
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+
+# Repomix Outputs
+repomix-output.*
+repopack-output.*
+
+# Build & Compilation Artifacts
+.next/
+dist/
+build/
+out/
+.open-next/
+cdk.out/
+.serverless/
+.esbuild/
+.localstack/
+
+# Testing & Reports
+.playwright-cache/
+playwright-report/
+test-results/
+coverage/
+.nyc_output/
+
+# IDEs & System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Local & Secrets (Avoid sending to LLM)
+local/
+.env
+.env.local
+.env*.local
+.env.production
+*.pem
+*.keystore
+*.p12
+*.snap
+
+# Binaries, Media, and Assets (Useless to LLM as text)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.webp
+*.ico
+*.pdf
+*.zip
+*.tar.gz
+*.mp4
+*.mp3
+*.wav
