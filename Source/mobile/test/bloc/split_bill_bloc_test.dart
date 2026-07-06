@@ -121,13 +121,9 @@ class _FakeSplitIdCache implements ISplitIdCache {
 
 class _FakeShare implements ISharePresenter {
   final List<String> shared = [];
-  final List<String> copied = [];
 
   @override
   Future<void> share(String text) async => shared.add(text);
-
-  @override
-  Future<void> copyToClipboard(String text) async => copied.add(text);
 }
 
 class _FakeSplits implements ISplitRepository {
@@ -204,10 +200,6 @@ class _FakeSplits implements ISplitRepository {
   @override
   Future<SplitSummary> getSummary(String invoiceId, String splitId) async =>
       summary ?? _summaryFixture();
-
-  @override
-  Future<String> getWhatsAppText(String invoiceId, String splitId) async =>
-      'Split summary text';
 
   @override
   Future<String> createShareLink(String invoiceId, String splitId) async {

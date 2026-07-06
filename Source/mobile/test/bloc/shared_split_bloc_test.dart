@@ -54,9 +54,6 @@ class _FakeSplits implements ISplitRepository {
   Future<SplitSummary> getSummary(String invoiceId, String splitId) =>
       throw UnimplementedError();
   @override
-  Future<String> getWhatsAppText(String invoiceId, String splitId) =>
-      throw UnimplementedError();
-  @override
   Future<String> createShareLink(String invoiceId, String splitId) =>
       throw UnimplementedError();
 }

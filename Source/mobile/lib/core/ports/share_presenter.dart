@@ -5,5 +5,4 @@
 /// bloc, per `.claude/rules/flutter-architecture-guard.md`.
 abstract class ISharePresenter {
   Future<void> share(String text);
-  Future<void> copyToClipboard(String text);
 }

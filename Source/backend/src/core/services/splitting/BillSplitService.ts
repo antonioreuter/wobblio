@@ -81,11 +81,6 @@ export class BillSplitService {
     return summary;
   }
 
-  async whatsAppExport(splitId: string): Promise<{ text: string }> {
-    const { invoice, summary } = await this.buildSummary(splitId);
-    return { text: formatWhatsApp(invoice, summary) };
-  }
-
   // Read model for the public /s/<token> share page — the per-person breakdown plus
   // the invoice header the page needs (merchant, date, currency).
   async sharedSummary(splitId: string): Promise<{
@@ -137,24 +132,3 @@ export class BillSplitService {
   }
 }
 
-const CURRENCY_SYMBOLS: Record<string, string> = { EUR: '€', GBP: '£', USD: '$' };
-
-function money(amount: number, currency: string | null): string {
-  const symbol = currency ? CURRENCY_SYMBOLS[currency] : undefined;
-  return symbol ? `${symbol}${amount.toFixed(2)}` : `${currency ?? ''} ${amount.toFixed(2)}`.trim();
-}
-
-function formatWhatsApp(invoice: InvoiceDetail, summary: SplitSummary): string {
-  const currency = invoice.currency;
-  const header = `🧾 ${invoice.merchantName ?? 'Receipt'} — ${invoice.transactionDate ?? ''}`.trimEnd();
-  const blocks = summary.participants.map((p) => {
-    const items = p.items.map((i) => `  • ${i.label} ×${i.qty} — ${money(i.amount, currency)}`);
-    return [
-      `${p.name}: ${money(p.subtotal, currency)}`,
-      ...items,
-      `  + fees: ${money(p.fees, currency)}`,
-      `  Total: ${money(p.total, currency)}`,
-    ].join('\n');
-  });
-  return [header, '', blocks.join('\n\n'), '', `Total: ${money(summary.grandTotal, currency)}`].join('\n');
-}

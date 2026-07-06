@@ -31,9 +31,6 @@ export async function handleSplitsRoute(
   const summaryMatch = path.match(/^\/invoices\/[^/]+\/splits\/([^/]+)\/summary$/);
   if (method === 'GET' && summaryMatch) return getSummary(db, user, summaryMatch[1]);
 
-  const whatsappMatch = path.match(/^\/invoices\/[^/]+\/splits\/([^/]+)\/whatsapp$/);
-  if (method === 'GET' && whatsappMatch) return getWhatsApp(db, user, whatsappMatch[1]);
-
   const shareMatch = path.match(/^\/invoices\/[^/]+\/splits\/([^/]+)\/share$/);
   if (method === 'POST' && shareMatch) return createShareLink(db, user, shareMatch[1], log);
 
@@ -113,10 +110,6 @@ function getSplit(db: PoolClient, user: AppUser, splitId: string): Promise<APIGa
 
 function getSummary(db: PoolClient, user: AppUser, splitId: string): Promise<APIGatewayProxyResult> {
   return guard(() => withTenantTx(db, user.id, async () => json(200, await splitService(db).summary(splitId))));
-}
-
-function getWhatsApp(db: PoolClient, user: AppUser, splitId: string): Promise<APIGatewayProxyResult> {
-  return guard(() => withTenantTx(db, user.id, async () => json(200, await splitService(db).whatsAppExport(splitId))));
 }
 
 interface AllocationBody {

@@ -40,10 +40,6 @@ abstract class ISplitRepository {
   /// recompute it.
   Future<SplitSummary> getSummary(String invoiceId, String splitId);
 
-  /// `GET /invoices/{id}/splits/{splitId}/whatsapp` → the backend's
-  /// pre-formatted export text.
-  Future<String> getWhatsAppText(String invoiceId, String splitId);
-
   /// `POST /invoices/{id}/splits/{splitId}/share` → a public read-only
   /// `/s/{token}` share URL (7-day expiry). The split id is never exposed; the
   /// unguessable token in the URL is the only credential.

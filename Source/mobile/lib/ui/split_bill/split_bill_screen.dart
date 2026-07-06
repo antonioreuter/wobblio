@@ -455,7 +455,7 @@ class _SharerToggles extends StatelessWidget {
     // Nothing assigned ⇒ "You" is the implicit owner of the whole item.
     final effectiveOwners =
         sharers.isEmpty ? [SplitBillBloc.you] : sharers;
-    final denominator = effectiveOwners.length;
+    final remainder = line.quantity - state.assignedUnits(line.id);
     final candidates = [SplitBillBloc.you, ...state.participants];
     return Wrap(
       spacing: 8,
@@ -466,8 +466,16 @@ class _SharerToggles extends StatelessWidget {
             lineId: line.id,
             name: name,
             selected: effectiveOwners.contains(name),
+            // Badge from persisted units ("You" holds the remainder) — the same
+            // source the summary uses — so the glyph never disagrees with the
+            // per-person totals, including uneven legacy data.
             badge: effectiveOwners.contains(name)
-                ? _shareLabel(1 / denominator, 1)
+                ? _shareLabel(
+                    name == SplitBillBloc.you
+                        ? remainder
+                        : state.unitsFor(line.id, name),
+                    line.quantity,
+                  )
                 : '',
             color: _participantColor(name, state.participants),
             onTap: () => context

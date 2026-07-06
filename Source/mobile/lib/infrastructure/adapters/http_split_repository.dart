@@ -71,18 +71,6 @@ class HttpSplitRepository implements ISplitRepository {
   }
 
   @override
-  Future<String> getWhatsAppText(String invoiceId, String splitId) async {
-    final response =
-        await _api.get('/invoices/$invoiceId/splits/$splitId/whatsapp');
-    final data = response.data;
-    if (data is! Map || data['text'] is! String) {
-      throw const ApiException('Malformed whatsapp response',
-          statusCode: 502,);
-    }
-    return data['text'] as String;
-  }
-
-  @override
   Future<String> createShareLink(String invoiceId, String splitId) async {
     final response =
         await _api.post('/invoices/$invoiceId/splits/$splitId/share');

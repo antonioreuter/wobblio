@@ -168,19 +168,6 @@ describe('BillSplitService', () => {
     expect(summary.participants[0]).toMatchObject({ name: 'Alice', subtotal: 20, total: 20 });
   });
 
-  it('formats a WhatsApp export with the invoice currency symbol', async () => {
-    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', rawText: 'Pizza', lineTotal: 20 }]));
-    splits.listAllocations.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', units: 1 }]);
-    encryption.decrypt.mockResolvedValue('Alice');
-
-    const { text } = await sut.whatsAppExport('split-1');
-    expect(text).toContain('🧾 Jumbo — 2026-06-10');
-    expect(text).toContain('Alice: €20.00');
-    expect(text).toContain('• Pizza ×1 — €20.00');
-    expect(text).toContain('Total: €20.00');
-  });
-
   it('defaults a null invoice total to 0 in the summary grand total', async () => {
     splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
     invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', lineTotal: 0 }], { total: null }));
@@ -190,27 +177,4 @@ describe('BillSplitService', () => {
     expect(summary.grandTotal).toBe(0);
   });
 
-  it('falls back to the plain amount (no symbol) when currency has no known mapping', async () => {
-    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    invoices.getDetail.mockResolvedValue(detail([{ id: 'L1', rawText: 'Pizza', lineTotal: 20 }], { currency: null }));
-    splits.listAllocations.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', units: 1 }]);
-    encryption.decrypt.mockResolvedValue('Alice');
-
-    const { text } = await sut.whatsAppExport('split-1');
-    expect(text).toContain('Alice: 20.00');
-    expect(text).not.toContain('€');
-  });
-
-  it('falls back to "Receipt" and no date in the header when both are missing', async () => {
-    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
-    invoices.getDetail.mockResolvedValue(
-      detail([{ id: 'L1', lineTotal: 20 }], { merchantName: null, transactionDate: null }),
-    );
-    splits.listAllocations.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', units: 1 }]);
-    encryption.decrypt.mockResolvedValue('Alice');
-
-    const { text } = await sut.whatsAppExport('split-1');
-    expect(text).toContain('🧾 Receipt');
-    expect(text).not.toContain('2026');
-  });
 });

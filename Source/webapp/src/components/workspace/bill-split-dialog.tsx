@@ -331,19 +331,20 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                   const assigned = allocs.reduce((sum, a) => sum + a.units, 0)
                   const remainder = line.quantity - assigned
                   const isMulti = line.quantity > 1 + EPSILON
-                  const myUnits = unitsFor(line.id, activeParticipant)
-
-                  const owners = [
-                    ...allocs.map((a) => ({ name: a.participantName, units: a.units })),
-                    ...(remainder > EPSILON ? [{ name: YOU, units: remainder }] : []),
-                  ]
-
-                  // Single-unit sharers: the explicit set, or You alone (the implicit owner) when
-                  // nothing is assigned. Every sharer's slice is an even 1/N of the item.
-                  const sharers = sharersOf(line)
-                  const effectiveOwners = sharers.length > 0 ? sharers : [YOU]
-
                   const isSelected = selectedLineId === line.id
+
+                  // Build only the owner model the rendered branch needs. Multi-unit: units held by
+                  // the active participant + the per-owner avatar stack. Single-unit: the even-split
+                  // sharer set, or You alone (the implicit owner) when nothing is assigned.
+                  const myUnits = isMulti ? unitsFor(line.id, activeParticipant) : 0
+                  const owners = isMulti
+                    ? [
+                        ...allocs.map((a) => ({ name: a.participantName, units: a.units })),
+                        ...(remainder > EPSILON ? [{ name: YOU, units: remainder }] : []),
+                      ]
+                    : []
+                  const sharers = isMulti ? [] : sharersOf(line)
+                  const effectiveOwners = sharers.length > 0 ? sharers : [YOU]
 
                   return (
                     <div
@@ -433,7 +434,11 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                             <div className="split-sharers" data-testid={`split-sharers-${line.id}`}>
                               {[YOU, ...namedParticipants].map((name) => {
                                 const on = effectiveOwners.includes(name)
-                                const badge = on ? shareLabel(1 / effectiveOwners.length, 1) : ''
+                                // Badge each sharer from its persisted units (You holds the
+                                // remainder) — the same source the summary uses — so the glyph never
+                                // disagrees with the per-person totals, including uneven legacy data.
+                                const units = name === YOU ? remainder : unitsFor(line.id, name)
+                                const badge = on ? shareLabel(units, line.quantity) : ''
                                 return (
                                   <button
                                     key={name}

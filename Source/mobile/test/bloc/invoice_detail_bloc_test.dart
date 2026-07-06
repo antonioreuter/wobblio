@@ -78,16 +78,10 @@ class _FakeInvoices implements IInvoiceRepository {
 
 class _FakeShare implements ISharePresenter {
   final List<String> shared = [];
-  final List<String> copied = [];
 
   @override
   Future<void> share(String text) async {
     shared.add(text);
-  }
-
-  @override
-  Future<void> copyToClipboard(String text) async {
-    copied.add(text);
   }
 }
 
