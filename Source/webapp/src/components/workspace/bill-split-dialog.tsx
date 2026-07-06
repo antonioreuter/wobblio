@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
-import { Crown, Link2, Minus, Plus, RotateCcw, Users, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Crown, Link2, RotateCcw, Users, X } from 'lucide-react'
 import { Avatar, Card } from '@/components/ds'
 import { ShareLink } from './share-link'
 import { useWorkspace } from './workspace-provider'
@@ -62,8 +62,6 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
   const { data: session } = useSession()
   const { state, setLineAllocations, removeParticipant, createShareLink } = useBillSplit(invoice.id)
   const [participants, setParticipants] = useState<string[]>([])
-  const [activeParticipant, setActiveParticipant] = useState<string>(YOU)
-  const [selectedLineId, setSelectedLineId] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
   const [shareUrl, setShareUrl] = useState<string | null>(null)
   const [sharing, setSharing] = useState(false)
@@ -93,19 +91,15 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
     setParticipants((prev) =>
       prev.some((p) => p.toLowerCase() === trimmed.toLowerCase()) ? prev : [...prev, trimmed],
     )
-    setActiveParticipant(trimmed)
     setNewName('')
   }
 
   const removeParticipantChip = async (name: string) => {
-    const wasActive = activeParticipant === name
     setParticipants((prev) => prev.filter((p) => p !== name))
-    setActiveParticipant((curr) => (curr === name ? YOU : curr))
     try {
       await removeParticipant(name)
     } catch {
       setParticipants((prev) => (prev.includes(name) ? prev : [...prev, name]))
-      if (wasActive) setActiveParticipant(name)
       showToast(`Couldn't remove ${name} — please try again.`, 'danger')
     }
   }
@@ -128,14 +122,23 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
     }
   }
 
-  // Multi-unit lines: nudge the active participant's unit count, capped by what's left.
-  const stepUnits = async (line: AssignableLine, delta: number) => {
-    if (activeParticipant === YOU) return
-    setSelectedLineId(line.id)
-    const others = othersOf(line.id, activeParticipant)
-    const otherUnits = others.reduce((sum, a) => sum + a.units, 0)
-    const next = Math.max(0, Math.min(unitsFor(line.id, activeParticipant) + delta, line.quantity - otherUnits))
-    await commit(line.id, [...others, ...(next > EPSILON ? [{ participantName: activeParticipant, units: next }] : [])])
+  // Multi-unit lines: one tap grants the person another whole unit, capped by what's
+  // still unassigned (the rest stays with You, the implicit owner).
+  const addUnit = async (line: AssignableLine, name: string) => {
+    const others = othersOf(line.id, name)
+    const remaining = line.quantity - others.reduce((sum, a) => sum + a.units, 0)
+    const current = unitsFor(line.id, name)
+    if (remaining - current <= EPSILON) return
+    await commit(line.id, [...others, { participantName: name, units: current + 1 }])
+  }
+
+  // Tapping a person's count badge hands one unit back to You (the remainder).
+  const removeUnit = async (line: AssignableLine, name: string) => {
+    const current = unitsFor(line.id, name)
+    if (current <= EPSILON) return
+    const others = othersOf(line.id, name)
+    const next = current - 1
+    await commit(line.id, next > EPSILON ? [...others, { participantName: name, units: next }] : others)
   }
 
   // The people currently sharing a single-unit line: its named holders (which the DB persists),
@@ -156,7 +159,6 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
   // (1/N) so it can be shared across two or more people — no need to first select an active chip.
   // Only named shares persist; You's slice is the reconciled remainder.
   const toggleShareFor = async (line: AssignableLine, name: string) => {
-    setSelectedLineId(line.id)
     const sharers = sharersOf(line)
     const next = sharers.includes(name)
       ? sharers.filter((n) => n !== name)
@@ -168,7 +170,6 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
   }
 
   const resetLine = async (line: AssignableLine) => {
-    setSelectedLineId(line.id)
     if (allocationsFor(line.id).length > 0) await commit(line.id, [])
   }
 
@@ -206,13 +207,10 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
       ? state.summary.participants.filter((p) => p.name !== YOU).reduce((sum, p) => sum + p.total, 0)
       : 0
   const grandTotal = state.status === 'ready' ? state.summary.grandTotal : 0
-
-  // The active-participant selector only drives the multi-unit +/− steppers now; single-unit lines
-  // carry their own inline sharer toggles. Only surface the "assigning to X" hint when a stepper
-  // line actually exists, so single-unit-only receipts don't imply a step that does nothing.
-  const hasMultiUnit =
-    state.status === 'ready' &&
-    state.lines.some((l) => !l.isDiscount && !l.isDepositOrFee && l.quantity > 1 + EPSILON)
+  // What still falls to You — the amount not yet handed to anyone else. Half-a-cent
+  // tolerance so cent-rounded reconciliation doesn't read as "unassigned".
+  const unassigned = grandTotal - assignedToOthers
+  const hasUnassigned = unassigned > 0.005
 
   // A summary item carries only its own units, not the line's quantity, so its label needs
   // the parent line to tell a shared single item (½) from one unit of a multi-unit line (×1).
@@ -261,29 +259,18 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
               <span className="split-section-title">People</span>
             </div>
             <div className="split-participants">
-              <button
-                type="button"
-                className={`split-chip ${activeParticipant === YOU ? 'on' : ''}`}
-                onClick={() => setActiveParticipant(YOU)}
-                data-testid="split-chip-You"
-              >
-                <Avatar initials={youInitials} size={22} background={YOU_COLOR} />
-                {YOU}
-              </button>
+              <span className="split-chip" data-testid="split-chip-You">
+                <span className="split-chip-select">
+                  <Avatar initials={youInitials} size={22} background={YOU_COLOR} />
+                  {YOU}
+                </span>
+              </span>
               {participants.map((name) => (
-                <div
-                  key={name}
-                  className={`split-chip ${activeParticipant === name ? 'on' : ''}`}
-                >
-                  <button
-                    type="button"
-                    className="split-chip-select"
-                    onClick={() => setActiveParticipant(name)}
-                    data-testid={`split-chip-${name}`}
-                  >
+                <span key={name} className="split-chip" data-testid={`split-chip-${name}`}>
+                  <span className="split-chip-select">
                     <Avatar initials={memberInitials({ fullName: name, email: '' })} size={22} background={participantColor(name, namedParticipants)} />
                     {name}
-                  </button>
+                  </span>
                   <button
                     type="button"
                     className="split-chip-remove"
@@ -293,7 +280,7 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                   >
                     <X size={12} />
                   </button>
-                </div>
+                </span>
               ))}
               <div className="split-add-participant">
                 <input
@@ -319,9 +306,6 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
 
             <div className="split-section-head">
               <span className="split-section-title">Assign items</span>
-              {hasMultiUnit && (
-                <span className="split-hint">+/− adds to <strong>{activeParticipant}</strong></span>
-              )}
             </div>
             <div className="split-lines">
               {state.lines
@@ -331,95 +315,86 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                   const assigned = allocs.reduce((sum, a) => sum + a.units, 0)
                   const remainder = line.quantity - assigned
                   const isMulti = line.quantity > 1 + EPSILON
-                  const isSelected = selectedLineId === line.id
 
-                  // Build only the owner model the rendered branch needs. Multi-unit: units held by
-                  // the active participant + the per-owner avatar stack. Single-unit: the even-split
-                  // sharer set, or You alone (the implicit owner) when nothing is assigned.
-                  const myUnits = isMulti ? unitsFor(line.id, activeParticipant) : 0
-                  const owners = isMulti
-                    ? [
-                        ...allocs.map((a) => ({ name: a.participantName, units: a.units })),
-                        ...(remainder > EPSILON ? [{ name: YOU, units: remainder }] : []),
-                      ]
-                    : []
+                  // Single-unit lines resolve their even-split sharer set; You alone when nothing is
+                  // assigned. Multi-unit lines read each person's units live off the allocations.
                   const sharers = isMulti ? [] : sharersOf(line)
                   const effectiveOwners = sharers.length > 0 ? sharers : [YOU]
 
                   return (
-                    <div
-                      className={`split-line ${isSelected ? 'is-selected' : ''}`}
-                      key={line.id}
-                      data-testid={`split-line-${line.id}`}
-                    >
+                    <div className="split-line" key={line.id} data-testid={`split-line-${line.id}`}>
                       {isMulti ? (
                         <>
-                          <button
-                            type="button"
-                            className="split-line-row"
-                            onClick={() => setSelectedLineId(line.id)}
-                            data-testid={`split-select-${line.id}`}
-                            aria-label={`${line.rawText}, ${money(line.lineTotal)} — select to edit; use +/− to share units`}
-                            aria-pressed={isSelected}
-                          >
+                          <div className="split-line-row split-line-row--static">
                             <span className="split-line-name">
                               {line.rawText} <span className="split-line-qty">×{Number(line.quantity)}</span>
                             </span>
                             <span className="split-line-amt">{money(line.lineTotal)}</span>
-                          </button>
+                          </div>
 
                           <div className="split-alloc">
-                            <div className="split-owners">
-                              {owners.map((o) => (
-                                <span className="split-owner" key={o.name} title={`${o.name} ${shareLabel(o.units, line.quantity) || 'full'}`}>
-                                  <Avatar
-                                    initials={o.name === YOU ? youInitials : memberInitials({ fullName: o.name, email: '' })}
-                                    size={22}
-                                    background={participantColor(o.name, namedParticipants)}
-                                  />
-                                  {shareLabel(o.units, line.quantity) && (
-                                    <span className="split-owner-badge">{shareLabel(o.units, line.quantity)}</span>
-                                  )}
+                            {/* Tap a person to grant them a unit; tap their count to hand one back.
+                                You is the read-only remainder holder. */}
+                            <div className="split-sharers" data-testid={`split-sharers-${line.id}`}>
+                              <span className="split-tally is-remainder" data-testid={`split-tally-${line.id}-You`}>
+                                <span className="split-tally-add">
+                                  <Avatar initials={youInitials} size={22} background={YOU_COLOR} />
+                                  {YOU}
                                 </span>
-                              ))}
+                                {remainder > EPSILON && (
+                                  <span className="split-tally-count">{shareLabel(remainder, line.quantity)}</span>
+                                )}
+                              </span>
+                              {namedParticipants.map((name) => {
+                                const units = unitsFor(line.id, name)
+                                const on = units > EPSILON
+                                return (
+                                  <span
+                                    key={name}
+                                    className={`split-tally ${on ? 'on' : ''}`}
+                                    data-testid={`split-tally-${line.id}-${name}`}
+                                  >
+                                    <button
+                                      type="button"
+                                      className="split-tally-add"
+                                      onClick={() => void addUnit(line, name)}
+                                      disabled={remainder <= EPSILON}
+                                      data-testid={`split-add-${line.id}-${name}`}
+                                      aria-label={`Give ${name} one ${line.rawText}`}
+                                    >
+                                      <Avatar
+                                        initials={memberInitials({ fullName: name, email: '' })}
+                                        size={22}
+                                        background={participantColor(name, namedParticipants)}
+                                      />
+                                      {name}
+                                    </button>
+                                    {on && (
+                                      <button
+                                        type="button"
+                                        className="split-tally-badge"
+                                        onClick={() => void removeUnit(line, name)}
+                                        data-testid={`split-remove-${line.id}-${name}`}
+                                        aria-label={`Take one ${line.rawText} back from ${name}`}
+                                      >
+                                        {shareLabel(units, line.quantity)}
+                                      </button>
+                                    )}
+                                  </span>
+                                )
+                              })}
                             </div>
 
-                            {activeParticipant !== YOU ? (
-                              <div className="split-stepper" data-testid={`split-stepper-${line.id}`}>
-                                <button
-                                  type="button"
-                                  aria-label={`Remove a ${line.rawText} from ${activeParticipant}`}
-                                  disabled={myUnits <= EPSILON}
-                                  onClick={() => void stepUnits(line, -1)}
-                                  data-testid={`split-minus-${line.id}`}
-                                >
-                                  <Minus size={14} />
-                                </button>
-                                <span className="split-stepper-val tabular" data-testid={`split-units-${line.id}`}>
-                                  {Number(myUnits.toFixed(2))}
-                                </span>
-                                <button
-                                  type="button"
-                                  aria-label={`Add a ${line.rawText} to ${activeParticipant}`}
-                                  disabled={remainder <= EPSILON}
-                                  onClick={() => void stepUnits(line, 1)}
-                                  data-testid={`split-plus-${line.id}`}
-                                >
-                                  <Plus size={14} />
-                                </button>
-                              </div>
-                            ) : (
-                              allocs.length > 0 && (
-                                <button
-                                  type="button"
-                                  className="split-reset"
-                                  onClick={() => void resetLine(line)}
-                                  aria-label={`Give all of ${line.rawText} back to you`}
-                                  data-testid={`split-reset-${line.id}`}
-                                >
-                                  <RotateCcw size={13} /> Reset
-                                </button>
-                              )
+                            {allocs.length > 0 && (
+                              <button
+                                type="button"
+                                className="split-reset"
+                                onClick={() => void resetLine(line)}
+                                aria-label={`Give all of ${line.rawText} back to you`}
+                                data-testid={`split-reset-${line.id}`}
+                              >
+                                <RotateCcw size={13} /> Reset
+                              </button>
                             )}
                           </div>
                         </>
@@ -473,9 +448,23 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                   )
                 })}
             </div>
-            <p className="split-progress">
-              {money(assignedToOthers)} of {money(grandTotal)} assigned · tap the people on a single item to split it evenly; use +/− for multi-quantity lines
-            </p>
+            <div
+              className={`split-status ${hasUnassigned ? 'is-pending' : 'is-done'}`}
+              data-testid="split-status"
+              role="status"
+            >
+              {hasUnassigned ? <AlertCircle size={17} /> : <CheckCircle2 size={17} />}
+              {hasUnassigned ? (
+                <span className="split-status-text">
+                  <strong>{money(unassigned)} still yours</strong>
+                  <span className="split-status-sub">Tap people on an item to share it.</span>
+                </span>
+              ) : (
+                <span className="split-status-text">
+                  <strong>All {money(grandTotal)} assigned</strong>
+                </span>
+              )}
+            </div>
 
             <div className="split-summary" data-testid="split-summary">
               {state.summary.participants.map((p) => (
@@ -513,9 +502,6 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
               </div>
             </div>
 
-            <div className="split-section-head">
-              <span className="split-section-title">Share this split</span>
-            </div>
             {shareUrl ? (
               <ShareLink
                 link={shareUrl}
@@ -525,17 +511,19 @@ export function BillSplitDialog({ invoice, role, onClose }: BillSplitDialogProps
                 containerTestId="split-share-link"
               />
             ) : (
-              <button
-                type="button"
-                className="btn btn--outline"
-                onClick={() => void shareLink()}
-                disabled={sharing}
-                data-testid="split-share-create"
-              >
-                <Link2 size={16} /> {sharing ? 'Creating link…' : 'Create share link'}
-              </button>
+              <div className="split-share-actions">
+                <button
+                  type="button"
+                  className="btn btn--outline"
+                  onClick={() => void shareLink()}
+                  disabled={sharing}
+                  data-testid="split-share-create"
+                >
+                  <Link2 size={16} /> {sharing ? 'Creating link…' : 'Create share link'}
+                </button>
+              </div>
             )}
-            <p className="split-hint" style={{ marginTop: 6 }}>
+            <p className="split-hint split-hint--center">
               A read-only page anyone can open — like sharing a receipt. The link expires in 7 days.
             </p>
           </>

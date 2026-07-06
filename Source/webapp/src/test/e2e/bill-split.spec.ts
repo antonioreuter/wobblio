@@ -60,8 +60,6 @@ test.describe('bill splitting', () => {
 
     // Tap Alex → Alex takes the whole item (denominator 1); "You" covers the rest.
     await sharer('Alex').click()
-    // Tapping a sharer also highlights the line so it's obvious which item is being edited.
-    await expect(breadCard).toHaveClass(/is-selected/)
     await expect(page.getByTestId('split-summary')).toContainText('Alex')
     await expect(page.getByTestId('split-summary')).toContainText('€3.50')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
@@ -107,6 +105,62 @@ test.describe('bill splitting', () => {
     await expect(page.getByTestId('split-chip-Alex')).toHaveCount(0)
     await expect(page.getByTestId('split-summary')).not.toContainText('Alex')
     await expect(page.getByTestId('split-summary')).toContainText('€5.50')
+
+    await deleteUser(email)
+  })
+
+  test('distributes a multi-unit line by tapping people, with the rest left to You', async ({ page }) => {
+    const email = uniqueEmail()
+
+    await register(page, email)
+    await completeOnboarding(page)
+    await setRole(email, 'PREMIUM')
+    await signOut(page)
+
+    // 3 apples at €6 total (€2 each) — the multi-unit case the tally UI is built for.
+    const { invoiceId, lineIds } = await seedParsedInvoice(email, [
+      { rawText: 'Apples', lineTotal: 6, quantity: 3 },
+    ])
+    const appleId = lineIds[0]
+
+    await login(page, email)
+    await page.waitForURL(/\/dashboard$/)
+
+    await page.goto('/invoices')
+    await page.getByTestId(`invoice-row-${invoiceId}`).click()
+    await page.getByTestId('split-open').click()
+    await expect(page.getByTestId('split-dialog')).toBeVisible()
+
+    await page.getByTestId('split-participant-input').fill('Alex')
+    await page.getByTestId('split-add-participant').click()
+    await page.getByTestId('split-participant-input').fill('Bob')
+    await page.getByTestId('split-add-participant').click()
+
+    // Tap Alex twice → 2 apples (€4). Assert the count after each tap so the state settles
+    // between clicks (a refetch follows each PUT) rather than racing on stale units.
+    await page.getByTestId(`split-add-${appleId}-Alex`).click()
+    await expect(page.getByTestId(`split-remove-${appleId}-Alex`)).toHaveText('×1')
+    await page.getByTestId(`split-add-${appleId}-Alex`).click()
+    await expect(page.getByTestId(`split-remove-${appleId}-Alex`)).toHaveText('×2')
+
+    // Tap Bob once → 1 apple (€2). That exhausts the line (2 + 1 = 3), so every add is disabled
+    // and the remaining units left with You is zero.
+    await page.getByTestId(`split-add-${appleId}-Bob`).click()
+    await expect(page.getByTestId(`split-remove-${appleId}-Bob`)).toHaveText('×1')
+    await expect(page.getByTestId(`split-add-${appleId}-Bob`)).toBeDisabled()
+
+    await expect(page.getByTestId('split-summary')).toContainText('Alex')
+    await expect(page.getByTestId('split-summary')).toContainText('€4.00')
+    await expect(page.getByTestId('split-summary')).toContainText('Bob')
+    await expect(page.getByTestId('split-summary')).toContainText('€6.00')
+
+    // Tap Alex's badge → hand one apple back. Alex drops to 1 (€2); You now holds the freed apple,
+    // and adding is possible again.
+    await page.getByTestId(`split-remove-${appleId}-Alex`).click()
+    await expect(page.getByTestId(`split-remove-${appleId}-Alex`)).toHaveText('×1')
+    await expect(page.getByTestId(`split-add-${appleId}-Bob`)).toBeEnabled()
+    await expect(page.getByTestId('split-summary')).toContainText('You')
+    await expect(page.getByTestId('split-summary')).toContainText('€6.00')
 
     await deleteUser(email)
   })

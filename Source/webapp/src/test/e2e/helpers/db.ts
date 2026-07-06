@@ -60,7 +60,7 @@ export async function deleteUser(email: string): Promise<void> {
 // location_status is forced RESOLVED so InvoiceLocationGate never intercepts.
 export async function seedParsedInvoice(
   email: string,
-  lines: { rawText: string; lineTotal: number }[],
+  lines: { rawText: string; lineTotal: number; quantity?: number }[],
 ): Promise<{ invoiceId: string; lineIds: string[] }> {
   const userRes = await pool.query<{ id: string }>('SELECT id FROM app_user WHERE email = $1', [email])
   const tenantId = userRes.rows[0].id
@@ -78,8 +78,8 @@ export async function seedParsedInvoice(
   for (const [i, line] of lines.entries()) {
     const lineRes = await pool.query<{ id: string }>(
       `INSERT INTO invoice_line (invoice_id, line_index, raw_text, quantity, line_total)
-       VALUES ($1, $2, $3, 1, $4) RETURNING id`,
-      [invoiceId, i, line.rawText, line.lineTotal],
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [invoiceId, i, line.rawText, line.quantity ?? 1, line.lineTotal],
     )
     lineIds.push(lineRes.rows[0].id)
   }
