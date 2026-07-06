@@ -32,7 +32,7 @@ export default function DashboardPage() {
     setShareTarget,
   } = useWorkspace()
 
-  const { categoryNames, memberNames } = useBudgetReference(budgets.length > 0, session?.user?.id)
+  const { categoryNames, memberNames } = useBudgetReference(budgets.length > 0, session?.user?.email)
 
   const metrics = useMemo(() => computeSpendMetrics(invoices, new Date()), [invoices])
   const dailyMetrics = useMemo(() => computeDailySeriesForMonth(invoices, new Date()), [invoices])

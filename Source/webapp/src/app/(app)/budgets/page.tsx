@@ -23,7 +23,7 @@ export default function BudgetsPage() {
   const isPremium = !!role && role !== 'STANDARD'
 
   const { categories, members, isHouseholdOwner, categoryNames, memberNames } =
-    useBudgetReference(isPremium, session?.user?.id)
+    useBudgetReference(isPremium, session?.user?.email)
 
   const [creating, setCreating] = useState(false)
   const [editTarget, setEditTarget] = useState<Budget | null>(null)

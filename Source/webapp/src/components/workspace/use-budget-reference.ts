@@ -20,7 +20,11 @@ export interface BudgetReference {
 // (CATEGORY scope) and the caller's household roster (MEMBER scope). Both are
 // resolved into id→name maps for label lookup. Fetches only when `enabled`
 // (Premium) — non-Premium users have no budgets to label.
-export function useBudgetReference(enabled: boolean, userId?: string): BudgetReference {
+//
+// Owner identity is matched by email, not id: session.user.id is the Cognito sub
+// while household.ownerUserId is the DB app_user UUID, so the two never compare
+// equal. The backend already flags the owner in the roster (isOwner).
+export function useBudgetReference(enabled: boolean, userEmail?: string): BudgetReference {
   const [categories, setCategories] = useState<Category[]>([])
   const [household, setHousehold] = useState<HouseholdDetail | null>(null)
 
@@ -42,7 +46,9 @@ export function useBudgetReference(enabled: boolean, userId?: string): BudgetRef
     () => new Map(members.map((m) => [m.userId, m.fullName || m.email])),
     [members],
   )
-  const isHouseholdOwner = Boolean(household && userId && household.ownerUserId === userId)
+  const isHouseholdOwner = Boolean(
+    userEmail && members.some((m) => m.isOwner && m.email === userEmail),
+  )
 
   return { categories, members, isHouseholdOwner, categoryNames, memberNames }
 }
