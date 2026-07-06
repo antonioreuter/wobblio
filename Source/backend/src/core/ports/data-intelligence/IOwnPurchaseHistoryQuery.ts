@@ -14,6 +14,10 @@ export interface OwnPurchaseQueryInput {
   countryCode: string; // ISO 3166-1 alpha-2 — matches the selected region's country
   regionCode: string; // ISO 3166-2 — same picker that drives the public trend
   weeks: number; // trailing window length, in weeks
+  // View currency (ISO-4217): invoices in other currencies are excluded so a foreign-currency
+  // pending-location receipt can't leak into an unrelated view's medians (§6.5). null skips the
+  // filter (only when the currency can't be resolved).
+  currency: string | null;
 }
 
 // One line per product, on the same weekly-median shape as the public trend so the webapp
@@ -23,11 +27,28 @@ export interface OwnPurchaseLine {
   points: WeeklyMedianPoint[];
   purchaseCount: number; // total own purchase lines in the window
   lastPurchasedOn: string; // ISO date of the most recent own purchase
+  // The two most recent *regular-price* purchase events (§6.5.5 "% change vs last scan"), unit-
+  // consistent with the medians (€/unit when size known, else €/item). `lastPrice` is the most
+  // recent; `previousPrice` the one before it, null when the product was bought only once.
+  lastPrice: number | null;
+  previousPrice: number | null;
   // Comparable unit when every own line for this product shares a known pack size (median is
   // €/unit); null when size is unknown (median is €/item).
   unit: BaseUnit | null;
 }
 
+// Region scope for resolving the modal currency of the caller's own receipts (no currency filter).
+export interface OwnRegionCurrencyInput {
+  productIds: string[];
+  countryCode: string;
+  regionCode: string;
+  weeks: number;
+}
+
 export interface IOwnPurchaseHistoryQuery {
   history(input: OwnPurchaseQueryInput): Promise<OwnPurchaseLine[]>;
+  // Most frequent currency across the caller's own receipts in the region, or null when they have
+  // none. The view currency prefers this over the public modal for an unmapped country so the
+  // currency filter never hides the user's own purchases.
+  modalCurrency(input: OwnRegionCurrencyInput): Promise<string | null>;
 }

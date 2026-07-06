@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type MouseEvent } from 'react'
+import { formatViewMoney } from '@/lib/currency'
 
 interface Series {
   id: string
@@ -15,6 +16,7 @@ interface Series {
 interface LineChartProps {
   series: Series[]
   months: string[]
+  currency: string | null // ISO-4217 of the view; drives the axis symbol + tooltip amounts
 }
 
 // Splits a sparse series into contiguous drawable runs so missing weeks leave a gap
@@ -34,8 +36,9 @@ function segments(data: (number | null)[]): Array<Array<[number, number]>> {
   return out
 }
 
-export function LineChart({ series, months }: LineChartProps) {
+export function LineChart({ series, months, currency }: LineChartProps) {
   const [hover, setHover] = useState<number | null>(null)
+  const money = (v: number) => formatViewMoney(v, currency)
   const W = 760, H = 320, padL = 46, padR = 18, padT = 18, padB = 36
   const plotW = W - padL - padR
   const plotH = H - padT - padB
@@ -64,7 +67,7 @@ export function LineChart({ series, months }: LineChartProps) {
         {gridVals.map((v, k) => (
           <g key={k}>
             <line x1={padL} y1={y(v)} x2={W - padR} y2={y(v)} className="chart-grid" />
-            <text x={padL - 8} y={y(v) + 4} className="chart-ylabel">€{v.toFixed(2)}</text>
+            <text x={padL - 8} y={y(v) + 4} className="chart-ylabel">{money(v)}</text>
           </g>
         ))}
         {months.map((m, i) =>
@@ -103,7 +106,7 @@ export function LineChart({ series, months }: LineChartProps) {
                 strokeWidth="1.75"
                 opacity={s.stale ? 0.5 : 1}
               >
-                <title>Promo: €{v.toFixed(2)}</title>
+                <title>Promo: {money(v)}</title>
               </path>
             ),
           ),
@@ -146,8 +149,8 @@ export function LineChart({ series, months }: LineChartProps) {
                 <span className="dot" style={{ background: s.color }} />
                 <span className="nm">{s.name}</span>
                 <span className="vl">
-                  {v !== null ? `€${v.toFixed(2)}` : '—'}
-                  {d !== null && <span className="tip-promo"> · promo €{d.toFixed(2)}</span>}
+                  {v !== null ? money(v) : '—'}
+                  {d !== null && <span className="tip-promo"> · promo {money(d)}</span>}
                 </span>
               </div>
             )

@@ -10,6 +10,19 @@ export interface PriceTrendQueryInput {
   regionCode: string; // ISO 3166-2 (coarse postal-prefix region)
   weeks: number; // trailing window length, in weeks
   kMin: number; // §6.5 Gate 2: suppress a cell below this many distinct observations
+  // View currency (ISO-4217): observations in other currencies are excluded so medians are never
+  // blended across currencies (§6.5, currency honesty — no FX). null skips the filter (only when
+  // the currency can't be resolved at all).
+  currency: string | null;
+}
+
+// Region scope for resolving the modal (most frequent) currency when the picker country has no
+// currency mapping — used to keep an unmapped-country view single-currency.
+export interface RegionCurrencyQueryInput {
+  productIds: string[];
+  countryCode: string;
+  regionCode: string;
+  weeks: number;
 }
 
 export interface WeeklyMedianPoint {
@@ -35,4 +48,11 @@ export interface PriceTrendLine {
 
 export interface IPriceTrendQuery {
   comparison(input: PriceTrendQueryInput): Promise<PriceTrendLine[]>;
+  // Most frequent observation currency in the region for the selected products, or null when the
+  // region has no observations. Used as the fallback view currency when the country isn't mapped.
+  modalCurrency(input: RegionCurrencyQueryInput): Promise<string | null>;
+  // Distinct non-quarantined merchants tracking any selected product in the region, BEFORE the k≥3
+  // gate — the max over the selected products. Drives the cold-start motivator ("N stores tracked
+  // in your area") even when no cell clears the gate. 0 when nothing is tracked yet.
+  regionMerchantCount(input: PriceTrendQueryInput): Promise<number>;
 }

@@ -34,7 +34,7 @@ describe('PriceTrendQueryAdapter — §6.5.1 comparison over Postgres', () => {
   ): PriceObservationInput => ({
     productId, merchantId, countryCode: 'NL', regionCode: region, observedOn,
     packPrice: normalizedUnitPrice, normalizedUnitPrice, baseUnit: 'L', currency: 'EUR',
-    wasDiscounted: false, quarantined: false, contributorTrustAtWrite: 50, ...over,
+    wasDiscounted: false, quality: 'AUTO', quarantined: false, contributorTrustAtWrite: 50, ...over,
   });
 
   beforeAll(async () => {
@@ -105,5 +105,75 @@ describe('PriceTrendQueryAdapter — §6.5.1 comparison over Postgres', () => {
     const service = new PriceTrendService(new PriceTrendQueryAdapter(pool), new OwnPurchaseHistoryQueryAdapter(pool));
     const { lines } = await service.comparison([randomUUID()], 'NL', region, true);
     expect(lines).toEqual([]);
+  });
+
+  it('filters to the view currency so a GBP row never blends into a EUR (NL) median', async () => {
+    const mixedMerchantId = await new MerchantCatalogAdapter(pool).createProvisionalMerchant(
+      'Trend Mixed Shop', 'NL', 'cat-groceries',
+    );
+    await emit([
+      obs(mixedMerchantId, isoDay(0), 1.0),
+      obs(mixedMerchantId, isoDay(0), 1.0),
+      obs(mixedMerchantId, isoDay(0), 1.0),
+      // Foreign-currency rows in the same region/week — must be excluded, not blended.
+      obs(mixedMerchantId, isoDay(0), 9.99, { currency: 'GBP' }),
+      obs(mixedMerchantId, isoDay(0), 9.99, { currency: 'GBP' }),
+    ]);
+
+    const service = new PriceTrendService(new PriceTrendQueryAdapter(pool), new OwnPurchaseHistoryQueryAdapter(pool));
+    const { currency, lines } = await service.comparison([productId], 'NL', region, true);
+
+    expect(currency).toBe('EUR');
+    const mixed = lines.find((l) => l.merchantName === 'Trend Mixed Shop')!;
+    expect(mixed.observationCount).toBe(3); // only the EUR rows
+    const week = mixed.points.find((p) => p.median !== null)!;
+    expect(week.median).toBeCloseTo(1.0, 4); // not pulled up toward 9.99
+  });
+
+  it('counts tracked merchants pre-gate for the cold-start motivator', async () => {
+    // Two merchants each with a single observation of the product — below k≥3, so no cell clears,
+    // but the motivator must still report "2 stores tracked in your area".
+    const coldRegion = `R-${randomUUID().slice(0, 8)}`;
+    const shopA = await new MerchantCatalogAdapter(pool).createProvisionalMerchant('Cold Shop A', 'NL', 'cat-groceries');
+    const shopB = await new MerchantCatalogAdapter(pool).createProvisionalMerchant('Cold Shop B', 'NL', 'cat-groceries');
+    await emit([
+      obs(shopA, isoDay(0), 1.0, { regionCode: coldRegion }),
+      obs(shopB, isoDay(0), 1.1, { regionCode: coldRegion }),
+    ]);
+    try {
+      const adapter = new PriceTrendQueryAdapter(pool);
+      const count = await adapter.regionMerchantCount({
+        productIds: [productId], countryCode: 'NL', regionCode: coldRegion, weeks: 26, kMin: 3, currency: 'EUR',
+      });
+      expect(count).toBe(2);
+
+      // And it flows onto the service response even though no cell clears the gate.
+      const service = new PriceTrendService(adapter, new OwnPurchaseHistoryQueryAdapter(pool));
+      const { lines, regionMerchantCount } = await service.comparison([productId], 'NL', coldRegion, true);
+      expect(lines).toEqual([]);
+      expect(regionMerchantCount).toBe(2);
+    } finally {
+      await pool.query('DELETE FROM price_observation WHERE region_code = $1', [coldRegion]);
+    }
+  });
+
+  it('falls back to the region modal currency for an unmapped country', async () => {
+    const brMerchantId = await new MerchantCatalogAdapter(pool).createProvisionalMerchant(
+      'Trend BR Shop', 'BR', 'cat-groceries',
+    );
+    // Unmapped country (BR): the modal of the region's own rows (BRL, 3 of them) wins over 1 EUR.
+    await emit([
+      obs(brMerchantId, isoDay(0), 5.0, { countryCode: 'BR', regionCode: otherRegion, currency: 'BRL' }),
+      obs(brMerchantId, isoDay(0), 5.2, { countryCode: 'BR', regionCode: otherRegion, currency: 'BRL' }),
+      obs(brMerchantId, isoDay(0), 5.4, { countryCode: 'BR', regionCode: otherRegion, currency: 'BRL' }),
+      obs(brMerchantId, isoDay(0), 1.0, { countryCode: 'BR', regionCode: otherRegion, currency: 'EUR' }),
+    ]);
+
+    const service = new PriceTrendService(new PriceTrendQueryAdapter(pool), new OwnPurchaseHistoryQueryAdapter(pool));
+    const { currency, lines } = await service.comparison([productId], 'BR', otherRegion, true);
+
+    expect(currency).toBe('BRL');
+    const br = lines.find((l) => l.merchantName === 'Trend BR Shop')!;
+    expect(br.observationCount).toBe(3); // BRL rows only; the lone EUR row excluded
   });
 });

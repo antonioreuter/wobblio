@@ -3,9 +3,11 @@ import type {
   IPriceTrendQuery,
   PriceTrendLine,
   PriceTrendQueryInput,
+  RegionCurrencyQueryInput,
 } from '@core/ports/data-intelligence/IPriceTrendQuery';
 
 import type { BaseUnit } from '@core/domain/unitSize';
+import { currencyFilter } from './queryFilters';
 
 interface WeeklyRow {
   product_id: string;
@@ -33,6 +35,13 @@ export class PriceTrendQueryAdapter implements IPriceTrendQuery {
   constructor(private readonly db: Pool | PoolClient) {}
 
   async comparison(input: PriceTrendQueryInput): Promise<PriceTrendLine[]> {
+    // Currency honesty: filter to the resolved view currency so medians never blend across
+    // currencies. Omitted only when the currency couldn't be resolved (no rows to infer one).
+    const params: unknown[] = [
+      input.productIds, input.countryCode, input.regionCode, input.weeks, input.kMin,
+    ];
+    const currencyClause = currencyFilter('po.currency', input.currency, params);
+
     const result = await this.db.query<WeeklyRow>(
       `WITH obs AS (
          SELECT po.product_id, po.merchant_id,
@@ -48,6 +57,7 @@ export class PriceTrendQueryAdapter implements IPriceTrendQuery {
            AND po.region_code = $3
            AND po.quarantined = false
            AND po.observed_on >= CURRENT_DATE - ($4::int * 7)
+           ${currencyClause}
        ),
        cell AS (
          SELECT product_id, merchant_id,
@@ -85,10 +95,55 @@ export class PriceTrendQueryAdapter implements IPriceTrendQuery {
        JOIN cell c ON c.product_id = w.product_id AND c.merchant_id = w.merchant_id
        JOIN merchant m ON m.id = w.merchant_id
        ORDER BY w.product_id, m.brand_name, w.week_start`,
-      [input.productIds, input.countryCode, input.regionCode, input.weeks, input.kMin],
+      params,
     );
 
     return groupIntoLines(result.rows);
+  }
+
+  // Pre-gate merchant count for the cold-start motivator: distinct non-quarantined merchants per
+  // selected product in the region/currency/window, taking the max (the product closest to
+  // unlocking). Deliberately NOT k-gated so the "N stores tracked" nudge shows before any cell
+  // clears k≥3. 0 when nothing is tracked yet.
+  async regionMerchantCount(input: PriceTrendQueryInput): Promise<number> {
+    const params: unknown[] = [input.productIds, input.countryCode, input.regionCode, input.weeks];
+    const currencyClause = currencyFilter('po.currency', input.currency, params);
+
+    const result = await this.db.query<{ max_merchants: string | null }>(
+      `SELECT MAX(cnt)::text AS max_merchants
+         FROM (
+           SELECT po.product_id, COUNT(DISTINCT po.merchant_id) AS cnt
+             FROM price_observation po
+            WHERE po.product_id = ANY($1::uuid[])
+              AND po.country_code = $2
+              AND po.region_code = $3
+              AND po.quarantined = false
+              AND po.observed_on >= CURRENT_DATE - ($4::int * 7)
+              ${currencyClause}
+            GROUP BY po.product_id
+         ) per_product`,
+      params,
+    );
+    return result.rows[0]?.max_merchants ? parseInt(result.rows[0].max_merchants, 10) : 0;
+  }
+
+  // Most frequent observation currency in the region for the selected products — the fallback
+  // view currency when the picker country isn't in the currency map. null when no rows exist.
+  async modalCurrency(input: RegionCurrencyQueryInput): Promise<string | null> {
+    const result = await this.db.query<{ currency: string }>(
+      `SELECT po.currency
+         FROM price_observation po
+        WHERE po.product_id = ANY($1::uuid[])
+          AND po.country_code = $2
+          AND po.region_code = $3
+          AND po.quarantined = false
+          AND po.observed_on >= CURRENT_DATE - ($4::int * 7)
+        GROUP BY po.currency
+        ORDER BY COUNT(*) DESC, po.currency ASC
+        LIMIT 1`,
+      [input.productIds, input.countryCode, input.regionCode, input.weeks],
+    );
+    return result.rows[0]?.currency ?? null;
   }
 }
 

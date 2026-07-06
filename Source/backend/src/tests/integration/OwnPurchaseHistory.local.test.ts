@@ -24,22 +24,24 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
   let milkId: string; // bought several times across two weeks
   let nicheId: string; // bought once — below public quorum, must still be served
   let pendingId: string; // bought only on receipts still pending location review
+  let promoOnlyId: string; // only ever bought on promo — "last paid" falls back to the discount
 
   const insertInvoice = async (
     tenantId: string,
     transactionDate: string,
     regionCode: string | null,
-    loc: { countryCode?: string | null; status?: string } = {},
+    loc: { countryCode?: string | null; status?: string; currency?: string } = {},
   ): Promise<string> => {
     const res = await pool.query<{ id: string }>(
       `INSERT INTO invoice
          (tenant_id, uploaded_by_user_id, status, transaction_date, image_s3_key, image_sha256,
-          location_country_code, location_region_code, location_status)
-       VALUES ($1, $1, 'PARSED', $2, $3, $4, $6, $5, $7) RETURNING id`,
+          location_country_code, location_region_code, location_status, currency)
+       VALUES ($1, $1, 'PARSED', $2, $3, $4, $6, $5, $7, $8) RETURNING id`,
       [
         tenantId, transactionDate, `k-${randomUUID()}`, randomUUID().replace(/-/g, ''), regionCode,
         loc.countryCode === undefined ? 'NL' : loc.countryCode,
         loc.status ?? 'RESOLVED',
+        loc.currency ?? 'EUR',
       ],
     );
     return res.rows[0].id;
@@ -97,6 +99,10 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
       displayName: `Own Pending ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
       baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
+    promoOnlyId = await products.createProvisionalProduct({
+      displayName: `Own Promo ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
+      baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+    });
 
     // tenantA, week W1 (today), region R: milk 1.00 + 1.40 (median 1.20), one promo at 0.80,
     // a deposit line (excluded) and an unmatched product_id=NULL line (excluded). Plus a
@@ -117,6 +123,11 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     const otherR = await insertInvoice(tenantA, isoDay(0), otherRegion);
     await insertLine(otherR, milkId, 8.88);
 
+    // tenantA, same region + product but invoiced in GBP — excluded from a EUR view, and the
+    // sole row of a GBP view (currency honesty, no blending).
+    const gbpInv = await insertInvoice(tenantA, isoDay(0), region, { currency: 'GBP' });
+    await insertLine(gbpInv, milkId, 5.55);
+
     // tenantB, same region + product — must be invisible to tenantA (RLS).
     const bInv = await insertInvoice(tenantB, isoDay(0), region);
     await insertLine(bInv, milkId, 7.77);
@@ -129,13 +140,25 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     // tenantA, PENDING with a DIFFERENT known country (BE): excluded from an NL view.
     const pendBE = await insertInvoice(tenantA, isoDay(0), null, { countryCode: 'BE', status: 'PENDING' });
     await insertLine(pendBE, pendingId, 9.0);
+
+    // tenantA, PENDING NL but invoiced in GBP: excluded from a EUR view — a foreign-currency
+    // pending receipt must not leak into the euro medians even though its country matches.
+    const pendGBP = await insertInvoice(tenantA, isoDay(0), null, { status: 'PENDING', currency: 'GBP' });
+    await insertLine(pendGBP, pendingId, 7.0);
+
+    // tenantA, promo-only product: two discounted purchases, older 1.10 then recent 0.90. With no
+    // regular scan, "last paid" falls back to the discount (0.90) with 1.10 as the previous.
+    const promoOld = await insertInvoice(tenantA, isoDay(7), region);
+    await insertLine(promoOld, promoOnlyId, 1.1, { isDiscount: true });
+    const promoNew = await insertInvoice(tenantA, isoDay(0), region);
+    await insertLine(promoNew, promoOnlyId, 0.9, { isDiscount: true });
   });
 
   afterAll(async () => {
     await pool.query(`DELETE FROM invoice_line WHERE invoice_id IN (SELECT id FROM invoice WHERE tenant_id = ANY($1))`, [[tenantA, tenantB]]);
     await pool.query(`DELETE FROM invoice WHERE tenant_id = ANY($1)`, [[tenantA, tenantB]]);
-    await pool.query(`DELETE FROM price_observation WHERE product_id = ANY($1)`, [[milkId, nicheId, pendingId]]);
-    await pool.query(`DELETE FROM product WHERE id = ANY($1)`, [[milkId, nicheId, pendingId]]);
+    await pool.query(`DELETE FROM price_observation WHERE product_id = ANY($1)`, [[milkId, nicheId, pendingId, promoOnlyId]]);
+    await pool.query(`DELETE FROM product WHERE id = ANY($1)`, [[milkId, nicheId, pendingId, promoOnlyId]]);
     await pool.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[tenantA, tenantB]]);
     await pool.query(`DROP OWNED BY ${RLS_ROLE}; DROP ROLE ${RLS_ROLE};`);
     await pool.end();
@@ -156,11 +179,11 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
 
   it('serves weekly medians for own purchases, splitting promos, with no quorum gate', async () => {
     const lines = await asTenant(tenantA, (a) =>
-      a.history({ productIds: [milkId, nicheId], countryCode: 'NL', regionCode: region, weeks: 26 }),
+      a.history({ productIds: [milkId, nicheId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'EUR' }),
     );
 
     const milk = lines.find((l) => l.productId === milkId)!;
-    expect(milk.purchaseCount).toBe(4); // 1.00 + 1.40 + 0.80 + 1.50; deposit/null/other-region excluded
+    expect(milk.purchaseCount).toBe(4); // 1.00 + 1.40 + 0.80 + 1.50; deposit/null/other-region/GBP excluded
     const w1 = milk.points.find((p) => p.median !== null && Math.abs(p.median - 1.2) < 0.001)!;
     expect(w1.median).toBeCloseTo(1.2, 4);
     expect(w1.discountMedian).toBeCloseTo(0.8, 4); // promo is a distinct signal
@@ -172,14 +195,29 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     const niche = lines.find((l) => l.productId === nicheId)!;
     expect(niche.purchaseCount).toBe(1);
     expect(niche.points[0].median).toBeCloseTo(3.0, 4);
+
+    // §6.5.5 "last paid" — the two most recent regular scans (both today: 1.00 & 1.40); the older
+    // 1.50 and the 0.80 promo are excluded. previousPrice is null for the single-scan niche.
+    expect([milk.lastPrice, milk.previousPrice].map(Number).sort((a, b) => a - b)).toEqual([1.0, 1.4]);
+    expect(niche.lastPrice).toBeCloseTo(3.0, 4);
+    expect(niche.previousPrice).toBeNull();
+  });
+
+  it('falls back to the discount price for "last paid" when a product has no regular scan', async () => {
+    const lines = await asTenant(tenantA, (a) =>
+      a.history({ productIds: [promoOnlyId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'EUR' }),
+    );
+    const promo = lines.find((l) => l.productId === promoOnlyId)!;
+    expect(promo.lastPrice).toBeCloseTo(0.9, 4); // most recent discounted scan
+    expect(promo.previousPrice).toBeCloseTo(1.1, 4); // the one before it
   });
 
   it('serves own purchases from receipts still pending location review, country-scoped', async () => {
     const lines = await asTenant(tenantA, (a) =>
-      a.history({ productIds: [pendingId], countryCode: 'NL', regionCode: region, weeks: 26 }),
+      a.history({ productIds: [pendingId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'EUR' }),
     );
-    // The NL-pending receipt (region NULL) is served despite the picker region; the BE-pending
-    // receipt is excluded as a different known country.
+    // The NL-pending EUR receipt (region NULL) is served despite the picker region; the BE-pending
+    // receipt (different country) and the GBP-pending receipt (foreign currency) are both excluded.
     expect(lines).toHaveLength(1);
     const pending = lines[0];
     expect(pending.productId).toBe(pendingId);
@@ -187,9 +225,37 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     expect(pending.points[0].median).toBeCloseTo(2.0, 4);
   });
 
+  it('filters own history to the view currency, excluding foreign-currency receipts', async () => {
+    const eur = await asTenant(tenantA, (a) =>
+      a.history({ productIds: [milkId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'EUR' }),
+    );
+    expect(eur.find((l) => l.productId === milkId)!.purchaseCount).toBe(4); // GBP 5.55 excluded
+
+    const gbp = await asTenant(tenantA, (a) =>
+      a.history({ productIds: [milkId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'GBP' }),
+    );
+    const milkGbp = gbp.find((l) => l.productId === milkId)!;
+    expect(milkGbp.purchaseCount).toBe(1); // only the GBP receipt — never blended with the EUR ones
+    expect(milkGbp.points[0].median).toBeCloseTo(5.55, 4);
+  });
+
+  it('resolves the caller\'s own modal currency for the region (most frequent, RLS-scoped)', async () => {
+    // milk in region R: 4 EUR own lines (w1: 1.00/1.40/0.80, w2: 1.50) vs 1 GBP line (5.55) → EUR.
+    const cur = await asTenant(tenantA, (a) =>
+      a.modalCurrency({ productIds: [milkId], countryCode: 'NL', regionCode: region, weeks: 26 }),
+    );
+    expect(cur).toBe('EUR');
+
+    // No own receipts for an unknown product → null (caller then falls back to the public modal).
+    const none = await asTenant(tenantA, (a) =>
+      a.modalCurrency({ productIds: [randomUUID()], countryCode: 'NL', regionCode: region, weeks: 26 }),
+    );
+    expect(none).toBeNull();
+  });
+
   it('never leaks another tenant\'s purchases (RLS) and honors the region filter', async () => {
     const lines = await asTenant(tenantB, (a) =>
-      a.history({ productIds: [milkId, nicheId], countryCode: 'NL', regionCode: region, weeks: 26 }),
+      a.history({ productIds: [milkId, nicheId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'EUR' }),
     );
     // tenantB only bought milk once at 7.77 in this region; tenantA's rows are invisible.
     expect(lines).toHaveLength(1);

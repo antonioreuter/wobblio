@@ -30,6 +30,27 @@ export function daysBack(n: number): Date {
   return new Date(Date.now() - n * 86_400_000)
 }
 
+// §6.5.5 own-mode personal-history affordance for a product's legend row, from its last two
+// regular-price purchase events. `first` → the first-purchase message; `delta` → "▲/▼ N% vs
+// previous scan" (pct signed, up = paid more); `priceOnly` → ≥2 purchases but no comparable
+// previous scan (e.g. only one regular scan among discounts), so just the last-paid price.
+export type PersonalHistory =
+  | { kind: 'first' }
+  | { kind: 'delta'; pct: number }
+  | { kind: 'priceOnly' }
+
+export function personalHistory(input: {
+  lastPrice: number | null
+  previousPrice: number | null
+  purchaseCount: number
+}): PersonalHistory {
+  if (input.purchaseCount <= 1) return { kind: 'first' }
+  if (input.lastPrice !== null && input.previousPrice !== null && input.previousPrice !== 0) {
+    return { kind: 'delta', pct: ((input.lastPrice - input.previousPrice) / input.previousPrice) * 100 }
+  }
+  return { kind: 'priceOnly' }
+}
+
 // Filters a week (UTC midnight of its Monday) to the active preset. All comparisons are UTC:
 // the caller builds the week axis from `${weekStart}T00:00:00Z`, so mixing in local-time month
 // math would mis-include or drop a week near a month boundary.

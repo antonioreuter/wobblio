@@ -30,6 +30,10 @@ export interface OwnPurchaseLine {
   points: TrendPoint[]
   purchaseCount: number
   lastPurchasedOn: string
+  // The two most recent regular-price purchase events (§6.5.5) — drive the "last paid · ▲/▼ N% vs
+  // previous scan" legend copy. previousPrice is null when the product was bought only once.
+  lastPrice: number | null
+  previousPrice: number | null
   unit: TrendUnit
 }
 
@@ -37,6 +41,12 @@ export interface TrendComparison {
   countryCode: string
   regionCode: string
   weeks: number
+  // The single ISO-4217 currency the whole view is filtered to and rendered in (§6.5 currency
+  // honesty). Country-derived or the region's modal currency; null only when no data to infer one.
+  currency: string | null
+  // Pre-gate count of merchants tracking a selected product in the region — drives the cold-start
+  // "N stores tracked in your area" motivator. 0 for non-Premium or nothing tracked yet.
+  regionMerchantCount: number
   lines: TrendLine[] // public market trend — empty for non-Premium callers
   ownHistory: OwnPurchaseLine[] // the caller's own purchases — always present
 }

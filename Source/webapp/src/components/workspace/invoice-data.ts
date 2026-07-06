@@ -75,11 +75,21 @@ export const eur = (n: number): string => '€' + n.toFixed(2)
 // surfaces; this one intentionally matches eur()'s plain period-decimal style
 // ("€12.50") so amounts stay visually consistent within the invoice drawer, where
 // eur()/ds/Money.tsx already render that way. Pick based on which surface you're on.
-const CURRENCY_SYMBOLS: Record<string, string> = { EUR: '€', GBP: '£', USD: '$' }
+// Only unambiguous glyphs live here; everything else (CHF, the 'kr' Nordic trio, …) falls back to
+// its ISO code via currencySymbol(), which is clearer than a shared/ambiguous symbol.
+export const CURRENCY_SYMBOLS: Record<string, string> = {
+  EUR: '€', GBP: '£', USD: '$', PLN: 'zł', CZK: 'Kč',
+}
 export const fmtMoney = (amount: number, currency: string | null): string => {
   if (!currency) return amount.toFixed(2)
   const symbol = CURRENCY_SYMBOLS[currency]
   return symbol ? `${symbol}${amount.toFixed(2)}` : `${currency} ${amount.toFixed(2)}`
+}
+// The bare glyph for a currency, falling back to the ISO code for unmapped currencies (never a
+// misleading '€'). Empty string when no currency is resolved yet.
+export const currencySymbol = (currency: string | null): string => {
+  if (!currency) return ''
+  return CURRENCY_SYMBOLS[currency] ?? currency
 }
 export const daysAgo = (n: number): Date => {
   const d = new Date(TODAY)

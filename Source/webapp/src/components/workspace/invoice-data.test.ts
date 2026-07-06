@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmtMoney } from './invoice-data'
+import { currencySymbol, fmtMoney } from './invoice-data'
 
 describe('fmtMoney', () => {
   it('prefixes known currencies with their symbol', () => {
@@ -14,5 +14,22 @@ describe('fmtMoney', () => {
 
   it('omits any prefix when currency is unknown/null', () => {
     expect(fmtMoney(9, null)).toBe('9.00')
+  })
+})
+
+describe('currencySymbol', () => {
+  it('returns the glyph for mapped currencies', () => {
+    expect(currencySymbol('EUR')).toBe('€')
+    expect(currencySymbol('GBP')).toBe('£')
+    expect(currencySymbol('USD')).toBe('$')
+    expect(currencySymbol('PLN')).toBe('zł')
+  })
+
+  it('falls back to the ISO code for unmapped currencies (never a misleading €)', () => {
+    expect(currencySymbol('BRL')).toBe('BRL')
+  })
+
+  it('returns an empty string when no currency is resolved', () => {
+    expect(currencySymbol(null)).toBe('')
   })
 })

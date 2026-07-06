@@ -27,6 +27,9 @@ const ownLine = (over: Partial<OwnPurchaseLine> = {}): OwnPurchaseLine => ({
   points: [{ weekStart: '2026-06-15', median: 1.19, discountMedian: null }],
   purchaseCount: 1,
   lastPurchasedOn: '2026-06-17',
+  lastPrice: 1.19,
+  previousPrice: null,
+  unit: null,
   ...over,
 });
 
@@ -38,8 +41,15 @@ describe('PriceTrendService', () => {
   let sut: PriceTrendService;
 
   beforeEach(() => {
-    trends = { comparison: vi.fn().mockResolvedValue([line()]) };
-    ownHistory = { history: vi.fn().mockResolvedValue([ownLine()]) };
+    trends = {
+      comparison: vi.fn().mockResolvedValue([line()]),
+      modalCurrency: vi.fn().mockResolvedValue(null),
+      regionMerchantCount: vi.fn().mockResolvedValue(2),
+    };
+    ownHistory = {
+      history: vi.fn().mockResolvedValue([ownLine()]),
+      modalCurrency: vi.fn().mockResolvedValue(null),
+    };
     sut = new PriceTrendService(trends, ownHistory, () => NOW);
   });
 
@@ -60,7 +70,7 @@ describe('PriceTrendService', () => {
     await expect(sut.comparison(['milk'], 'NL', '  ', true)).rejects.toBeInstanceOf(InvalidTrendQueryError);
   });
 
-  it('dedupes/trims products and forwards the §6.5 window and k threshold', async () => {
+  it('dedupes/trims products and forwards the §6.5 window, k threshold, and view currency', async () => {
     await sut.comparison([' milk ', 'milk', 'coffee'], 'NL', 'NL-NB', true);
     expect(trends.comparison).toHaveBeenCalledWith({
       productIds: ['milk', 'coffee'],
@@ -68,17 +78,50 @@ describe('PriceTrendService', () => {
       regionCode: 'NL-NB',
       weeks: TREND_WINDOW_WEEKS,
       kMin: TREND_K_MIN,
+      currency: 'EUR',
     });
   });
 
-  it('always queries own history with the deduped products and region', async () => {
+  it('always queries own history with the deduped products, region, and view currency', async () => {
     await sut.comparison([' milk ', 'milk', 'coffee'], 'NL', 'NL-NB', true);
     expect(ownHistory.history).toHaveBeenCalledWith({
       productIds: ['milk', 'coffee'],
       countryCode: 'NL',
       regionCode: 'NL-NB',
       weeks: TREND_WINDOW_WEEKS,
+      currency: 'EUR',
     });
+  });
+
+  it('stamps the country-derived currency on the response without a modal lookup', async () => {
+    const result = await sut.comparison(['milk'], 'GB', 'GB-ENG', true);
+    expect(result.currency).toBe('GBP');
+    expect(trends.modalCurrency).not.toHaveBeenCalled();
+  });
+
+  it('prefers the caller\'s own-receipt modal currency over the public one for an unmapped country', async () => {
+    ownHistory.modalCurrency.mockResolvedValue('BRL'); // the user's own receipts are BRL
+    trends.modalCurrency.mockResolvedValue('USD'); // the public store's modal differs
+    const result = await sut.comparison(['milk'], 'BR', 'BR-SP', true);
+    expect(result.currency).toBe('BRL');
+    // the public modal is not consulted once the own modal resolves — own history is never hidden.
+    expect(trends.modalCurrency).not.toHaveBeenCalled();
+    expect(ownHistory.history).toHaveBeenCalledWith(expect.objectContaining({ currency: 'BRL' }));
+    expect(trends.comparison).toHaveBeenCalledWith(expect.objectContaining({ currency: 'BRL' }));
+  });
+
+  it('falls back to the public region modal currency when the caller has no own receipts here', async () => {
+    ownHistory.modalCurrency.mockResolvedValue(null);
+    trends.modalCurrency.mockResolvedValue('BRL');
+    const result = await sut.comparison(['milk'], 'BR', 'BR-SP', true);
+    expect(ownHistory.modalCurrency).toHaveBeenCalledWith({
+      productIds: ['milk'],
+      countryCode: 'BR',
+      regionCode: 'BR-SP',
+      weeks: TREND_WINDOW_WEEKS,
+    });
+    expect(result.currency).toBe('BRL');
+    expect(ownHistory.history).toHaveBeenCalledWith(expect.objectContaining({ currency: 'BRL' }));
   });
 
   it('serves own history but no market lines when the market trend is excluded (STANDARD)', async () => {
@@ -86,6 +129,16 @@ describe('PriceTrendService', () => {
     expect(trends.comparison).not.toHaveBeenCalled();
     expect(result.lines).toEqual([]);
     expect(result.ownHistory).toEqual([ownLine()]);
+    // Cold-start count is a market signal — 0 for STANDARD (no market view), no query fired.
+    expect(trends.regionMerchantCount).not.toHaveBeenCalled();
+    expect(result.regionMerchantCount).toBe(0);
+  });
+
+  it('stamps the pre-gate merchant count on the response for the market view', async () => {
+    trends.comparison.mockResolvedValue([]); // below quorum — the motivator still needs the count
+    trends.regionMerchantCount.mockResolvedValue(2);
+    const result = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+    expect(result.regionMerchantCount).toBe(2);
   });
 
   it('returns own history even when the market trend is empty (below quorum)', async () => {

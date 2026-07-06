@@ -1,6 +1,7 @@
 import type { IPriceTrendQuery, PriceTrendLine } from '../../ports/data-intelligence/IPriceTrendQuery';
 import type { IOwnPurchaseHistoryQuery, OwnPurchaseLine } from '../../ports/data-intelligence/IOwnPurchaseHistoryQuery';
 import { InvalidTrendQueryError } from '../../domain/errors';
+import { countryCurrency } from '../../domain/currencyByCountry';
 
 // §6.5.1 / §6.5.2 serving constants. k and staleness mirror the §6.8 Gate-2 tunables.
 export const TREND_WINDOW_WEEKS = 26;
@@ -17,6 +18,13 @@ export interface PriceTrendComparison {
   countryCode: string;
   regionCode: string;
   weeks: number;
+  // The single ISO-4217 currency the whole view is filtered to and rendered in (§6.5 currency
+  // honesty). Country-derived, or the region's modal currency when the country isn't mapped;
+  // null only when no observations exist to infer one.
+  currency: string | null;
+  // Pre-gate count of merchants tracking a selected product in the region — drives the cold-start
+  // "N stores tracked in your area" motivator. 0 for non-Premium (no market view) or nothing yet.
+  regionMerchantCount: number;
   lines: ServedPriceTrendLine[]; // public market trend — Premium only; [] otherwise
   ownHistory: OwnPurchaseLine[]; // the caller's own purchases — always served, no quorum gate
 }
@@ -47,28 +55,54 @@ export class PriceTrendService {
       throw new InvalidTrendQueryError('country and region are required');
     }
 
-    const lines = includeMarketTrend
-      ? await this.trends.comparison({
-          productIds: products,
-          countryCode,
-          regionCode,
-          weeks: TREND_WINDOW_WEEKS,
-          kMin: TREND_K_MIN,
-        })
-      : [];
+    // Resolve one view currency up front so both series are filtered to it and never blend.
+    const currency = await this.resolveCurrency(products, countryCode, regionCode);
+
+    const marketInput = {
+      productIds: products,
+      countryCode,
+      regionCode,
+      weeks: TREND_WINDOW_WEEKS,
+      kMin: TREND_K_MIN,
+      currency,
+    };
+    const lines = includeMarketTrend ? await this.trends.comparison(marketInput) : [];
+    // Cold-start motivator count — only meaningful for the market view when NO cell cleared the
+    // gate (the webapp shows it only then). Skip the extra query whenever the chart already renders.
+    const regionMerchantCount =
+      includeMarketTrend && lines.length === 0 ? await this.trends.regionMerchantCount(marketInput) : 0;
     const ownHistory = await this.ownHistory.history({
       productIds: products,
       countryCode,
       regionCode,
       weeks: TREND_WINDOW_WEEKS,
+      currency,
     });
     return {
       countryCode,
       regionCode,
       weeks: TREND_WINDOW_WEEKS,
+      currency,
+      regionMerchantCount,
       lines: lines.map((l) => this.decorate(l)),
       ownHistory,
     };
+  }
+
+  // View currency for a single-currency view. Country-derived when the country is mapped. For an
+  // unmapped country, prefer the modal currency of the CALLER'S OWN receipts over the public
+  // store's — the currency filter must never hide the user's own purchases (own history is the
+  // day-1 hook, never gated); the public modal is only a last resort when they have none here.
+  // null only when nothing can be inferred (no data to render anyway).
+  private async resolveCurrency(
+    productIds: string[],
+    countryCode: string,
+    regionCode: string,
+  ): Promise<string | null> {
+    const expected = countryCurrency(countryCode);
+    if (expected) return expected;
+    const region = { productIds, countryCode, regionCode, weeks: TREND_WINDOW_WEEKS };
+    return (await this.ownHistory.modalCurrency(region)) ?? (await this.trends.modalCurrency(region));
   }
 
   private decorate(line: PriceTrendLine): ServedPriceTrendLine {

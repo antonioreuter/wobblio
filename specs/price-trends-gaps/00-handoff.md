@@ -48,10 +48,42 @@ added the compare-mode toggle). That series is complete; this one is orthogonal.
 
 ## Status
 
-- [ ] 01 — six-month window (G1 + M1) — frontend only
-- [ ] 02 — currency honesty (G2 + M2) — backend + web, contract change
-- [ ] 03 — personal-history messaging (G3) — backend + web, additive contract change
-- [ ] 04 — UX & accessibility: data-table toggle + live cold-start count (G4 + G5) — frontend + small response addition
+- [x] 01 — six-month window (G1 + M1) — frontend only. **Done 2026-07-05.** Default preset kept
+  at `90d` (owner-confirmed); "Last 6 months" (`6m`) added as a reports-local preset. Range helpers
+  (`TrendPreset`, `TREND_PRESETS`, `inRange`, `daysBack`) were extracted from `reports/page.tsx`
+  into `components/workspace/trend-data.ts` so the range math is unit-testable
+  (`trend-data.test.ts`); the shared `Preset`/`PRESETS` in `invoice-data.ts` were left untouched
+  (invoices filter unaffected). Custom-range cap raised 92→183; `month` branch now fully UTC (M1).
+- [x] 02 — currency honesty (G2 + M2) — backend + web, contract change. **Done 2026-07-05.**
+  New `core/domain/currencyByCountry.ts` (`countryCurrency(iso2)`) maps the eurozone launch
+  markets + GB/CH/DK/SE/NO/PL/CZ/US; unmapped countries fall back to the region's **modal**
+  observation currency via a new `IPriceTrendQuery.modalCurrency()`. Both adapters filter to the
+  resolved view currency (`po.currency` / `i.currency`); a null currency skips the filter. Service
+  resolves it once and stamps `currency` on the response. Webapp reuses `formatMoney` (legend +
+  chart tooltip) and exported `CURRENCY_SYMBOLS`/new `currencySymbol()` (unit labels + axis); ISO
+  fallback for unmapped currencies (no ambiguous 'kr'). M2 comment corrected. **Fixture fix:** the
+  market integration `obs` helper was missing the now-required `quality: 'AUTO'` (the file had
+  drifted red since quarantine cols landed — integration tests aren't in the unit gate).
+- [x] 03 — personal-history messaging (G3) — backend + web, additive contract change.
+  **Done 2026-07-05.** `OwnPurchaseLine` gains `lastPrice`/`previousPrice` — the two most recent
+  **regular-price** purchase events (window fn ranked by `transaction_date DESC, invoice.created_at
+  DESC, invoice.id DESC, line.id DESC`); a product with **no** regular scan falls back to its
+  discounted scans (rule documented in the adapter comment). Service is pure pass-through. Own-mode
+  legend now shows "last paid {formatMoney} · ▲/▼ N% vs previous scan" (up = danger / down =
+  success, glyph + label, never colour alone), a "First purchase — we'll track this for you"
+  affordance (`purchaseCount ≤ 1`), and a subtle "last bought {date}". Market-mode delta is now
+  explicitly labelled **"over range"**. Decision logic extracted to pure `personalHistory()` in
+  `trend-data.ts` (unit-tested).
+- [x] 04 — UX & accessibility: data-table toggle + live cold-start count (G4 + G5) — frontend +
+  small response addition. **Done 2026-07-05.** New `Chart | Table` segmented toggle (mirrors
+  `.trend-mode-toggle`, `role="group"`/`aria-pressed`, keyboard-operable) swaps the SVG chart for a
+  new `trend-table.tsx` rendering the **same visible series/weeks** via the `.app-table`/`.num`
+  primitives (right-aligned tabular-nums, `—` for gaps, distinct promo value, per-column stale
+  flag, view currency). Cold-start (G5): chose the **response-field** route — a pre-gate
+  `regionMerchantCount` (max distinct non-quarantined merchants per selected product in the
+  region/currency, computed even when no cell clears k≥3, Premium-only) drives
+  "{N} store(s) tracked in your area — scan more receipts to unlock comparisons"; plain "every scan
+  makes it smarter" copy at zero.
 - [ ] amendment — own-history window all tiers (G6) — docs
 
 Order: 01 → 02 → 03 → 04. Each is independently shippable. 03 and 04 both touch the trends
@@ -59,10 +91,11 @@ response, so if shipped out of order, re-verify the response type in `use-price-
 
 ## Contract-change ledger (for mobile 18e)
 
-`GET /price-trends/comparison` response evolves across this series:
-- **02** adds `currency` (top-level, ISO-4217) — the whole view is single-currency.
-- **03** adds `lastPrice`, `previousPrice`, `lastPurchasedOn` to each `ownHistory[]` entry.
-- **04** may add a per-product `regionMerchantCount` (or reuse the product-search signal — see 04).
+`GET /price-trends/comparison` response evolved across this series (all SHIPPED 2026-07-05):
+- **02** adds `currency` (top-level, ISO-4217, nullable) — the whole view is single-currency.
+- **03** adds `lastPrice`, `previousPrice` to each `ownHistory[]` entry (`lastPurchasedOn` already
+  existed) — the last two regular-price purchase events.
+- **04** adds top-level `regionMerchantCount` (integer, pre-gate merchant count; 0 for non-Premium).
 
 Mobile 18e must consume these when built. Do not break the field names once shipped.
 

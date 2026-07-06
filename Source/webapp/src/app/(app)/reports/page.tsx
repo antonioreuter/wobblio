@@ -2,35 +2,30 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Calendar, Clock, Crown, Lock, Trash2, TrendingUp } from 'lucide-react'
+import { Calendar, Clock, Crown, LineChart as LineChartIcon, Lock, Table2, Trash2, TrendingUp } from 'lucide-react'
 import { Card } from '@/components/ds'
+import { formatDelta, formatViewMoney } from '@/lib/currency'
 import {
+  currencySymbol,
   FilterSelect,
+  fmtDate,
+  inRange,
   LineChart,
   MAX_PRODUCTS,
   MONTHS,
+  personalHistory,
   PriceTrendsHelpButton,
   ProductSearch,
   RegionPicker,
   SERIES_COLORS,
+  TREND_PRESETS,
+  TrendTable,
   usePriceTrends,
-  type Preset,
   type TrendComparison,
+  type TrendPreset,
   type TrendProduct,
   type TrendUnit,
 } from '@/components/workspace'
-
-// Reports-local presets. The shared `Preset`/`PRESETS` are also driven by the invoices
-// filter (spend filtering) — the price-trends report is the only surface that needs the
-// 6-month window (the backend serves 26 weeks), so we widen here, not the shared type.
-type TrendPreset = Preset | '6m'
-const TREND_PRESETS: Array<[TrendPreset, string]> = [
-  ['30d', 'Last 30 days'],
-  ['month', 'This month'],
-  ['90d', 'Last 3 months'],
-  ['6m', 'Last 6 months'],
-  ['custom', 'Custom range'],
-]
 
 interface ChartSeries {
   id: string
@@ -44,6 +39,11 @@ interface ChartSeries {
   staleDays: number
   own: boolean // the caller's own purchases — dashed line, "Your purchases" legend
   unit: TrendUnit // null = per item (size unknown); else €/unit and cross-comparable
+  // Own-mode only (§6.5.5 personal history); null/0 for market series.
+  purchaseCount: number
+  lastPurchasedOn: string | null
+  lastPrice: number | null
+  previousPrice: number | null
 }
 
 const OWN_LABEL = 'Your purchases'
@@ -52,12 +52,13 @@ const OWN_LABEL = 'Your purchases'
 // Market is Premium-only — STANDARD is pinned to 'own'.
 type CompareMode = 'own' | 'market'
 
-// Honest price-unit label. A known pack size makes the value a comparable €/unit; an unknown
-// size means the value is per item (per pack) and must not be compared across stores.
-function unitLabel(unit: TrendUnit): string {
-  if (unit === 'L') return '€/L'
-  if (unit === 'KG') return '€/kg'
-  if (unit === 'PIECE') return '€/pc'
+// Honest price-unit label. A known pack size makes the value a comparable <sym>/unit; an unknown
+// size means the value is per item (per pack) and must not be compared across stores. `sym` is the
+// view currency glyph (from the response currency), never a hardcoded euro.
+function unitLabel(unit: TrendUnit, sym: string): string {
+  if (unit === 'L') return `${sym}/L`
+  if (unit === 'KG') return `${sym}/kg`
+  if (unit === 'PIECE') return `${sym}/pc`
   return 'per item · size not detected'
 }
 
@@ -68,6 +69,7 @@ export default function ReportsPage() {
   const isPremium = !!role && role !== 'STANDARD'
 
   const [mode, setMode] = useState<CompareMode>('own')
+  const [view, setView] = useState<'chart' | 'table'>('chart')
   const [selected, setSelected] = useState<TrendProduct[]>([])
   const [country, setCountry] = useState('')
   const [region, setRegion] = useState('')
@@ -273,6 +275,26 @@ export default function ReportsPage() {
                 {!isPremium && <Lock size={11} />} Local market
               </button>
             </div>
+            <div className="trend-mode-toggle" role="group" aria-label="Chart or table view">
+              <button
+                type="button"
+                className={`trend-mode-btn ${view === 'chart' ? 'is-active' : ''}`}
+                aria-pressed={view === 'chart'}
+                onClick={() => setView('chart')}
+                data-testid="trends-view-chart"
+              >
+                <LineChartIcon size={12} /> Chart
+              </button>
+              <button
+                type="button"
+                className={`trend-mode-btn ${view === 'table' ? 'is-active' : ''}`}
+                aria-pressed={view === 'table'}
+                onClick={() => setView('table')}
+                data-testid="trends-view-table"
+              >
+                <Table2 size={12} /> Table
+              </button>
+            </div>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               {rangeInvalid ? 'Last 3 months' : rangeLabel}
             </span>
@@ -283,6 +305,7 @@ export default function ReportsPage() {
           hasProducts={selected.length > 0}
           comparison={comparison}
           mode={mode}
+          view={view}
           series={series}
           labels={labels}
           unitWarning={unitWarning}
@@ -297,6 +320,7 @@ function TrendChartBody({
   hasProducts,
   comparison,
   mode,
+  view,
   series,
   labels,
   unitWarning,
@@ -305,6 +329,7 @@ function TrendChartBody({
   hasProducts: boolean
   comparison: TrendComparison | null
   mode: CompareMode
+  view: 'chart' | 'table'
   series: ChartSeries[]
   labels: string[]
   unitWarning: boolean
@@ -327,10 +352,15 @@ function TrendChartBody({
     const sourceEmpty =
       !comparison ||
       (mode === 'market' ? comparison.lines.length === 0 : comparison.ownHistory.length === 0)
+    // Market mode with stores tracked but none past the k≥3 gate → the live "you're close" nudge
+    // (§6.5.5). `lines` empty while `regionMerchantCount > 0` is exactly the sub-quorum case.
+    const stores = comparison?.regionMerchantCount ?? 0
     const emptyCopy = !sourceEmpty
       ? 'No price points in this date range — widen the range to see more.'
       : mode === 'market'
-        ? 'No local-store prices yet — comparison needs at least 3 confirmed scans nearby. Every scan makes it smarter.'
+        ? stores > 0
+          ? `${stores} store${stores === 1 ? '' : 's'} tracked in your area — scan more receipts to unlock comparisons.`
+          : 'No local-store prices yet — every scan makes it smarter.'
         : 'No prices yet — once you’ve scanned one of these items in this region it’ll chart here. Every scan makes it smarter.'
     return (
       <div className="table-empty" data-testid="trends-empty">
@@ -339,6 +369,11 @@ function TrendChartBody({
       </div>
     )
   }
+
+  // View currency (§6.5 honesty) — the whole comparison is single-currency; render its symbol,
+  // never a hardcoded euro.
+  const currency = comparison?.currency ?? null
+  const sym = currencySymbol(currency)
 
   return (
     <>
@@ -354,44 +389,82 @@ function TrendChartBody({
           </span>
         </div>
       )}
-      <LineChart series={series} months={labels} />
+      {view === 'table' ? (
+        <TrendTable series={series} labels={labels} currency={currency} />
+      ) : (
+        <LineChart series={series} months={labels} currency={currency} />
+      )}
       <div className="trend-legend">
-        {series.map((s) => {
-          const vals = s.data.filter((v): v is number => v !== null)
-          const now = vals.length ? vals[vals.length - 1] : null
-          const delta = vals.length > 1 ? ((vals[vals.length - 1] - vals[0]) / vals[0]) * 100 : null
-          return (
-            <div className="legend-item" key={s.id}>
-              <span className="dot" style={{ background: s.color, opacity: s.stale ? 0.5 : 1 }} />
-              <div className="legend-meta">
-                <span className="legend-name">
-                  {s.product} · <strong>{s.merchant}</strong>
-                  <span className="legend-unit" title={s.unit ? 'comparable per-unit price' : 'size not detected — price per item'}>
-                    {unitLabel(s.unit)}
-                  </span>
-                  {s.stale && (
-                    <span className="legend-stale" title={`No data for ${s.staleDays} days`}>
-                      <Clock size={11} /> stale · {s.staleDays}d
-                    </span>
-                  )}
-                </span>
-                <span className="legend-now">
-                  {now !== null ? `€${now.toFixed(2)}` : '—'}
-                  {delta !== null && (
-                    <span
-                      className="legend-delta"
-                      style={{ color: delta > 0 ? 'var(--danger)' : 'var(--success)' }}
-                    >
-                      {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-          )
-        })}
+        {series.map((s) => (
+          <LegendItem key={s.id} s={s} mode={mode} currency={currency} sym={sym} />
+        ))}
       </div>
     </>
+  )
+}
+
+// One legend row. Market mode shows the median with an explicit "over range" delta; own mode
+// (§6.5.5) shows the last paid price with "▲/▼ N% vs previous scan", or the first-purchase copy —
+// always glyph + text label, never colour alone (accessibility).
+function LegendItem({
+  s,
+  mode,
+  currency,
+  sym,
+}: {
+  s: ChartSeries
+  mode: CompareMode
+  currency: string | null
+  sym: string
+}) {
+  const money = (v: number | null) => (v !== null ? formatViewMoney(v, currency) : '—')
+  const vals = s.data.filter((v): v is number => v !== null)
+  const rangeMedian = vals.length ? vals[vals.length - 1] : null
+  // Guard vals[0] === 0 → a 0.00 first median would make the delta Infinity/NaN.
+  const rangeDelta =
+    vals.length > 1 && vals[0] !== 0 ? ((vals[vals.length - 1] - vals[0]) / vals[0]) * 100 : null
+  const own = mode === 'own'
+  const history = own ? personalHistory(s) : null
+  const headline = own ? s.lastPrice ?? rangeMedian : rangeMedian
+
+  return (
+    <div className="legend-item">
+      <span className="dot" style={{ background: s.color, opacity: s.stale ? 0.5 : 1 }} />
+      <div className="legend-meta">
+        <span className="legend-name">
+          {s.product} · <strong>{s.merchant}</strong>
+          <span className="legend-unit" title={s.unit ? 'comparable per-unit price' : 'size not detected — price per item'}>
+            {unitLabel(s.unit, sym)}
+          </span>
+          {s.stale && (
+            <span className="legend-stale" title={`No data for ${s.staleDays} days`}>
+              <Clock size={11} /> stale · {s.staleDays}d
+            </span>
+          )}
+          {own && s.lastPurchasedOn && (
+            <span className="legend-stale" title="Your most recent purchase">
+              <Clock size={11} /> last bought {fmtDate(s.lastPurchasedOn)}
+            </span>
+          )}
+        </span>
+        <span className="legend-now">
+          {own && <span className="legend-lastpaid">last paid</span>} {money(headline)}
+          {own && history?.kind === 'first' && (
+            <span className="legend-first">First purchase — we’ll track this for you</span>
+          )}
+          {own && history?.kind === 'delta' && (
+            <span className="legend-delta" style={{ color: history.pct > 0 ? 'var(--danger)' : 'var(--success)' }}>
+              {formatDelta(history.pct)} vs previous scan
+            </span>
+          )}
+          {!own && rangeDelta !== null && (
+            <span className="legend-delta" style={{ color: rangeDelta > 0 ? 'var(--danger)' : 'var(--success)' }}>
+              {formatDelta(rangeDelta)} over range
+            </span>
+          )}
+        </span>
+      </div>
+    </div>
   )
 }
 
@@ -444,6 +517,10 @@ function buildChart(
             staleDays: l.staleDays,
             own: false,
             unit: l.unit,
+            purchaseCount: 0,
+            lastPurchasedOn: null,
+            lastPrice: null,
+            previousPrice: null,
           }
         })
       : comparison.ownHistory.map((l, i) => {
@@ -462,6 +539,10 @@ function buildChart(
             staleDays: 0,
             own: true,
             unit: l.unit,
+            purchaseCount: l.purchaseCount,
+            lastPurchasedOn: l.lastPurchasedOn,
+            lastPrice: l.lastPrice,
+            previousPrice: l.previousPrice,
           }
         })
 
@@ -474,21 +555,4 @@ function buildChart(
   const units = new Set(visible.map((s) => s.unit))
   const unitWarning = units.has(null) || [...units].filter((u) => u !== null).length > 1
   return { series: visible, labels, unitWarning }
-}
-
-function daysBack(n: number): Date {
-  return new Date(Date.now() - n * 86_400_000)
-}
-
-function inRange(d: Date, preset: TrendPreset, from: string, to: string, rangeInvalid: boolean): boolean {
-  const today = new Date()
-  if (preset === '30d') return d >= daysBack(30)
-  if (preset === '6m') return d >= daysBack(183)
-  // The week axis is built from `${w}T00:00:00Z` (UTC), so the month comparison must be UTC
-  // on both sides — mixing local `today.getMonth()` mis-includes/drops a week near boundaries.
-  if (preset === 'month')
-    return d.getUTCMonth() === today.getUTCMonth() && d.getUTCFullYear() === today.getUTCFullYear()
-  if (preset === 'custom' && !rangeInvalid && from && to)
-    return d >= new Date(from) && d <= new Date(to)
-  return d >= daysBack(90)
 }
