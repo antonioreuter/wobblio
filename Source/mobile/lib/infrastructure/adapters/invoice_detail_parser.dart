@@ -19,6 +19,7 @@ InvoiceDetail parseInvoiceDetail(Map<String, dynamic> data) {
     imageUrl: data['imageUrl'] as String?,
     locationLabel: data['locationLabel'] as String?,
     feedbackVerdict: data['feedbackVerdict'] as String?,
+    processingStage: data['processingStage'] as String?,
     lines: rawLines
         .whereType<Map<String, dynamic>>()
         .map(parseInvoiceLine)

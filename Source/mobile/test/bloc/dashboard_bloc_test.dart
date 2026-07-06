@@ -219,6 +219,80 @@ void main() {
     );
 
     blocTest<DashboardBloc, DashboardState>(
+      'sets a one-shot ready notice when a receipt finishes mid-poll',
+      build: () => _build(
+        invoices: _FakeInvoices(
+          pages: [
+            [_inv('a', status: 'PROCESSING')], // initial load
+            [_inv('a', status: 'PARSED')], // tick 1: finished
+          ],
+        ),
+      ),
+      act: (bloc) => bloc.add(const DashboardStarted()),
+      wait: const Duration(milliseconds: 50),
+      verify: (bloc) {
+        expect(bloc.state.notice, 'Receipt ready — tap it to review.');
+      },
+    );
+
+    blocTest<DashboardBloc, DashboardState>(
+      'bumps noticeSeq for each receipt that finishes, even with identical text',
+      build: () => _build(
+        invoices: _FakeInvoices(
+          pages: [
+            [_inv('a', status: 'PROCESSING'), _inv('b', status: 'PROCESSING')],
+            [_inv('a', status: 'PARSED'), _inv('b', status: 'PROCESSING')],
+            [_inv('a', status: 'PARSED'), _inv('b', status: 'PARSED')],
+          ],
+        ),
+      ),
+      act: (bloc) => bloc.add(const DashboardStarted()),
+      wait: const Duration(milliseconds: 50),
+      verify: (bloc) {
+        // Both receipts produced 'Receipt ready — …'; the token advanced twice so
+        // the UI's listenWhen re-fires the snackbar for the second one.
+        expect(bloc.state.notice, 'Receipt ready — tap it to review.');
+        expect(bloc.state.noticeSeq, 2);
+      },
+    );
+
+    blocTest<DashboardBloc, DashboardState>(
+      'notices a failed parse when a receipt fails mid-poll',
+      build: () => _build(
+        invoices: _FakeInvoices(
+          pages: [
+            [_inv('a', status: 'PROCESSING')],
+            [_inv('a', status: 'FAILED_PROCESSING')],
+          ],
+        ),
+      ),
+      act: (bloc) => bloc.add(const DashboardStarted()),
+      wait: const Duration(milliseconds: 50),
+      verify: (bloc) {
+        expect(bloc.state.notice, contains('couldn’t read'));
+      },
+    );
+
+    blocTest<DashboardBloc, DashboardState>(
+      'a still-processing tick leaves the notice untouched',
+      build: () => _build(
+        invoices: _FakeInvoices(
+          pages: [
+            [_inv('a', status: 'PROCESSING')], // initial
+            [_inv('a', status: 'PROCESSING')], // tick 1: no transition
+            [_inv('a', status: 'PARSED')], // tick 2: terminal → stop
+          ],
+        ),
+      ),
+      act: (bloc) => bloc.add(const DashboardStarted()),
+      wait: const Duration(milliseconds: 50),
+      verify: (bloc) {
+        // Only the terminal tick set a notice; the plain tick set none.
+        expect(bloc.state.notice, 'Receipt ready — tap it to review.');
+      },
+    );
+
+    blocTest<DashboardBloc, DashboardState>(
       'does not poll when nothing is processing',
       build: () {
         final invoices = _FakeInvoices(

@@ -1833,7 +1833,8 @@ button.split-chip { gap: 6px; padding: 4px 10px 4px 4px; cursor: pointer; }
 .toast--success .toast-icon { color: var(--success); }
 .toast--danger .toast-icon { color: var(--danger); }
 .toast--processing .toast-icon { color: var(--brand); }
-.toast-msg { flex: 1; color: inherit; }
+/* tabular-nums: toasts can carry a currency amount (e.g. "Receipt ready — €12.50"). */
+.toast-msg { flex: 1; color: inherit; font-variant-numeric: tabular-nums; }
 .toast-close {
   background: none; border: 0;
   color: var(--text-muted); cursor: pointer;
@@ -2648,4 +2649,15 @@ button.split-chip { gap: 6px; padding: 4px 10px 4px 4px; cursor: pointer; }
 
 @media (max-width: 900px) {
   .list-layout { grid-template-columns: 1fr; }
+}
+
+/* In-flight ingestion badge (specs/fixes/07.02): a gentle pulse says "alive"
+   while the stage label carries the meaning — never color/motion alone. */
+.badge--working { animation: badge-working 2s ease-in-out infinite; }
+@keyframes badge-working {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .badge--working { animation: none; }
 }

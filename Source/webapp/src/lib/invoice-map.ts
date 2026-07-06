@@ -4,6 +4,9 @@ import type { Invoice, LocationStatus, Status, StatusTone } from '@/components/w
 export interface BackendInvoice {
   id: string
   status: string
+  // Coarse pipeline stage while status is PROCESSING (specs/fixes/07.01).
+  // Optional until the backend ships it — absence falls back to the generic label.
+  processingStage?: string | null
   merchantName: string | null
   categoryId: string | null
   categoryName?: string | null
@@ -17,6 +20,15 @@ export interface BackendInvoice {
   locationStatus: LocationStatus
   locationCountryCode: string | null
   locationRegionCode: string | null
+}
+
+// Stage-accurate labels while PROCESSING (specs/fixes/07.02). Honest stages,
+// never fake percentages; the legend keeps the single generic PROCESSING row.
+export const PROCESSING_STAGE_LABELS: Record<string, string> = {
+  RECEIVED: 'Received — starting…',
+  READING: 'Reading your receipt…',
+  MATCHING: 'Matching products & prices…',
+  FINALIZING: 'Finishing up…',
 }
 
 export const STATUS_MAP: Record<string, Status> = {
@@ -46,7 +58,7 @@ export interface StatusLegendEntry {
 // this covers every key in STATUS_MAP.
 const STATUS_DESCRIPTIONS: Record<string, string> = {
   PARSED: 'We read your receipt successfully. Nothing to do.',
-  PROCESSING: "We're reading it now — this usually takes a few seconds.",
+  PROCESSING: "We're reading it now — this usually takes about 20 seconds.",
   SUSPECTED_DUPLICATE: 'Looks like a receipt you already added. Open it to confirm or remove it.',
   FAILED_PROCESSING: "We couldn't read this image. Try uploading a clearer, well-lit photo.",
   DISCARDED: 'You removed this receipt. It no longer counts toward your data.',
@@ -67,6 +79,16 @@ export const STATUS_LEGEND: StatusLegendEntry[] = STATUS_LEGEND_ORDER.map((code)
   return { tone, label, description: STATUS_DESCRIPTIONS[code] }
 })
 
+// The badge for a row: stage-accurate while PROCESSING (when the backend sends
+// a known stage), else the static STATUS_MAP entry.
+function statusBadge(b: BackendInvoice): Status {
+  if (b.status === 'PROCESSING' && b.processingStage) {
+    const stageLabel = PROCESSING_STAGE_LABELS[b.processingStage]
+    if (stageLabel) return ['primary', stageLabel]
+  }
+  return STATUS_MAP[b.status] ?? ['primary', b.status]
+}
+
 export function mapInvoice(b: BackendInvoice): Invoice {
   return {
     id: b.id,
@@ -74,7 +96,9 @@ export function mapInvoice(b: BackendInvoice): Invoice {
     category: b.categoryName ?? b.categoryId ?? 'Uncategorized',
     categoryId: b.categoryId ?? null,
     dateISO: b.transactionDate ?? b.createdAt.slice(0, 10),
-    status: STATUS_MAP[b.status] ?? ['primary', b.status],
+    status: statusBadge(b),
+    rawStatus: b.status,
+    isProcessing: b.status === 'PROCESSING',
     tags: b.searchTagLabels ?? b.searchTags ?? [],
     searchCity: b.searchCity ?? null,
     total: b.total ?? 0,

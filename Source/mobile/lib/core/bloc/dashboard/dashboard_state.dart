@@ -15,6 +15,7 @@ class DashboardState extends Equatable {
     this.isRefreshing = false,
     this.feedback = const {},
     this.notice,
+    this.noticeSeq = 0,
   });
 
   final DashboardStatus status;
@@ -25,6 +26,11 @@ class DashboardState extends Equatable {
   final bool isRefreshing;
   final Map<String, FeedbackVerdict> feedback;
   final String? notice;
+
+  /// Monotonic token bumped each time a [notice] is raised. The UI listens on
+  /// this — not on the notice text — so two notices with identical text (e.g.
+  /// two receipts finishing "Receipt ready — …") still both fire the snackbar.
+  final int noticeSeq;
 
   /// Tags present on the loaded invoices, de-duplicated and sorted — the chip row
   /// (read side only; no tag-vocabulary endpoint, that's 16h).
@@ -51,6 +57,7 @@ class DashboardState extends Equatable {
     Object? selectedTag = _unset,
     Object? notice = _unset,
   }) {
+    final settingNotice = notice != _unset && notice != null;
     return DashboardState(
       status: status ?? this.status,
       invoices: invoices ?? this.invoices,
@@ -62,6 +69,9 @@ class DashboardState extends Equatable {
       isRefreshing: isRefreshing ?? this.isRefreshing,
       feedback: feedback ?? this.feedback,
       notice: notice == _unset ? this.notice : notice as String?,
+      // Bump on every non-null notice so the UI re-fires even for repeated text.
+      // Clearing (notice: null) or omitting notice preserves the token.
+      noticeSeq: settingNotice ? noticeSeq + 1 : noticeSeq,
     );
   }
 
@@ -75,6 +85,7 @@ class DashboardState extends Equatable {
         isRefreshing,
         feedback,
         notice,
+        noticeSeq,
       ];
 }
 

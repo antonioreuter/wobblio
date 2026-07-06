@@ -13,6 +13,12 @@ export interface Invoice {
   categoryId: string | null
   dateISO: string
   status: Status
+  // Raw backend status (e.g. 'PARSED', 'SUSPECTED_DUPLICATE'). The `status` tuple
+  // above is display-only (tone + label, and several statuses collapse to one
+  // label), so anything deciding behaviour — the poll loop, completion messaging —
+  // must branch on this, never on the tone/label.
+  rawStatus: string
+  isProcessing: boolean
   tags: string[]
   // Free-text receipt city, searchable but never rendered as a tag chip.
   searchCity: string | null
@@ -111,6 +117,8 @@ function buildInvoices(): Invoice[] {
       categoryId: ['cat-groceries', 'cat-dining-out', 'cat-transport', 'cat-electronics'][k % 4],
       dateISO: d.toISOString().slice(0, 10),
       status: STATUSES[k % STATUSES.length],
+      rawStatus: 'PARSED',
+      isProcessing: false,
       tags,
       searchCity: null,
       total: Math.round((8 + ((k * 7.37) % 72)) * 100) / 100,

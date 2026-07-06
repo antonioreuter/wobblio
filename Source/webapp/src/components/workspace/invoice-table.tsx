@@ -83,7 +83,13 @@ export function InvoiceTable({
                 <td className="col-cat cell-cat">{inv.category}</td>
                 <td className="cell-date">{fmtDate(inv.dateISO)}</td>
                 <td className="cell-status">
-                  <Badge tone={inv.status[0]}>{inv.status[1]}</Badge>
+                  <Badge
+                    tone={inv.status[0]}
+                    className={inv.isProcessing ? 'badge--working' : undefined}
+                    data-testid={`invoice-status-${inv.id}`}
+                  >
+                    {inv.status[1]}
+                  </Badge>
                   {needsLocationConfirmation(inv) && (
                     <button
                       type="button"

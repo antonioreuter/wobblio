@@ -69,7 +69,7 @@ class _DashboardViewState extends State<_DashboardView> {
       backgroundColor: Colors.transparent,
       body: BlocConsumer<DashboardBloc, DashboardState>(
         listenWhen: (prev, curr) =>
-            curr.notice != null && prev.notice != curr.notice,
+            curr.notice != null && prev.noticeSeq != curr.noticeSeq,
         listener: (context, state) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()

@@ -10,6 +10,8 @@ describe('invoice-metrics Unit Tests', () => {
     categoryId: 'cat-groceries',
     dateISO,
     status: ['success', 'Ready'],
+    isProcessing: false,
+    rawStatus: 'PARSED',
     tags: [],
     searchCity: null,
     total,

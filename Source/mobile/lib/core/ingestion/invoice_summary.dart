@@ -13,6 +13,7 @@ class InvoiceSummary extends Equatable {
     required this.currency,
     required this.status,
     required this.tags,
+    this.processingStage,
   });
 
   final String id;
@@ -28,10 +29,15 @@ class InvoiceSummary extends Equatable {
   final String status;
   final List<String> tags;
 
-  InvoiceStatusView get statusView => statusViewFor(status);
+  /// Coarse pipeline stage while [status] is `PROCESSING` (specs/fixes/07.01).
+  /// Null until the backend ships it — [statusView] then keeps the generic label.
+  final String? processingStage;
+
+  InvoiceStatusView get statusView =>
+      statusViewFor(status, processingStage: processingStage);
   bool get isProcessing => !isTerminalStatus(status);
 
   @override
   List<Object?> get props =>
-      [id, merchant, dateIso, total, currency, status, tags];
+      [id, merchant, dateIso, total, currency, status, tags, processingStage];
 }

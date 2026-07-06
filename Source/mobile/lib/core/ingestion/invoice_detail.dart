@@ -84,6 +84,7 @@ class InvoiceDetail extends Equatable {
     required this.lines,
     this.locationLabel,
     this.feedbackVerdict,
+    this.processingStage,
   });
 
   final String id;
@@ -97,6 +98,11 @@ class InvoiceDetail extends Equatable {
   final List<InvoiceLineDetail> lines;
   final String? locationLabel; // e.g. "North Brabant, Netherlands"
   final String? feedbackVerdict; // 'UP' | 'DOWN' | null, raw backend value
+
+  /// Coarse pipeline stage while [status] is `PROCESSING` — kept in parity with
+  /// [InvoiceSummary] so opening a still-processing invoice shows the same
+  /// stage-accurate label the list does. Null until the backend ships it.
+  final String? processingStage;
 
   bool get isSuspectedDuplicate => status == 'SUSPECTED_DUPLICATE';
 
@@ -112,6 +118,7 @@ class InvoiceDetail extends Equatable {
         lines,
         locationLabel,
         feedbackVerdict,
+        processingStage,
       ];
 }
 

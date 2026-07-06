@@ -10,6 +10,8 @@ const invoice = (overrides: Partial<Invoice>): Invoice => ({
   categoryId: null,
   dateISO: '2026-06-10',
   status: ['success', 'Ready'],
+  isProcessing: false,
+  rawStatus: 'PARSED',
   tags: [],
   searchCity: null,
   total: 12.5,

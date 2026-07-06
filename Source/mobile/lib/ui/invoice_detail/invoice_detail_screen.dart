@@ -184,7 +184,8 @@ class _HeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final view = statusViewFor(detail.status);
+    final view =
+        statusViewFor(detail.status, processingStage: detail.processingStage);
     return GlassContainer(
       padding: const EdgeInsets.all(16),
       child: Column(

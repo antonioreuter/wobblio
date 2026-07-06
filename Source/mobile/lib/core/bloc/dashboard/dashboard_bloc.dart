@@ -44,17 +44,16 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
   // Bumped on each poll run so a newer refresh supersedes an in-flight backoff loop.
   int _pollGen = 0;
 
-  // Webapp cadence (workspace-provider.tsx): 2.5s / 5s / 9s ramp, then hold at the
-  // last interval. The spec wants polling "until terminal", so we keep going past
-  // the ramp at the final interval rather than giving up after three ticks.
+  // Webapp cadence (workspace-provider.tsx, specs/fixes/07.02/03): 2.5s / 5s
+  // ramp, then hold at 5s. Measured ingestion is p50 ~17.5s / p90 ~25s, so the
+  // old 9s hold added up to 9s of pure staleness right when the receipt lands.
   static const List<Duration> _defaultSchedule = [
     Duration(milliseconds: 2500),
     Duration(milliseconds: 5000),
-    Duration(milliseconds: 9000),
   ];
 
   // Hard ceiling so a stuck PROCESSING row can't poll forever (battery/quota).
-  // ~3 ramp ticks + 37 × 9s ≈ 5.5 min, after which the user pulls to refresh.
+  // 2 ramp ticks + 38 × 5s ≈ 3.3 min, after which the user pulls to refresh.
   static const int _defaultMaxPollAttempts = 40;
 
   Future<void> _onStarted(
@@ -170,7 +169,14 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
       final usage = await _safeUsage();
       // Re-check after every await: a newer refresh must win the last write.
       if (gen != _pollGen || emit.isDone) return;
-      emit(state.copyWith(invoices: invoices, usage: usage));
+      // Only set the one-shot notice when a receipt actually finished, so a
+      // plain tick never clears an unrelated notice mid-display.
+      final notice = _readyNotice(state.invoices, invoices);
+      emit(
+        notice == null
+            ? state.copyWith(invoices: invoices, usage: usage)
+            : state.copyWith(invoices: invoices, usage: usage, notice: notice),
+      );
       if (!invoices.any((inv) => inv.isProcessing)) return;
     }
   }
@@ -196,6 +202,38 @@ class DashboardBloc extends Bloc<DashboardEvent, DashboardState> {
       return null; // the inflation card is supplementary — never fail the load over it
     }
   }
+
+  // A receipt left PROCESSING between two poll ticks (specs/fixes/07.03): tell
+  // the user in-app instead of waiting for them to notice the row change.
+  // Polling is the trigger — background delivery stays 16f push's job.
+  static String? _readyNotice(
+    List<InvoiceSummary> previous,
+    List<InvoiceSummary> next,
+  ) {
+    final wasProcessing = {
+      for (final inv in previous)
+        if (inv.isProcessing) inv.id,
+    };
+    for (final inv in next) {
+      if (!wasProcessing.contains(inv.id) || inv.isProcessing) continue;
+      final notice = _terminalNotice(inv.status);
+      if (notice != null) return notice;
+    }
+    return null;
+  }
+
+  // Notice text for a raw terminal status, or null for a status that shouldn't
+  // interrupt (DISCARDED — user-initiated) or an unmapped/future status we can't
+  // describe honestly. Branch on the raw status, never the display tone: an
+  // unknown status maps to a processing-toned view and would otherwise be
+  // mis-announced as a parse failure.
+  static String? _terminalNotice(String status) => switch (status) {
+        'PARSED' || 'NEEDS_REVIEW' => 'Receipt ready — tap it to review.',
+        'SUSPECTED_DUPLICATE' => 'Looks like a duplicate — open it to confirm.',
+        'FAILED_PROCESSING' =>
+          'We couldn’t read your receipt — try a clearer photo.',
+        _ => null,
+      };
 
   static Map<String, FeedbackVerdict> _withVerdict(
     Map<String, FeedbackVerdict> current,

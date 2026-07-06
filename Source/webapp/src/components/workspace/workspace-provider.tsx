@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { type Invoice } from './invoice-data'
+import { eur, type Invoice } from './invoice-data'
 import { type Budget } from './budget-data'
 import { InvoiceDrawer } from './invoice-drawer'
 import { ConfirmDialog } from './confirm-dialog'
@@ -94,6 +94,63 @@ const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp'
 // Some OS/browser file dialogs match by extension rather than MIME, so list both.
 const PDF_ACCEPT = `${IMAGE_ACCEPT},application/pdf,.pdf`
 
+// Poll-until-terminal (specs/fixes/07.02). Measured ingestion is p50 ~17.5s /
+// p90 ~25s, so fixed post-upload timers miss nearly every invoice. While any
+// row is PROCESSING, refetch on this ramp (held at the last interval) until
+// every row is terminal. The ceiling (~3 min) only guards a stuck row — a
+// manual refresh or new upload restarts the loop.
+// TODO(specs/fixes/07.01): poll the lightweight GET /invoices/status?ids=
+// endpoint per tick once the backend ships it, instead of the full list.
+const POLL_RAMP_MS = [2500, 5000]
+const POLL_HOLD_MS = 5000
+const MAX_POLL_TICKS = 36
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+// Polling pauses while the tab is hidden and resumes (with an immediate tick)
+// when it becomes visible again. Resolves early — and always detaches its
+// listener — when `signal` aborts, so a superseded or unmounted poll parked here
+// while the tab is hidden never leaks the visibilitychange listener.
+const waitUntilVisible = (signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    if (!document.hidden || signal.aborted) {
+      resolve()
+      return
+    }
+    const cleanup = () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      signal.removeEventListener('abort', onAbort)
+    }
+    const onVisibilityChange = () => {
+      if (document.hidden) return
+      cleanup()
+      resolve()
+    }
+    const onAbort = () => {
+      cleanup()
+      resolve()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    signal.addEventListener('abort', onAbort)
+  })
+
+// The toast for an invoice that just reached a terminal status, keyed on the raw
+// backend status. DISCARDED (user-initiated) and any unmapped/future status
+// return null — no toast rather than a wrong one.
+function completionToast(inv: Invoice): { msg: string; tone: ToastTone } | null {
+  switch (inv.rawStatus) {
+    case 'PARSED':
+    case 'NEEDS_REVIEW':
+      return { msg: `Receipt ready — ${inv.merchant}, ${eur(inv.total)}.`, tone: 'success' }
+    case 'SUSPECTED_DUPLICATE':
+      return { msg: 'Looks like a duplicate — open it to confirm or remove it.', tone: 'success' }
+    case 'FAILED_PROCESSING':
+      return { msg: "We couldn't read your receipt — try a clearer, well-lit photo.", tone: 'danger' }
+    default:
+      return null
+  }
+}
+
 export function WorkspaceProvider({
   children,
   pdfUploadEnabled = false,
@@ -121,6 +178,14 @@ export function WorkspaceProvider({
   const loadTopMerchants = useCallback(() => fetchTopMerchants().then(setTopMerchants), [])
   const loadBudgets = useCallback(() => fetchBudgets().then(setBudgets), [])
 
+  // Latest list for the poll loop's transition diff, without re-binding the loop.
+  const invoicesRef = useRef<Invoice[]>([])
+  useEffect(() => {
+    invoicesRef.current = invoices
+  }, [invoices])
+  // Bumped whenever a newer poll run (or unmount) must supersede an in-flight one.
+  const pollGen = useRef(0)
+
   useEffect(() => {
     loadInvoices().catch(() => undefined).finally(() => setLoading(false))
     loadUsage().catch(() => undefined)
@@ -134,6 +199,66 @@ export function WorkspaceProvider({
     const ms = tone === 'processing' ? 1600 : 6000
     toastTimer.current = setTimeout(() => setToast(null), ms)
   }, [])
+
+  // A receipt just left PROCESSING: tell the user, and refresh what a finished
+  // parse moves — credits charge at success, budgets at upload time. Batches are
+  // almost always a single receipt, so one toast (for the first announceable one)
+  // is enough. Branch on the raw backend status, never the display tone: an
+  // unmapped/future status must not be mis-announced as a parse failure.
+  const announceTerminal = useCallback(
+    (finished: Invoice[]) => {
+      void loadUsage().catch(() => undefined)
+      void loadBudgets().catch(() => undefined)
+      const announced = finished.map((inv) => completionToast(inv)).find((t) => t !== null)
+      if (announced) showToast(announced.msg, announced.tone)
+    },
+    [loadUsage, loadBudgets, showToast],
+  )
+
+  // Keyed on the id-set so a tick that only changes row contents doesn't
+  // re-ramp, while a new upload / terminal flip / manual refresh restarts the
+  // loop with a fresh generation (the cleanup kills the stale one).
+  const processingKey = invoices
+    .filter((inv) => inv.isProcessing)
+    .map((inv) => inv.id)
+    .sort()
+    .join(',')
+
+  useEffect(() => {
+    if (!processingKey) return
+    const gen = ++pollGen.current
+    const abort = new AbortController()
+    const poll = async () => {
+      for (let tick = 0; tick < MAX_POLL_TICKS; tick++) {
+        await sleep(POLL_RAMP_MS[tick] ?? POLL_HOLD_MS)
+        if (gen !== pollGen.current) return
+        await waitUntilVisible(abort.signal)
+        if (gen !== pollGen.current) return
+        let next: Invoice[]
+        try {
+          next = await fetchInvoices()
+        } catch {
+          continue // keep the last good list; try again next tick
+        }
+        if (gen !== pollGen.current) return
+        const wasProcessing = new Set(
+          invoicesRef.current.filter((inv) => inv.isProcessing).map((inv) => inv.id),
+        )
+        const finished = next.filter((inv) => wasProcessing.has(inv.id) && !inv.isProcessing)
+        setInvoices(next)
+        if (finished.length > 0) announceTerminal(finished)
+        if (!next.some((inv) => inv.isProcessing)) return
+      }
+      if (gen === pollGen.current) {
+        showToast('Still working on your receipt — it will appear here as soon as it’s ready.', 'processing')
+      }
+    }
+    void poll()
+    return () => {
+      pollGen.current++
+      abort.abort() // wake a poll parked in waitUntilVisible so it detaches its listener
+    }
+  }, [processingKey, announceTerminal, showToast])
 
   const refresh = useCallback(() => {
     if (refreshing) return
@@ -207,18 +332,11 @@ export function WorkspaceProvider({
       showToast('Uploading your receipt…', 'processing')
       try {
         await uploadReceipt(file)
-        showToast('Receipt uploaded — processing in the background…', 'processing')
-        // Show the PROCESSING row immediately, then poll as the worker parses it.
-        // The weekly counter increments once the upload is accepted, so refresh
-        // usage alongside each invoice poll.
+        showToast('Receipt uploaded — reading it usually takes about 20 seconds.', 'processing')
+        // Land the PROCESSING row + charged credits right away; the
+        // poll-until-terminal effect takes over from there.
         void loadInvoices().catch(() => undefined)
         void loadUsage().catch(() => undefined)
-        ;[2500, 5000, 9000].forEach((ms) =>
-          setTimeout(() => {
-            void loadInvoices().catch(() => undefined)
-            void loadUsage().catch(() => undefined)
-          }, ms),
-        )
       } catch (err) {
         const msg = err instanceof UploadError ? err.message : 'Upload failed — please try again.'
         showToast(msg, 'danger')

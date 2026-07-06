@@ -79,6 +79,7 @@ class HttpInvoiceRepository implements IInvoiceRepository {
       currency: (row['currency'] as String?) ?? 'EUR',
       status: row['status'] as String,
       tags: tags.map((t) => '$t').toList(),
+      processingStage: row['processingStage'] as String?,
     );
   }
 }
