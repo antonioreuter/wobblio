@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, type MouseEvent } from 'react'
+import { useState, useMemo, useEffect, useRef, type PointerEvent } from 'react'
 import { Table2, Calendar, BarChart3, X } from 'lucide-react'
 import { Card } from '@/components/ds'
 import { SPEND_OVER_TIME } from './invoice-data'
@@ -30,6 +30,7 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
   
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const dragState = useRef<{ anchor: number; moved: boolean } | null>(null)
 
   const monthlyData = dataProp ?? SPEND_OVER_TIME
   // Quarter view shows the trailing 3 months; month view shows the daily series.
@@ -58,42 +59,66 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
     const labelEnd = getDetailedLabel(endItem)
     
     const dateRangeLabel = minIdx === maxIdx ? labelStart : `${labelStart} – ${labelEnd}`
-    
+    const days = maxIdx - minIdx + 1
+
     return {
       minIdx,
       maxIdx,
       totalSpent: sum,
+      days,
+      perDay: sum / days,
       dateRangeLabel,
       xStart: getX(minIdx, n),
       xEnd: getX(maxIdx, n),
     }
   }, [selection, data, mode, n])
 
-  const getIndexFromX = (clientX: number, currentTarget: SVGRectElement) => {
-    const rect = currentTarget.getBoundingClientRect()
-    const px = ((clientX - rect.left) / rect.width) * W
-    let i = Math.round(((px - padL) / plotW) * (n - 1))
-    i = Math.max(0, Math.min(n - 1, i))
-    return i
+  useEffect(() => {
+    if (!selection) return
+    const clearOnEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelection(null)
+    }
+    window.addEventListener('keydown', clearOnEscape)
+    return () => window.removeEventListener('keydown', clearOnEscape)
+  }, [selection])
+
+  const switchMode = (next: 'month' | 'quarter') => {
+    setMode(next)
+    setSelection(null)
+    setHover(null)
   }
 
-  const handleMouseDown = (e: MouseEvent<SVGRectElement>) => {
+  // The overlay rect spans exactly the plot area, so the fraction across its
+  // bounding box maps 1:1 onto the data index range.
+  const getIndexFromX = (clientX: number, overlay: SVGRectElement) => {
+    const rect = overlay.getBoundingClientRect()
+    const frac = (clientX - rect.left) / rect.width
+    return Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))))
+  }
+
+  const handlePointerDown = (e: PointerEvent<SVGRectElement>) => {
     if (mode !== 'month') return
     const idx = getIndexFromX(e.clientX, e.currentTarget)
-    setSelection({ start: idx, end: idx })
+    dragState.current = { anchor: idx, moved: false }
     setIsDragging(true)
+    e.currentTarget.setPointerCapture?.(e.pointerId)
   }
 
-  const handleMouseMove = (e: MouseEvent<SVGRectElement>) => {
+  const handlePointerMove = (e: PointerEvent<SVGRectElement>) => {
     const i = getIndexFromX(e.clientX, e.currentTarget)
     setHover(i)
 
-    if (isDragging && selection) {
-      setSelection((prev) => prev ? { ...prev, end: i } : null)
+    const drag = dragState.current
+    if (!drag) return
+    if (i !== drag.anchor || drag.moved) {
+      drag.moved = true
+      setSelection({ start: drag.anchor, end: i })
     }
   }
 
-  const handleMouseUp = () => {
+  const endDrag = (wasClick: boolean) => {
+    if (wasClick && dragState.current && !dragState.current.moved) setSelection(null)
+    dragState.current = null
     setIsDragging(false)
   }
 
@@ -121,7 +146,7 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
           <div style={{ display: 'flex', gap: 2, backgroundColor: 'var(--elevated)', borderRadius: 6, padding: 4 }}>
             <button
               type="button"
-              onClick={() => setMode('month')}
+              onClick={() => switchMode('month')}
               aria-pressed={mode === 'month'}
               className={`btn-icon has-tip has-tip--bottom`}
               data-tip="This month"
@@ -134,7 +159,7 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
             </button>
             <button
               type="button"
-              onClick={() => setMode('quarter')}
+              onClick={() => switchMode('quarter')}
               aria-pressed={mode === 'quarter'}
               className={`btn-icon has-tip has-tip--bottom`}
               data-tip="Last 3 months"
@@ -182,6 +207,7 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
           </tbody>
         </table>
       ) : (
+        <>
         <div className="chart-wrap">
           <svg
             viewBox={`0 0 ${W} ${H}`}
@@ -285,6 +311,20 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
                 strokeWidth="2.5"
               />
             )}
+            {/* Selection endpoint anchors */}
+            {selectionInfo && selectionInfo.minIdx !== selectionInfo.maxIdx && (
+              <g>
+                {[selectionInfo.minIdx, selectionInfo.maxIdx].map((idx) => (
+                  <circle
+                    key={`sel-end-${idx}`}
+                    cx={x(idx)}
+                    cy={y(data[idx].total)}
+                    r="3.5"
+                    className="chart-selection-endpoint"
+                  />
+                ))}
+              </g>
+            )}
             <rect
               data-testid="chart-overlay"
               x={padL}
@@ -292,17 +332,15 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
               width={plotW}
               height={plotH}
               fill="transparent"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={() => {
-                setHover(null)
-                setIsDragging(false)
-              }}
-              style={{ cursor: mode === 'month' ? 'ew-resize' : 'default' }}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={() => endDrag(true)}
+              onPointerCancel={() => endDrag(false)}
+              onPointerLeave={() => setHover(null)}
+              style={{ cursor: mode === 'month' ? 'ew-resize' : 'default', touchAction: 'none' }}
             />
           </svg>
-          {hover !== null && (
+          {hover !== null && !isDragging && (
             <div className="chart-tip" style={{ left: `${(x(hover) / W) * 100}%` }}>
               <div className="chart-tip-head">
                 {'dateLabel' in data[hover] && data[hover].dateLabel ? data[hover].dateLabel : getLabel(data[hover])}
@@ -315,24 +353,29 @@ export function SpendOverTimeChart({ data: dataProp, dailyData }: SpendOverTimeC
               </div>
             </div>
           )}
-          {/* Summary Badge for selection */}
-          {selectionInfo && (
-            <div className="chart-selection-badge">
-              <div className="badge-meta">
-                <span className="lbl">Selected Period: {selectionInfo.dateRangeLabel}</span>
-                <span className="val">Total Spent: {eur(selectionInfo.totalSpent)}</span>
-              </div>
-              <button
-                type="button"
-                className="badge-close"
-                onClick={() => setSelection(null)}
-                aria-label="Clear selection"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          )}
         </div>
+        {/* Selected-period summary strip, in flow below the chart */}
+        {selectionInfo && (
+          <div className="chart-selection-summary" role="status" data-testid="chart-selection-summary">
+            <div className="summary-meta">
+              <span className="lbl">
+                {selectionInfo.dateRangeLabel} · {selectionInfo.days} {selectionInfo.days === 1 ? 'day' : 'days'}
+              </span>
+              <span className="val">
+                {eur(selectionInfo.totalSpent)} total · {eur(selectionInfo.perDay)}/day
+              </span>
+            </div>
+            <button
+              type="button"
+              className="summary-close"
+              onClick={() => setSelection(null)}
+              aria-label="Clear selection"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+        </>
       )}
     </Card>
   )

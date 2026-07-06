@@ -1107,41 +1107,45 @@
   fill: rgba(79, 70, 229, 0.07);
   stroke: rgba(79, 70, 229, 0.35);
 }
-.chart-selection-badge {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+.chart-selection-endpoint {
+  fill: var(--bg-color);
+  stroke: rgba(99, 102, 241, 0.9);
+  stroke-width: 2;
+  pointer-events: none;
+}
+[data-theme="light"] .chart-selection-endpoint {
+  stroke: rgba(79, 70, 229, 0.9);
+}
+.chart-selection-summary {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
+  margin-top: 10px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  box-shadow: var(--card-shadow);
+  border-left: 3px solid var(--brand);
   border-radius: var(--radius-md);
   padding: 8px 14px;
-  z-index: 10;
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border-left: 3px solid var(--brand);
 }
-.chart-selection-badge .badge-meta {
+.chart-selection-summary .summary-meta {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.chart-selection-badge .lbl {
+.chart-selection-summary .lbl {
   font-size: 10.5px;
   color: var(--text-secondary);
   font-weight: 500;
 }
-.chart-selection-badge .val {
+.chart-selection-summary .val {
   font-size: 13.5px;
   font-weight: 700;
   color: var(--text-primary);
   font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
 }
-.chart-selection-badge .badge-close {
+.chart-selection-summary .summary-close {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1153,7 +1157,7 @@
   border-radius: var(--radius-sm);
   transition: all 0.2s;
 }
-.chart-selection-badge .badge-close:hover {
+.chart-selection-summary .summary-close:hover {
   color: var(--text-primary);
   background: var(--glass-highlight);
 }
