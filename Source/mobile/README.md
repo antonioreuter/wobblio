@@ -105,6 +105,44 @@ added later.
 
 ## Run
 
+### Using the Makefile (Recommended)
+
+A [Makefile](file:///Users/antonioreuter/repositories/projects/wobblio/Source/mobile/Makefile) is provided to simplify development workflows, manage emulator/simulator tasks, and automatically inject runtime configurations.
+
+1. **Configuration**: Edit the local [mobile.config](file:///Users/antonioreuter/repositories/projects/wobblio/Source/mobile/mobile.config) file to set target device IDs, build modes, and backend URLs.
+2. **Help**: To list all available Makefile targets and descriptions:
+   ```bash
+   make help
+   ```
+3. **Common Tasks**:
+   * **Boot Emulators**:
+     ```bash
+     make start-android   # Launch the Android AVD (requires ANDROID_AVD to be set in mobile.config)
+     make start-ios       # Open the iOS Simulator and boot the device (configured via IOS_SIMULATOR_NAME in mobile.config)
+     ```
+   * **Run (Attached with Hot Reload)**:
+     ```bash
+     make run-android     # Build + install + launch on the Android emulator (attached)
+     make run-ios         # Build + install + launch on the iOS simulator (attached)
+     ```
+   * **Build / Deploy** (install without staying attached):
+     ```bash
+     make deploy-android  # Build the APK, then install it on the Android emulator
+     make deploy-ios      # Build, then install on the iOS simulator
+     make build           # Build both artifacts only (Android APK + unsigned iOS app)
+     make deploy          # Deploy to BOTH emulators — needs an iOS sim AND Android emulator booted
+     ```
+     Artifacts are built in `BUILD_MODE` (default `debug`, set in `mobile.config`); the deploy
+     targets install that same mode, so `make deploy-android` on defaults installs
+     `app-debug.apk`. For an Android-only setup, use `make deploy-android` (or `make run-android`)
+     rather than `make deploy`, which also targets iOS.
+   * **Hygiene & Validation**:
+     ```bash
+     make validate        # Fetch deps, check formatting, run static analysis, and run tests
+     ```
+
+### Manual Execution
+
 Stage values are resolved at build time via `--dart-define` (mirrors the webapp's stage-scoped
 config). Auth needs the Cognito **mobile** client ID + Hosted-UI domain — both exported per stage
 by `WobblioAuthStack` (`mobile-client-id`, `cognito-domain` CloudFormation outputs):
@@ -121,6 +159,7 @@ fvm flutter run --release \
   --dart-define=COGNITO_CLIENT_ID=<prod mobile-client-id> \
   --dart-define=COGNITO_DOMAIN=wobblio-prod.auth.eu-west-1.amazoncognito.com
 ```
+
 
 ## Verify (acceptance for 16a)
 

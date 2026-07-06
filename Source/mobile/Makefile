@@ -72,29 +72,33 @@ build-android: ## Build the Android APK (mode = BUILD_MODE)
 	$(FLUTTER) build apk --$(BUILD_MODE) $(DART_DEFINES)
 
 .PHONY: build-ios
-build-ios: ## Build the iOS app, unsigned (mode = BUILD_MODE)
+build-ios: ## Build the iOS app for physical device, unsigned (mode = BUILD_MODE)
 	$(FLUTTER) build ios --$(BUILD_MODE) --no-codesign $(DART_DEFINES)
 
+.PHONY: build-ios-sim
+build-ios-sim: ## Build the iOS app for simulator, unsigned (mode = BUILD_MODE)
+	$(FLUTTER) build ios --$(BUILD_MODE) --simulator --no-codesign $(DART_DEFINES)
+
 .PHONY: build
-build: build-android build-ios ## Build both Android + iOS artifacts
+build: build-android build-ios ## Build both Android + iOS device artifacts
 
 # ── Run on emulators (attached: hot reload; press q to stop) ─────────────────
 .PHONY: run-android
 run-android: ## Build+install+launch on the Android emulator (attached)
-	$(FLUTTER) run -d $(ANDROID_EMULATOR_ID) $(DART_DEFINES)
+	$(FLUTTER) run -d "$(ANDROID_EMULATOR_ID)" $(DART_DEFINES)
 
 .PHONY: run-ios
 run-ios: ## Build+install+launch on the iOS simulator (attached)
-	$(FLUTTER) run -d $(IOS_SIMULATOR_ID) $(DART_DEFINES)
+	$(FLUTTER) run -d "$(IOS_SIMULATOR_ID)" $(DART_DEFINES)
 
 # ── Deploy = install without staying attached ────────────────────────────────
 .PHONY: deploy-android
 deploy-android: build-android ## Build APK then install it on the Android emulator
-	$(FLUTTER) install -d $(ANDROID_EMULATOR_ID)
+	$(FLUTTER) install --$(BUILD_MODE) -d "$(ANDROID_EMULATOR_ID)"
 
 .PHONY: deploy-ios
-deploy-ios: build-ios ## Build then install on the iOS simulator
-	$(FLUTTER) install -d $(IOS_SIMULATOR_ID)
+deploy-ios: build-ios-sim ## Build then install on the iOS simulator
+	$(FLUTTER) install --$(BUILD_MODE) -d "$(IOS_SIMULATOR_ID)"
 
 .PHONY: deploy
 deploy: deploy-android deploy-ios ## Deploy to both emulators
