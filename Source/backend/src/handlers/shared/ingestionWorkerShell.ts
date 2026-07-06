@@ -123,7 +123,7 @@ async function runPostCommit(
   outcome: IngestionOutcome,
   telemetry: InvoiceTelemetryRecord | undefined,
 ): Promise<void> {
-  const { record, client, pool, workerStart, log } = ctx;
+  const { record, client, workerStart, log } = ctx;
   log.info('ingestion processed', {
     invoiceId: message.invoiceId,
     handled: outcome.handled,
@@ -166,12 +166,13 @@ async function runPostCommit(
     });
   }
 
-  // Fire 85%/100% budget alerts at upload time. Best-effort.
+  // Fire 85%/100% budget alerts, best-effort on the idle post-COMMIT client — the pool is
+  // max:1, so borrowing a second connection here would deadlock (adapters are SECURITY DEFINER).
   if (outcome.handled && outcome.status && COUNTS_TOWARD_BUDGET.has(outcome.status)) {
     try {
       const budgetAlerts = new BudgetRecyclerService(
-        new BudgetRecyclerRepositoryAdapter(pool),
-        new NotificationRepositoryAdapter(pool),
+        new BudgetRecyclerRepositoryAdapter(client),
+        new NotificationRepositoryAdapter(client),
         new MockPushAdapter(),
       );
       const today = new Date().toISOString().slice(0, 10);
