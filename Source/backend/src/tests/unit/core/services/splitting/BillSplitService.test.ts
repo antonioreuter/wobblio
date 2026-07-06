@@ -177,4 +177,18 @@ describe('BillSplitService', () => {
     expect(summary.grandTotal).toBe(0);
   });
 
+  it('exposes the shared summary with the invoice header (merchant, date, currency)', async () => {
+    splits.getMeta.mockResolvedValue({ id: 'split-1', invoiceId: 'inv-1' });
+    invoices.getDetail.mockResolvedValue(
+      detail([{ id: 'L1', lineTotal: 20 }], { merchantName: 'Jumbo', transactionDate: '2026-06-10', currency: 'EUR' }),
+    );
+    splits.listAllocations.mockResolvedValue([{ lineId: 'L1', participantNameEnc: 'enc', units: 1 }]);
+    encryption.decrypt.mockResolvedValue('Alice');
+
+    const shared = await sut.sharedSummary('split-1');
+    expect(shared).toMatchObject({ merchant: 'Jumbo', date: '2026-06-10', currency: 'EUR' });
+    expect(shared.summary.grandTotal).toBe(20);
+    expect(shared.summary.participants[0]).toMatchObject({ name: 'Alice', total: 20 });
+  });
+
 });
