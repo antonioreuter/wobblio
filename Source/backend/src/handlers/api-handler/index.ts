@@ -74,6 +74,7 @@ import { handleNotificationsRoute } from './notificationRoutes';
 import { handleListsRoute } from './listRoutes';
 import { handleProductsRoute } from './productRoutes';
 import { handlePriceTrendsRoute } from './priceTrendRoutes';
+import { handleSpendReportRoute } from './spendReportRoutes';
 import { handleSplitsRoute } from './splitRoutes';
 import { handleAdminRoute } from './adminRoutes';
 import { handleGdprRoute } from './gdprRoutes';
@@ -130,6 +131,7 @@ export const handler = async (
     const isListsRoute = path.startsWith('/lists');
     const isProductsRoute = path.startsWith('/products');
     const isPriceTrendsRoute = path.startsWith('/price-trends');
+    const isReportsRoute = path.startsWith('/reports/');
     const isAdminRoute = path.startsWith('/admin/');
 
     // Billing (upgrade), own-profile onboarding, and reference lookups stay
@@ -185,6 +187,10 @@ export const handler = async (
 
     if (isPriceTrendsRoute) {
       return handlePriceTrendsRoute(client, user, path, method, event);
+    }
+
+    if (isReportsRoute) {
+      return handleSpendReportRoute(client, user, path, method, event);
     }
 
     if (isAdminRoute) {

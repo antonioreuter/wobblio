@@ -14,6 +14,7 @@ import 'package:wobblio/core/bloc/reports/price_report_bloc.dart';
 import 'package:wobblio/core/bloc/review/review_bloc.dart';
 import 'package:wobblio/core/bloc/shared_split/shared_split_bloc.dart';
 import 'package:wobblio/core/bloc/shopping_list/shopping_list_bloc.dart';
+import 'package:wobblio/core/bloc/spend_breakdown/spend_breakdown_bloc.dart';
 import 'package:wobblio/core/bloc/split_bill/split_bill_bloc.dart';
 import 'package:wobblio/core/config/app_config.dart';
 import 'package:wobblio/core/ports/api_client.dart';
@@ -36,6 +37,7 @@ import 'package:wobblio/core/ports/secure_token_store.dart';
 import 'package:wobblio/core/ports/share_presenter.dart';
 import 'package:wobblio/core/ports/shopping_list_repository.dart';
 import 'package:wobblio/core/ports/split_id_cache.dart';
+import 'package:wobblio/core/ports/spend_report_repository.dart';
 import 'package:wobblio/core/ports/split_repository.dart';
 import 'package:wobblio/core/ports/upload_preparer.dart';
 import 'package:wobblio/core/ports/insights_repository.dart';
@@ -56,6 +58,7 @@ import 'package:wobblio/infrastructure/adapters/http_profile_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_reference_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_review_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_shopping_list_repository.dart';
+import 'package:wobblio/infrastructure/adapters/http_spend_report_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_split_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_insights_repository.dart';
 import 'package:wobblio/infrastructure/adapters/http_usage_repository.dart';
@@ -119,6 +122,10 @@ void configureDependencies() {
     )
     ..registerLazySingleton<IInsightsRepository>(
       () => HttpInsightsRepository(locator<IApiClient>()),
+    )
+    // Spend Breakdown report: hierarchical category → merchant → item drill-down.
+    ..registerLazySingleton<ISpendReportRepository>(
+      () => HttpSpendReportRepository(locator<IApiClient>()),
     )
     // Review & correction (16e): invoice detail/correct/discard + product search.
     ..registerLazySingleton<IReviewRepository>(
@@ -231,6 +238,12 @@ void configureDependencies() {
     ..registerFactory<PriceReportBloc>(
       () => PriceReportBloc(
         insights: locator<IInsightsRepository>(),
+        profile: locator<IProfileRepository>(),
+      ),
+    )
+    ..registerFactory<SpendBreakdownBloc>(
+      () => SpendBreakdownBloc(
+        reports: locator<ISpendReportRepository>(),
         profile: locator<IProfileRepository>(),
       ),
     )

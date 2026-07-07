@@ -2665,3 +2665,68 @@ button.split-chip { gap: 6px; padding: 4px 10px 4px 4px; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   .badge--working { animation: none; }
 }
+
+/* ── Spend Breakdown (hierarchical drill-down report) ───────────────────── */
+.spend-region-toggle,
+.spend-region-toggle .trend-mode-btn { display: inline-flex; align-items: center; gap: 5px; }
+.spend-region-toggle { gap: 4px; }
+
+.spend-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 13px; }
+.spend-crumb { display: inline-flex; align-items: center; gap: 4px; }
+.spend-crumb-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--text-muted); font: inherit;
+}
+.spend-crumb-link:hover { color: var(--brand); text-decoration: underline; }
+.spend-crumb-current { color: var(--text-primary); font-weight: 600; }
+.spend-crumb-sep { color: var(--text-muted); }
+
+.spend-donut { display: flex; justify-content: center; padding: 8px 0 16px; }
+.spend-donut-total-label { fill: var(--text-muted); font-size: 11px; }
+.spend-donut-total { fill: var(--text-primary); font-size: 18px; font-weight: 700; }
+
+.spend-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.spend-bar-row {
+  width: 100%; display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--glass-border); border-radius: var(--radius-lg);
+  background: var(--glass-bg); text-align: left; font: inherit; color: var(--text-primary);
+}
+.spend-bar-row.is-interactive { cursor: pointer; }
+.spend-bar-row.is-interactive:hover { border-color: var(--brand); background: var(--glass-highlight); }
+.spend-bar-icon { color: var(--text-muted); flex-shrink: 0; display: inline-flex; }
+.spend-bar-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.spend-bar-head { display: flex; justify-content: space-between; gap: 12px; }
+.spend-bar-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spend-bar-amount { font-variant-numeric: tabular-nums; font-weight: 600; flex-shrink: 0; }
+.spend-bar-amount.is-negative { color: var(--success); }
+.spend-bar-track { height: 6px; border-radius: var(--radius-pill); background: var(--glass-border); overflow: hidden; }
+.spend-bar-fill { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--brand); }
+.spend-bar-fill.is-negative { background: var(--success); }
+.spend-bar-meta { display: flex; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.spend-bar-chevron { color: var(--text-muted); flex-shrink: 0; }
+.spend-bar-lock { color: var(--brand); flex-shrink: 0; }
+
+.spend-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.spend-item-head {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+  border: 1px solid var(--glass-border); border-radius: var(--radius-lg);
+  background: var(--glass-bg); text-align: left; font: inherit; color: var(--text-primary);
+}
+.spend-item-head.is-interactive { cursor: pointer; }
+.spend-item-head.is-interactive:hover { border-color: var(--brand); }
+.spend-item-caret { width: 15px; color: var(--text-muted); display: inline-flex; }
+.spend-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spend-item-qty { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.spend-item-amount { font-variant-numeric: tabular-nums; font-weight: 600; }
+.spend-item-occurrences { list-style: none; margin: 2px 0 6px; padding: 0 12px 0 37px; display: flex; flex-direction: column; gap: 3px; }
+.spend-occurrence { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-muted); }
+.spend-occurrence-date { min-width: 84px; }
+.spend-occurrence-qty { font-variant-numeric: tabular-nums; }
+.spend-occurrence-amount { margin-left: auto; font-variant-numeric: tabular-nums; }
+.spend-occurrence-link { color: var(--brand); text-decoration: none; }
+.spend-occurrence-link:hover { text-decoration: underline; }
+
+.spend-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.spend-table th, .spend-table td { padding: 9px 10px; border-bottom: 1px solid var(--glass-border); text-align: left; }
+.spend-table th { color: var(--text-muted); font-weight: 600; }
+.spend-table .num { text-align: right; font-variant-numeric: tabular-nums; }

@@ -7,6 +7,7 @@ import 'package:wobblio/main.dart';
 import 'package:wobblio/ui/design_system/glass_container.dart';
 import 'package:wobblio/ui/design_system/inflation_sparkline.dart';
 import 'package:wobblio/ui/design_system/tokens.dart';
+import 'package:wobblio/ui/spend_breakdown/spend_breakdown_screen.dart';
 
 /// Reports "Price report" screen (19f, prototype 2a `data-screen="6"`): a
 /// personal-inflation CPI view — the caller's own price index vs. their region
@@ -21,7 +22,8 @@ class ReportsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider<PriceReportBloc>(
-      create: (_) => locator<PriceReportBloc>()..add(const PriceReportStarted()),
+      create: (_) =>
+          locator<PriceReportBloc>()..add(const PriceReportStarted()),
       child: const _ReportsView(),
     );
   }
@@ -55,6 +57,8 @@ class _ReportsView extends StatelessWidget {
                 children: [
                   _Header(regionLabel: state.regionLabel),
                   const SizedBox(height: 20),
+                  const _SpendBreakdownEntry(),
+                  const SizedBox(height: 16),
                   _Body(insight: state.insight),
                 ],
               ),
@@ -73,9 +77,8 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final subtitle = regionLabel.isEmpty
-        ? 'Last 90 days'
-        : '$regionLabel · last 90 days';
+    final subtitle =
+        regionLabel.isEmpty ? 'Last 90 days' : '$regionLabel · last 90 days';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -115,7 +118,9 @@ class _Body extends StatelessWidget {
         _InflationVsRegion(insight: data),
         if (data.trend.isNotEmpty) ...[
           const SizedBox(height: 20),
-          Center(child: InflationSparkline(trend: data.trend, width: 260, height: 64)),
+          Center(
+              child: InflationSparkline(
+                  trend: data.trend, width: 260, height: 64,),),
         ],
         if (saved != null && saved > 0) ...[
           const SizedBox(height: 22),
@@ -388,6 +393,50 @@ class _RetryMessage extends StatelessWidget {
           const SizedBox(height: 12),
           FilledButton(onPressed: onRetry, child: const Text('Try again')),
         ],
+      ),
+    );
+  }
+}
+
+/// Entry card into the hierarchical Spend Breakdown report — pushes
+/// [SpendBreakdownScreen] over the Reports tab.
+class _SpendBreakdownEntry extends StatelessWidget {
+  const _SpendBreakdownEntry();
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const SpendBreakdownScreen()),
+      ),
+      borderRadius: BorderRadius.circular(AppSpacing.radiusXl),
+      child: const GlassContainer(
+        child: Row(
+          children: [
+            Icon(Icons.pie_chart_outline, size: 22, color: AppColors.brand),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Spend breakdown',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),),
+                  SizedBox(height: 2),
+                  Text(
+                    'See where your money goes — drill by category and merchant',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12.5,),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 20, color: AppColors.textMuted),
+          ],
+        ),
       ),
     );
   }

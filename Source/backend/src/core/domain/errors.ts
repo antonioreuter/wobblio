@@ -218,6 +218,15 @@ export class InvalidTrendQueryError extends Error {
   }
 }
 
+// Spend-breakdown report — a malformed request (bad period preset, missing custom
+// dates, or a range beyond the 90-day cap). Surfaces as 400.
+export class InvalidSpendReportQueryError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid spend report query: ${reason}`);
+    this.name = 'InvalidSpendReportQueryError';
+  }
+}
+
 export class InvalidHouseholdError extends Error {
   constructor(readonly reason: string) {
     super(`Invalid household: ${reason}`);

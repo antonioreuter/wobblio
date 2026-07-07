@@ -89,10 +89,31 @@ All reports, budgets, and comparisons use `total_home_currency`. The transaction
 
 ## Reporting Suite
 
-### Free Tier
+### Spend Breakdown (hierarchical drill-down) — `GET /reports/spend`
+
+The "where does my money go?" report: a line-rooted drill from **category → merchant →
+item-category → items**, in the caller's home currency, capped at a rolling **90-day** window.
+Amended 2026-07-07 (loosens the earlier free-tier rule below).
+
+- **Line-rooted attribution:** every level sums `invoice_line.line_total` converted to home
+  currency (`× COALESCE(fx_rate_used, 1)`) and rolled up via the taxonomy `macroCategoryId`
+  helper, so a level's node amounts always sum to the parent total. Null-category lines fall into
+  an explicit **Uncategorized** bucket; discounts/deposits net negative (shown signed).
+- **Spend-counting semantics reuse budgets:** `status IN ('PARSED','NEEDS_REVIEW')`, dated by
+  `COALESCE(transaction_date, created_at::date)` — the same receipts `compute_budget_spend` counts.
+- **Tier gate:** STANDARD drills **category → merchant**; **item-category and item levels are
+  PREMIUM** (`merchantId` present ⇒ 403 `PremiumRequiredError` for STANDARD → web-checkout upsell).
+- **Filters:** period presets `THIS_WEEK | THIS_MONTH | LAST_90D | CUSTOM` (≤90 days, enforced
+  server-side); region defaults to the caller's home region (invoice `location_region_code`),
+  with an **All regions** option. Region '' ⇒ no location filter.
+- **Level inferred from params:** none → categories, `+categoryId` → merchants,
+  `+merchantId` → item-categories, `+itemCategoryId` → items (grouped by product with per-trip
+  occurrences). Web renders a donut (L1) + ranked bars + table toggle + breadcrumb; mobile renders
+  ranked bars + breadcrumb (custom date range and arbitrary-region picking are web-first).
+
+### Free Tier (other reports)
 
 - Totals by top-level category for the current and previous month only
-- No drill-down, no history beyond 2 months
 - Tag filtering within 2-month window
 
 ### Premium Reporting
@@ -105,10 +126,9 @@ All views use `total_home_currency` for cross-currency comparisons.
 - Category breakdown (donut chart)
 - Budget health summary
 
-**Merchant Drill-Down:**
-- Pick a merchant → all products purchased there
-- Filterable by category
-- Personal price-trend sparklines per product
+**Spend Breakdown drill-down (see the dedicated section above):**
+- Category → merchant (all tiers) → item-category → items (PREMIUM)
+- Line-rooted, home currency, 90-day window, region filter
 
 **3-Product / 6-Month Comparison Chart (the flagship):**
 - User selects up to 3 products (autocomplete, PREMIUM)
@@ -167,11 +187,11 @@ All views use `total_home_currency` for cross-currency comparisons.
 - [ ] WhatsApp export button
 
 ### Reporting Endpoints
-- [ ] `GET /reports/overview?period=MTD|30D|90D|YTD` — spend summary (top-level categories)
-- [ ] `GET /reports/categories?period=...&category_id=...` — drill-down by category (PREMIUM)
-- [ ] `GET /reports/merchants/{merchant_id}?period=...` — merchant drill-down with product list (PREMIUM)
+- [x] `GET /reports/spend?period=&from=&to=&country=&region=&categoryId=&merchantId=&itemCategoryId=`
+      — hierarchical spend breakdown; level inferred from params; 90-day cap; `merchantId` ⇒ PREMIUM
+      (built 2026-07-07: `SpendReportService` + `SpendReportQueryAdapter`, line-rooted, home currency)
 - [ ] `GET /reports/comparison?product_ids=...&region=...` — 3-product/6-month chart data (PREMIUM, max 3 products)
-- [ ] All reporting endpoints enforce tier gating (STANDARD: 2-month max, top-level categories only)
+- [x] Tier gating: STANDARD reaches category+merchant; item levels PREMIUM (403). Range capped 90 days for all.
 
 ### Price Comparison Query
 - [ ] Weekly median `normalized_unit_price` per merchant per region (trailing 26 weeks)
