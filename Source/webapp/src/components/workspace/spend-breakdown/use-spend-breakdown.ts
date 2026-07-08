@@ -3,13 +3,17 @@
 import { useEffect, useState } from 'react'
 
 export type SpendLevel = 'categories' | 'merchants' | 'item-categories' | 'items'
-export type SpendPreset = 'THIS_WEEK' | 'THIS_MONTH' | 'LAST_90D' | 'CUSTOM'
+export type SpendPreset = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'LAST_90D' | 'CUSTOM'
+// 'merchant' descends category → merchant → item-category → items; 'product' drops the merchant
+// level (category → item-category → items across all stores) and shows the store on each leaf line.
+export type SpendView = 'merchant' | 'product'
 
 export interface SpendOccurrence {
   date: string
   invoiceId: string
   quantity: number
   amount: number
+  merchantName: string | null
 }
 
 export interface SpendNode {
@@ -50,12 +54,13 @@ export interface SpendFilters {
   to: string
   country: string
   region: string // '' ⇒ all regions
+  view: SpendView
 }
 
 export const EMPTY_SELECTION: SpendSelection = { categoryId: null, merchantId: null, itemCategoryId: null }
 
 function selectionToQuery(selection: SpendSelection, filters: SpendFilters): string {
-  const params = new URLSearchParams({ period: filters.preset })
+  const params = new URLSearchParams({ period: filters.preset, view: filters.view })
   if (filters.preset === 'CUSTOM' && filters.from && filters.to) {
     params.set('from', filters.from)
     params.set('to', filters.to)

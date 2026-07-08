@@ -42,13 +42,18 @@ export interface ItemAmountRow {
 
 // Read-only aggregation over the caller's RLS-scoped invoices. The db MUST already carry
 // the tenant context (see withTenantTx). `macroId`/`merchantId`/`itemCategoryId` accept the
-// UNCATEGORIZED_ID / UNKNOWN_MERCHANT_ID sentinels for the null-key buckets.
+// UNCATEGORIZED_ID / UNKNOWN_MERCHANT_ID sentinels for the null-key buckets. A null `merchantId`
+// on itemCategories/items means "aggregate across all merchants" (the product-view drill).
 export interface ISpendReportQuery {
   categories(filter: SpendReportFilter): Promise<CategoryAmountRow[]>;
   merchants(macroId: string, filter: SpendReportFilter): Promise<MerchantAmountRow[]>;
-  itemCategories(macroId: string, merchantId: string, filter: SpendReportFilter): Promise<ItemCategoryAmountRow[]>;
+  itemCategories(
+    macroId: string,
+    merchantId: string | null,
+    filter: SpendReportFilter,
+  ): Promise<ItemCategoryAmountRow[]>;
   items(
-    merchantId: string,
+    merchantId: string | null,
     itemCategoryId: string,
     filter: SpendReportFilter,
   ): Promise<ItemAmountRow[]>;

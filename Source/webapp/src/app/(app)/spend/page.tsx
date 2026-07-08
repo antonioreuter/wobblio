@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-import { BarChart3, Calendar, Clock, Crown, Globe, Lock, PieChart, Table2 } from 'lucide-react'
+import { BarChart3, Calendar, Clock, Crown, Globe, Lock, Package, PieChart, Store, Table2 } from 'lucide-react'
 import { Card, Button } from '@/components/ds'
 import { FilterSelect, RegionPicker } from '@/components/workspace'
 import {
@@ -13,6 +13,7 @@ import {
   type SpendNode,
   type SpendPreset,
   type SpendSelection,
+  type SpendView,
 } from '@/components/workspace/spend-breakdown/use-spend-breakdown'
 import { SpendDonut } from '@/components/workspace/spend-breakdown/spend-donut'
 import { SpendBars } from '@/components/workspace/spend-breakdown/spend-bars'
@@ -21,6 +22,7 @@ import { SpendBreakdownTable } from '@/components/workspace/spend-breakdown/spen
 import { SpendBreadcrumb, type SpendCrumb } from '@/components/workspace/spend-breakdown/spend-breadcrumb'
 
 const PRESETS: [SpendPreset, string][] = [
+  ['TODAY', 'Today'],
   ['THIS_WEEK', 'This week'],
   ['THIS_MONTH', 'This month'],
   ['LAST_90D', 'Last 3 months'],
@@ -44,8 +46,9 @@ const EMPTY: Selection = {
   itemCategoryId: null, itemCategoryName: null,
 }
 
-function levelOf(sel: Selection): SpendLevel {
+function levelOf(sel: Selection, view: SpendView): SpendLevel {
   if (!sel.categoryId) return 'categories'
+  if (view === 'product') return sel.itemCategoryId ? 'items' : 'item-categories'
   if (!sel.merchantId) return 'merchants'
   if (!sel.itemCategoryId) return 'item-categories'
   return 'items'
@@ -63,8 +66,17 @@ export default function SpendPage() {
   const [region, setRegion] = useState('')
   const [allRegions, setAllRegions] = useState(false)
   const [sel, setSel] = useState<Selection>(EMPTY)
+  const [spendView, setSpendView] = useState<SpendView>('merchant')
   const [view, setView] = useState<'chart' | 'table'>('chart')
   const [showUpsell, setShowUpsell] = useState(false)
+
+  // Switching the drill shape resets to the top — the paths don't share intermediate levels.
+  const switchSpendView = (next: SpendView) => {
+    if (next === spendView) return
+    setSpendView(next)
+    setSel(EMPTY)
+    setShowUpsell(false)
+  }
 
   // Default the region to the caller's profile (§ decision 3); the toggle/picker changes it.
   useEffect(() => {
@@ -87,14 +99,14 @@ export default function SpendPage() {
   const customIncomplete = preset === 'CUSTOM' && (from === '' || to === '')
   const enabled = !rangeInvalid && !customIncomplete
 
-  const level = levelOf(sel)
+  const level = levelOf(sel, spendView)
   const activeRegion = allRegions ? '' : region
   const selection: SpendSelection = {
     categoryId: sel.categoryId,
     merchantId: sel.merchantId,
     itemCategoryId: sel.itemCategoryId,
   }
-  const filters: SpendFilters = { preset, from, to, country, region: activeRegion }
+  const filters: SpendFilters = { preset, from, to, country, region: activeRegion, view: spendView }
   const { report, loading, forbidden, error } = useSpendBreakdown(selection, filters, enabled)
 
   const crumbs = useMemo<SpendCrumb[]>(() => {
@@ -117,7 +129,8 @@ export default function SpendPage() {
     else if (level === 'item-categories') setSel((s) => ({ ...s, itemCategoryId: node.id, itemCategoryName: node.name }))
   }
 
-  // STANDARD tapping a merchant (which would open the premium item level).
+  // STANDARD tapping the last free level (merchant in store view, item-category in product view),
+  // which would open the premium item level.
   const onLocked = () => setShowUpsell(true)
 
   const clearFilters = () => {
@@ -130,28 +143,51 @@ export default function SpendPage() {
     <div className="pane">
       <div className="pane-head-row">
         <p className="pane-subtitle">
-          See where your money goes — drill from category to merchant
+          See where your money goes — drill from category
+          {spendView === 'merchant' ? ' to merchant' : ' to product category'}
           {isPremium ? ' down to the individual items.' : '. Upgrade to Premium to drill into items.'}
         </p>
-        <div className="spend-region-toggle" role="group" aria-label="Region scope">
-          <button
-            type="button"
-            className={`trend-mode-btn ${!allRegions ? 'is-active' : ''}`}
-            aria-pressed={!allRegions}
-            onClick={() => setAllRegions(false)}
-            data-testid="spend-region-mine"
-          >
-            My region
-          </button>
-          <button
-            type="button"
-            className={`trend-mode-btn ${allRegions ? 'is-active' : ''}`}
-            aria-pressed={allRegions}
-            onClick={() => setAllRegions(true)}
-            data-testid="spend-region-all"
-          >
-            <Globe size={12} /> All regions
-          </button>
+        <div className="spend-head-toggles">
+          <div className="spend-region-toggle" role="group" aria-label="Breakdown shape">
+            <button
+              type="button"
+              className={`trend-mode-btn ${spendView === 'merchant' ? 'is-active' : ''}`}
+              aria-pressed={spendView === 'merchant'}
+              onClick={() => switchSpendView('merchant')}
+              data-testid="spend-view-merchant"
+            >
+              <Store size={12} /> By store
+            </button>
+            <button
+              type="button"
+              className={`trend-mode-btn ${spendView === 'product' ? 'is-active' : ''}`}
+              aria-pressed={spendView === 'product'}
+              onClick={() => switchSpendView('product')}
+              data-testid="spend-view-product"
+            >
+              <Package size={12} /> By product
+            </button>
+          </div>
+          <div className="spend-region-toggle" role="group" aria-label="Region scope">
+            <button
+              type="button"
+              className={`trend-mode-btn ${!allRegions ? 'is-active' : ''}`}
+              aria-pressed={!allRegions}
+              onClick={() => setAllRegions(false)}
+              data-testid="spend-region-mine"
+            >
+              My region
+            </button>
+            <button
+              type="button"
+              className={`trend-mode-btn ${allRegions ? 'is-active' : ''}`}
+              aria-pressed={allRegions}
+              onClick={() => setAllRegions(true)}
+              data-testid="spend-region-all"
+            >
+              <Globe size={12} /> All regions
+            </button>
+          </div>
         </div>
       </div>
 
@@ -160,9 +196,8 @@ export default function SpendPage() {
           <div className="budget-upsell-icon"><Crown size={22} /></div>
           <h3 className="budget-upsell-title">See the actual items with Premium</h3>
           <p className="budget-upsell-body">
-            You can break spend down by category and merchant on any plan. Premium unlocks the
-            next two levels — the item categories inside each merchant and the individual products
-            you bought, grouped across trips.
+            You can break spend down two levels deep on any plan. Premium unlocks the individual
+            products you bought — grouped across trips, with every purchase behind them.
           </p>
           <Link href="/settings"><Button variant="primary" style={{ padding: '8px 16px' }}>Upgrade to Premium</Button></Link>
         </Card>
@@ -240,6 +275,7 @@ export default function SpendPage() {
           forbidden={forbidden}
           report={report}
           view={view}
+          spendView={spendView}
           level={currentLevel}
           isPremium={isPremium}
           onDrill={onDrill}
@@ -251,13 +287,14 @@ export default function SpendPage() {
 }
 
 function SpendBody({
-  loading, error, forbidden, report, view, level, isPremium, onDrill, onLocked,
+  loading, error, forbidden, report, view, spendView, level, isPremium, onDrill, onLocked,
 }: {
   loading: boolean
   error: boolean
   forbidden: boolean
   report: ReturnType<typeof useSpendBreakdown>['report']
   view: 'chart' | 'table'
+  spendView: SpendView
   level: SpendLevel
   isPremium: boolean
   onDrill: (node: SpendNode) => void
@@ -286,14 +323,16 @@ function SpendBody({
   }
 
   if (level === 'items') {
-    return <SpendItems nodes={nodes} currency={currency} />
+    return <SpendItems nodes={nodes} currency={currency} showMerchant={spendView === 'product'} />
   }
 
-  // merchants level is the premium boundary: STANDARD sees the list but each row is locked.
-  // Rows are inert while a fetch is in flight so a click on the still-visible previous level's
-  // bars can't be mis-interpreted at the new (already-advanced) selection level.
+  // The last free level is the premium boundary: STANDARD sees the list but each row is locked.
+  // That's the merchant level in store view and the item-category level in product view. Rows are
+  // inert while a fetch is in flight so a click on the still-visible previous level's bars can't be
+  // mis-interpreted at the new (already-advanced) selection level.
+  const lockedLevel: SpendLevel = spendView === 'product' ? 'item-categories' : 'merchants'
   const interactive = !loading
-  const locked = interactive && level === 'merchants' && !isPremium
+  const locked = interactive && level === lockedLevel && !isPremium
   const drillable = interactive && !locked
   return (
     <>

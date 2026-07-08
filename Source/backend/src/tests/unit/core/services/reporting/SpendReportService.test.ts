@@ -15,6 +15,7 @@ const base: SpendReportParams = {
   to: null,
   country: 'NL',
   region: 'NL-NB',
+  view: 'merchant',
   categoryId: null,
   merchantId: null,
   itemCategoryId: null,
@@ -72,7 +73,7 @@ describe('SpendReportService', () => {
       query.items.mockResolvedValue([
         {
           groupKey: 'p1', name: 'Milk 1L', quantity: 3, amount: 4.5, lineCount: 3,
-          occurrences: [{ date: '2026-07-01', invoiceId: 'i1', quantity: 1, amount: 1.5 }],
+          occurrences: [{ date: '2026-07-01', invoiceId: 'i1', quantity: 1, amount: 1.5, merchantName: 'Jumbo' }],
         },
       ]);
       const res = await sut.report(
@@ -136,6 +137,51 @@ describe('SpendReportService', () => {
       await expect(
         sut.report({ ...base, preset: 'CUSTOM', from: '2026-01-01', to: '2026-06-30' }, true, 'EUR'),
       ).rejects.toBeInstanceOf(InvalidSpendReportQueryError);
+    });
+  });
+
+  describe('product view (merchant dropped from the hierarchy)', () => {
+    const product: SpendReportParams = { ...base, view: 'product' };
+
+    it('no selection → categories (L1), same as merchant view', async () => {
+      await expect(sut.report(product, false, 'EUR')).resolves.toMatchObject({ level: 'categories' });
+    });
+
+    it('categoryId only → item-categories (L2) across all stores, open to all tiers', async () => {
+      query.itemCategories.mockResolvedValue([{ categoryId: 'cat-dairy', amount: 20, lineCount: 3 }]);
+      const res = await sut.report({ ...product, categoryId: 'cat-groceries' }, false, 'EUR');
+      expect(res.level).toBe('item-categories');
+      // merchant is null → aggregated across stores, not a per-merchant slice.
+      expect(query.itemCategories).toHaveBeenCalledWith('cat-groceries', null, expect.anything());
+      expect(query.merchants).not.toHaveBeenCalled();
+    });
+
+    it('categoryId + itemCategoryId → items (L3 leaf) across all stores for premium', async () => {
+      query.items.mockResolvedValue([]);
+      const res = await sut.report(
+        { ...product, categoryId: 'cat-groceries', itemCategoryId: 'cat-dairy' },
+        true,
+        'EUR',
+      );
+      expect(res.level).toBe('items');
+      expect(query.items).toHaveBeenCalledWith(null, 'cat-dairy', expect.anything());
+    });
+
+    it('gates the grouped-product leaf, not the item-category level, for STANDARD', async () => {
+      await expect(
+        sut.report({ ...product, categoryId: 'cat-groceries' }, false, 'EUR'),
+      ).resolves.toMatchObject({ level: 'item-categories' });
+      await expect(
+        sut.report({ ...product, categoryId: 'cat-groceries', itemCategoryId: 'cat-dairy' }, false, 'EUR'),
+      ).rejects.toBeInstanceOf(PremiumRequiredError);
+      expect(query.items).not.toHaveBeenCalled();
+    });
+
+    it('ignores a stray merchantId (merchant is not a selector in this view)', async () => {
+      // A malformed merchantId would 400 in merchant view; product view never reads it.
+      await expect(
+        sut.report({ ...product, categoryId: 'cat-groceries', merchantId: 'not-a-uuid' }, false, 'EUR'),
+      ).resolves.toMatchObject({ level: 'item-categories' });
     });
   });
 

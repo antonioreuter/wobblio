@@ -5,6 +5,7 @@ import { AppUserRepositoryAdapter } from '@infrastructure/adapters/identity/AppU
 import { SpendReportQueryAdapter } from '@infrastructure/adapters/reporting/SpendReportQueryAdapter';
 import { SpendReportService, type SpendReportParams } from '@core/services/reporting/SpendReportService';
 import { isSpendPeriodPreset } from '@core/domain/reportPeriod';
+import { isSpendReportView } from '@core/domain/spendReport';
 import { PremiumRequiredError, InvalidSpendReportQueryError } from '@core/domain/errors';
 import { json, withTenantTx } from './shared';
 
@@ -27,7 +28,12 @@ export async function handleSpendReportRoute(
   const query = event.queryStringParameters ?? {};
   const presetRaw = query.period ?? 'LAST_90D';
   if (!isSpendPeriodPreset(presetRaw)) {
-    return json(400, { message: 'period must be THIS_WEEK, THIS_MONTH, LAST_90D or CUSTOM' });
+    return json(400, { message: 'period must be TODAY, THIS_WEEK, THIS_MONTH, LAST_90D or CUSTOM' });
+  }
+
+  const viewRaw = query.view ?? 'merchant';
+  if (!isSpendReportView(viewRaw)) {
+    return json(400, { message: 'view must be merchant or product' });
   }
 
   const params: SpendReportParams = {
@@ -36,6 +42,7 @@ export async function handleSpendReportRoute(
     to: emptyToNull(query.to),
     country: (query.country ?? '').toUpperCase(),
     region: query.region ?? '',
+    view: viewRaw,
     categoryId: emptyToNull(query.categoryId),
     merchantId: emptyToNull(query.merchantId),
     itemCategoryId: emptyToNull(query.itemCategoryId),

@@ -4,7 +4,7 @@ import { InvalidSpendReportQueryError } from './errors';
 // Presets and a custom range all resolve through here so the cap is enforced in one place.
 export const MAX_SPEND_RANGE_DAYS = 90;
 
-export type SpendPeriodPreset = 'THIS_WEEK' | 'THIS_MONTH' | 'LAST_90D' | 'CUSTOM';
+export type SpendPeriodPreset = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'LAST_90D' | 'CUSTOM';
 
 // A resolved window: `from` inclusive, `to` exclusive — matching compute_budget_spend's
 // `>= from AND < to` convention so the report counts the same day boundaries as budgets.
@@ -49,6 +49,10 @@ export function resolvePeriod(
   const today = utcMidnight(now);
   const tomorrow = addDays(today, 1);
 
+  if (preset === 'TODAY') {
+    return { from: iso(today), to: iso(tomorrow) };
+  }
+
   if (preset === 'THIS_WEEK') {
     // ISO week: Monday start. getUTCDay() is 0 (Sun)..6 (Sat); shift so Monday = 0.
     const mondayOffset = (today.getUTCDay() + 6) % 7;
@@ -82,5 +86,11 @@ export function resolvePeriod(
 }
 
 export function isSpendPeriodPreset(value: string): value is SpendPeriodPreset {
-  return value === 'THIS_WEEK' || value === 'THIS_MONTH' || value === 'LAST_90D' || value === 'CUSTOM';
+  return (
+    value === 'TODAY' ||
+    value === 'THIS_WEEK' ||
+    value === 'THIS_MONTH' ||
+    value === 'LAST_90D' ||
+    value === 'CUSTOM'
+  );
 }

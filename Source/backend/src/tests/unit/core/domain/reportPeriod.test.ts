@@ -6,6 +6,10 @@ import { InvalidSpendReportQueryError } from '@core/domain/errors';
 const NOW = new Date('2026-07-08T13:30:00Z');
 
 describe('resolvePeriod', () => {
+  it('TODAY spans today→tomorrow (exclusive)', () => {
+    expect(resolvePeriod('TODAY', null, null, NOW)).toEqual({ from: '2026-07-08', to: '2026-07-09' });
+  });
+
   it('THIS_WEEK spans Monday→tomorrow (exclusive)', () => {
     expect(resolvePeriod('THIS_WEEK', null, null, NOW)).toEqual({ from: '2026-07-06', to: '2026-07-09' });
   });
@@ -48,7 +52,8 @@ describe('resolvePeriod', () => {
 });
 
 describe('isSpendPeriodPreset', () => {
-  it('accepts the four presets and rejects anything else', () => {
+  it('accepts the five presets and rejects anything else', () => {
+    expect(isSpendPeriodPreset('TODAY')).toBe(true);
     expect(isSpendPeriodPreset('LAST_90D')).toBe(true);
     expect(isSpendPeriodPreset('YTD')).toBe(false);
   });

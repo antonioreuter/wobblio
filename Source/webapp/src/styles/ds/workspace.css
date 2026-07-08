@@ -2667,6 +2667,7 @@ button.split-chip { gap: 6px; padding: 4px 10px 4px 4px; cursor: pointer; }
 }
 
 /* ── Spend Breakdown (hierarchical drill-down report) ───────────────────── */
+.spend-head-toggles { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .spend-region-toggle,
 .spend-region-toggle .trend-mode-btn { display: inline-flex; align-items: center; gap: 5px; }
 .spend-region-toggle { gap: 4px; }
@@ -2721,6 +2722,7 @@ button.split-chip { gap: 6px; padding: 4px 10px 4px 4px; cursor: pointer; }
 .spend-item-occurrences { list-style: none; margin: 2px 0 6px; padding: 0 12px 0 37px; display: flex; flex-direction: column; gap: 3px; }
 .spend-occurrence { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-muted); }
 .spend-occurrence-date { min-width: 84px; }
+.spend-occurrence-merchant { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spend-occurrence-qty { font-variant-numeric: tabular-nums; }
 .spend-occurrence-amount { margin-left: auto; font-variant-numeric: tabular-nums; }
 .spend-occurrence-link { color: var(--brand); text-decoration: none; }

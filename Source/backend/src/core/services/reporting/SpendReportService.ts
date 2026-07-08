@@ -4,6 +4,7 @@ import {
   UNKNOWN_MERCHANT_ID,
   type SpendNode,
   type SpendReportResponse,
+  type SpendReportView,
 } from '@core/domain/spendReport';
 import { resolvePeriod, type SpendPeriodPreset } from '@core/domain/reportPeriod';
 import { categoryNameFor } from '@core/domain/categoryTaxonomy';
@@ -22,6 +23,7 @@ export interface SpendReportParams {
   to: string | null;
   country: string;
   region: string;
+  view: SpendReportView;
   categoryId: string | null;
   merchantId: string | null;
   itemCategoryId: string | null;
@@ -49,6 +51,19 @@ export class SpendReportService {
       region: params.region,
     };
 
+    if (params.view === 'product') return this.reportByProduct(params, filter, isPremium, homeCurrency);
+    return this.reportByMerchant(params, filter, isPremium, homeCurrency);
+  }
+
+  // Store-centric drill: category → merchant → item-category → items. The premium boundary is
+  // drilling into a merchant (a bare merchantId with no category resolves to the open L1 level,
+  // so it must not trigger a false 403).
+  private async reportByMerchant(
+    params: SpendReportParams,
+    filter: SpendReportFilter,
+    isPremium: boolean,
+    homeCurrency: string | null,
+  ): Promise<SpendReportResponse> {
     if (
       params.merchantId &&
       params.merchantId !== UNKNOWN_MERCHANT_ID &&
@@ -56,10 +71,6 @@ export class SpendReportService {
     ) {
       throw new InvalidSpendReportQueryError('merchantId must be a valid merchant id');
     }
-
-    // Drilling into a merchant (L3 item-categories, L4 items) is the premium boundary. This only
-    // happens when a category is also selected — a bare merchantId resolves to the open L1
-    // categories level (routing below ignores it), so it must not trigger a false 403.
     if (params.categoryId && params.merchantId && !isPremium) {
       throw new PremiumRequiredError('item-level spend breakdown');
     }
@@ -70,6 +81,23 @@ export class SpendReportService {
       return this.itemCategories(params.categoryId, params.merchantId, filter, homeCurrency);
     }
     return this.items(params.categoryId, params.merchantId, params.itemCategoryId, filter, homeCurrency);
+  }
+
+  // Product-centric drill: category → item-category → items, aggregated across all stores. The
+  // premium boundary is the grouped-product leaf; free users see category + item-category.
+  private async reportByProduct(
+    params: SpendReportParams,
+    filter: SpendReportFilter,
+    isPremium: boolean,
+    homeCurrency: string | null,
+  ): Promise<SpendReportResponse> {
+    if (params.categoryId && params.itemCategoryId && !isPremium) {
+      throw new PremiumRequiredError('item-level spend breakdown');
+    }
+
+    if (!params.categoryId) return this.categories(filter, homeCurrency);
+    if (!params.itemCategoryId) return this.itemCategories(params.categoryId, null, filter, homeCurrency);
+    return this.items(params.categoryId, null, params.itemCategoryId, filter, homeCurrency);
   }
 
   private async categories(filter: SpendReportFilter, currency: string | null): Promise<SpendReportResponse> {
@@ -113,7 +141,7 @@ export class SpendReportService {
 
   private async itemCategories(
     categoryId: string,
-    merchantId: string,
+    merchantId: string | null,
     filter: SpendReportFilter,
     currency: string | null,
   ): Promise<SpendReportResponse> {
@@ -139,7 +167,7 @@ export class SpendReportService {
 
   private async items(
     categoryId: string,
-    merchantId: string,
+    merchantId: string | null,
     itemCategoryId: string,
     filter: SpendReportFilter,
     currency: string | null,

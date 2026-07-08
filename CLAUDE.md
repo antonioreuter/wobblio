@@ -7,6 +7,12 @@ Cloud-native personal fiscal management utility. Photographs of receipts become 
 ## NON NEGOTIABLE
 - Under any circumstance connect to the Production environments in AWS neither execute scripts in this environment. The same is also valid for the database in prod or any db schema related to production environment. 
 
+## Git workflow
+
+- **Trunk-based, no branches, no pull requests.** All work is committed directly to `main` and pushed to `origin/main`. Do not create feature branches or open PRs.
+- **Commit and push only when the user asks.** Committing directly to `main` does not license you to commit unprompted — wait for an explicit instruction, then commit and push to `origin/main`.
+- **Use git worktrees for concurrent work.** When multiple sessions run simultaneously on different tasks, isolate each in its own git worktree so they don't collide in the same working directory. Each worktree still targets `main` — the worktree is the isolation boundary, not a branch-and-merge workflow. Sync (`git pull --rebase`) before pushing so concurrent worktrees land cleanly on `origin/main`.
+
 ## Source of truth (read these before non-trivial work)
 
 - `docs/wobblio_v2.4_specification_final.md` — the authoritative spec. Section numbers below reference it.
