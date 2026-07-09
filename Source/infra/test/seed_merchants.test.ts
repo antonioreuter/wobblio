@@ -1,16 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { MERCHANT_SEEDS, normalizeAlias } from '../src/migrations/20260620120000_seed_merchants';
+import { MERCHANT_SEEDS as NL_MERCHANT_SEEDS } from '../src/migrations/20260620120000_seed_merchants';
+import { MERCHANT_SEEDS as BR_MERCHANT_SEEDS, normalizeAlias } from '../src/migrations/20260709120000_seed_br_merchants';
 import { merchantSeeds, normalizeMerchantAlias } from '../src/local/seeds/merchant-aliases';
 import { CATEGORY_TAXONOMY } from '../../backend/src/core/domain/categoryTaxonomy';
 import { normalizeMerchantName } from '../../backend/src/core/domain/merchantNormalize';
 
 // Merchant seed data lives in three independently-edited places that the migration runner
 // and the hexagonal boundary prevent from sharing imports:
-//   1. the seed_merchants migration snapshot — what populates deployed DBs
-//   2. src/local/seeds/merchant-aliases.ts   — what seed:local writes to local DBs
+//   1. the seed_merchants migration snapshots — what populates deployed DBs (one per country;
+//      NL in 20260620120000, BR in 20260709120000). normalizeAlias is imported from the latest
+//      snapshot, whose frozen suffix set tracks the backend's.
+//   2. src/local/seeds/merchant-aliases.ts   — what seed:local writes to local DBs (all countries)
 //   3. backend normalizeMerchantName          — how ingestion normalizes names before lookup
 // These tests make any divergence a build failure, so a prior added in one place without
 // the others can never reach prod as a missing category prior or a dead (never-matched) alias.
+const MERCHANT_SEEDS = [...NL_MERCHANT_SEEDS, ...BR_MERCHANT_SEEDS];
 
 const serialize = (m: { id: string; brand_name: string; country_code: string; default_category_id: string; website: string | null; aliases: string[] }) =>
   `${m.id}|${m.brand_name}|${m.country_code}|${m.default_category_id}|${m.website ?? ''}|${[...m.aliases].sort().join(',')}`;

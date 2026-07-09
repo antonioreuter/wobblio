@@ -5,7 +5,7 @@
 
 const LEGAL_SUFFIXES = new Set([
   'BV', 'NV', 'GMBH', 'LTD', 'INC', 'LLC', 'SA', 'PLC', 'LDA', 'SL', 'SARL',
-  'SPA', 'SRL', 'AG', 'OY', 'AB', 'AS',
+  'SPA', 'SRL', 'AG', 'OY', 'AB', 'AS', 'LTDA', 'EIRELI',
 ]);
 
 export function normalizeMerchantName(raw: string): string {

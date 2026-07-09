@@ -44,10 +44,32 @@ export const TAG_VOCABULARY: TagDefinition[] = [
   { key: 'supermarket-ah', displayNameEn: 'Albert Heijn', displayNameNl: 'Albert Heijn', triggers: [{ merchantBrand: 'Albert Heijn' }] },
   { key: 'supermarket-jumbo', displayNameEn: 'Jumbo', displayNameNl: 'Jumbo', triggers: [{ merchantBrand: 'Jumbo' }] },
   { key: 'supermarket-lidl', displayNameEn: 'Lidl', displayNameNl: 'Lidl', triggers: [{ merchantBrand: 'Lidl' }] },
-  { key: 'drugstore', displayNameEn: 'Drugstore', displayNameNl: 'Drogisterij', triggers: [{ merchantBrand: 'Kruidvat' }, { merchantBrand: 'Etos' }, { merchantBrand: 'Trekpleister' }] },
+  { key: 'drugstore', displayNameEn: 'Drugstore', displayNameNl: 'Drogisterij', triggers: [{ merchantBrand: 'Kruidvat' }, { merchantBrand: 'Etos' }, { merchantBrand: 'Trekpleister' }, { merchantBrand: 'Drogaria São Paulo' }, { merchantBrand: 'Drogasil' }, { merchantBrand: 'Droga Raia' }, { merchantBrand: 'Pague Menos' }, { merchantBrand: 'Drogarias Pacheco' }] },
   { key: 'variety-store', displayNameEn: 'Variety store', displayNameNl: 'Winkel met gevarieerd aanbod', triggers: [{ merchantBrand: 'HEMA' }, { merchantBrand: 'Action' }] },
   { key: 'hotel', displayNameEn: 'Hotel', displayNameNl: 'Hotel', triggers: [{ merchantBrand: 'Booking.com' }, { categoryId: 'cat-lodging' }] },
   { key: 'airbnb', displayNameEn: 'Airbnb', displayNameNl: 'Airbnb', triggers: [{ merchantBrand: 'Airbnb' }] },
+  // Brazil — per-brand supermarket tags (national + São Paulo + Bahia + Rio de Janeiro).
+  { key: 'supermarket-pao-de-acucar', displayNameEn: 'Pão de Açúcar', displayNameNl: 'Pão de Açúcar', triggers: [{ merchantBrand: 'Pão de Açúcar' }] },
+  { key: 'supermarket-carrefour', displayNameEn: 'Carrefour', displayNameNl: 'Carrefour', triggers: [{ merchantBrand: 'Carrefour' }] },
+  { key: 'supermarket-extra', displayNameEn: 'Extra', displayNameNl: 'Extra', triggers: [{ merchantBrand: 'Extra' }] },
+  { key: 'supermarket-dia', displayNameEn: 'Dia', displayNameNl: 'Dia', triggers: [{ merchantBrand: 'Dia' }] },
+  { key: 'supermarket-st-marche', displayNameEn: 'St Marche', displayNameNl: 'St Marche', triggers: [{ merchantBrand: 'St Marche' }] },
+  { key: 'supermarket-sonda', displayNameEn: 'Sonda', displayNameNl: 'Sonda', triggers: [{ merchantBrand: 'Sonda' }] },
+  { key: 'supermarket-oba', displayNameEn: 'Oba Hortifruti', displayNameNl: 'Oba Hortifruti', triggers: [{ merchantBrand: 'Oba Hortifruti' }] },
+  { key: 'supermarket-gbarbosa', displayNameEn: 'GBarbosa', displayNameNl: 'GBarbosa', triggers: [{ merchantBrand: 'GBarbosa' }] },
+  { key: 'supermarket-hiperideal', displayNameEn: 'Hiperideal', displayNameNl: 'Hiperideal', triggers: [{ merchantBrand: 'Hiperideal' }] },
+  { key: 'supermarket-bompreco', displayNameEn: 'Bompreço', displayNameNl: 'Bompreço', triggers: [{ merchantBrand: 'Bompreço' }] },
+  { key: 'supermarket-guanabara', displayNameEn: 'Guanabara', displayNameNl: 'Guanabara', triggers: [{ merchantBrand: 'Guanabara' }] },
+  { key: 'supermarket-prezunic', displayNameEn: 'Prezunic', displayNameNl: 'Prezunic', triggers: [{ merchantBrand: 'Prezunic' }] },
+  { key: 'supermarket-zona-sul', displayNameEn: 'Zona Sul', displayNameNl: 'Zona Sul', triggers: [{ merchantBrand: 'Zona Sul' }] },
+  { key: 'supermarket-mundial', displayNameEn: 'Mundial', displayNameNl: 'Mundial', triggers: [{ merchantBrand: 'Mundial' }] },
+  // Brazil — venue-type tags shared across brands.
+  { key: 'cash-and-carry', displayNameEn: 'Cash & carry', displayNameNl: 'Groothandel', triggers: [{ merchantBrand: 'Atacadão' }, { merchantBrand: 'Assaí Atacadista' }] },
+  { key: 'fashion-retail', displayNameEn: 'Fashion retail', displayNameNl: 'Modewinkel', triggers: [{ merchantBrand: 'Zara' }, { merchantBrand: 'C&A' }, { merchantBrand: 'Renner' }, { merchantBrand: 'Riachuelo' }, { merchantBrand: 'Marisa' }, { merchantBrand: 'Hering' }] },
+  { key: 'electronics-store', displayNameEn: 'Electronics store', displayNameNl: 'Elektronicazaak', triggers: [{ merchantBrand: 'Fast Shop' }, { merchantBrand: 'Casas Bahia' }, { merchantBrand: 'Ponto' }, { merchantBrand: 'Magazine Luiza' }, { merchantBrand: 'Kabum' }] },
+  { key: 'online-marketplace', displayNameEn: 'Online marketplace', displayNameNl: 'Online marktplaats', triggers: [{ merchantBrand: 'Amazon.com.br' }, { merchantBrand: 'Mercado Livre' }] },
+  { key: 'sporting-goods', displayNameEn: 'Sporting goods', displayNameNl: 'Sportzaak', triggers: [{ merchantBrand: 'Centauro' }, { merchantBrand: 'Decathlon' }] },
+  { key: 'department-store', displayNameEn: 'Department store', displayNameNl: 'Warenhuis', triggers: [{ merchantBrand: 'Americanas' }, { merchantBrand: 'Havan' }] },
 ];
 
 export const TAG_KEYS: ReadonlySet<string> = new Set(TAG_VOCABULARY.map(tag => tag.key));

@@ -41,6 +41,30 @@ describe('generateTags', () => {
     expect(generateTags(ctx({ merchantBrand: 'Aldi' }))).not.toContain('supermarket-jumbo');
   });
 
+  it('matches a Brazilian per-brand supermarket trigger (accented brand)', () => {
+    expect(generateTags(ctx({ merchantBrand: 'Pão de Açúcar' }))).toContain('supermarket-pao-de-acucar');
+    expect(generateTags(ctx({ merchantBrand: 'Guanabara' }))).toContain('supermarket-guanabara');
+  });
+
+  it('tags Brazilian atacado chains as cash-and-carry, not supermarket', () => {
+    const tags = generateTags(ctx({ merchantBrand: 'Atacadão' }));
+    expect(tags).toContain('cash-and-carry');
+    expect(tags.some(t => t.startsWith('supermarket-'))).toBe(false);
+  });
+
+  it('groups Brazilian farmácias under the shared drugstore tag', () => {
+    expect(generateTags(ctx({ merchantBrand: 'Drogasil' }))).toContain('drugstore');
+    expect(generateTags(ctx({ merchantBrand: 'Droga Raia' }))).toContain('drugstore');
+  });
+
+  it('matches shared type tags for non-grocery Brazilian retailers', () => {
+    expect(generateTags(ctx({ merchantBrand: 'Zara' }))).toContain('fashion-retail');
+    expect(generateTags(ctx({ merchantBrand: 'Fast Shop' }))).toContain('electronics-store');
+    expect(generateTags(ctx({ merchantBrand: 'Amazon.com.br' }))).toContain('online-marketplace');
+    expect(generateTags(ctx({ merchantBrand: 'Centauro' }))).toContain('sporting-goods');
+    expect(generateTags(ctx({ merchantBrand: 'Havan' }))).toContain('department-store');
+  });
+
   it('accepts LLM-suggested keys from the vocabulary and rejects unknown ones', () => {
     const tags = generateTags(ctx({ suggestedTags: ['groceries', 'not-a-real-tag'] }));
     expect(tags).toContain('groceries');

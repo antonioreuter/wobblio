@@ -21,4 +21,10 @@ describe('normalizeMerchantName', () => {
   it('drops punctuation and leading empty tokens', () => {
     expect(normalizeMerchantName('.JUMBO - Supermarkt!')).toBe('JUMBO SUPERMARKT');
   });
+
+  it('strips Brazilian legal suffixes (LTDA, EIRELI)', () => {
+    expect(normalizeMerchantName('Carrefour Comércio LTDA')).toBe('CARREFOUR COMERCIO');
+    expect(normalizeMerchantName('Pão de Açúcar Ltda')).toBe('PAO DE ACUCAR');
+    expect(normalizeMerchantName('Padaria Central EIRELI')).toBe('PADARIA CENTRAL');
+  });
 });

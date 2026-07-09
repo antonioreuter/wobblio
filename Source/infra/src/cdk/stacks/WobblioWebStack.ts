@@ -11,11 +11,13 @@ import { EnvironmentConfig } from '../config/environment';
 import { WobblioAuthStack } from './WobblioAuthStack';
 import { applyWobblioTags } from '../utils/tagging';
 
-// All EU/EEA member states + UK — launch market is NL, expanding as warranted
-const EU_GEO_ALLOWLIST: string[] = [
+// All EU/EEA member states + UK, plus Brazil — launch market is NL,
+// expanding to additional markets as warranted
+const GEO_ALLOWLIST: string[] = [
   'AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI',
   'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IS', 'IT', 'LI', 'LT',
   'LU', 'LV', 'MT', 'NL', 'NO', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK',
+  'BR',
 ];
 
 interface WobblioWebStackProps extends StackProps {
@@ -101,7 +103,7 @@ export class WobblioWebStack extends Stack {
     cfnDist.addPropertyOverride('DistributionConfig.Restrictions', {
       GeoRestriction: {
         RestrictionType: 'whitelist',
-        Locations: EU_GEO_ALLOWLIST,
+        Locations: GEO_ALLOWLIST,
       },
     });
 
@@ -121,7 +123,7 @@ export class WobblioWebStack extends Stack {
       { id: 'AwsSolutions-IAM4', reason: 'cdk-nextjs-standalone uses CDK-managed execution roles with AWSLambdaBasicExecutionRole for its internal Lambdas' },
       { id: 'AwsSolutions-IAM5', reason: 'cdk-nextjs-standalone CDK-managed constructs require wildcard S3 actions scoped to the assets bucket' },
       { id: 'AwsSolutions-S1', reason: 'Web assets bucket access logging deferred to Epic 15 observability' },
-      { id: 'AwsSolutions-CFR1', reason: 'Geo-restriction applied via EU allowlist; non-EU blocked' },
+      { id: 'AwsSolutions-CFR1', reason: 'Geo-restriction applied via EU/EEA + UK + BR allowlist; other countries blocked' },
       { id: 'AwsSolutions-CFR2', reason: 'WAF integration deferred to Epic 12 security controls' },
       { id: 'AwsSolutions-CFR3', reason: 'CloudFront access logging deferred to Epic 15 observability' },
       { id: 'AwsSolutions-CFR4', reason: 'TLS 1.2+ is the CloudFront default; viewer policy enforced by cdk-nextjs-standalone' },
