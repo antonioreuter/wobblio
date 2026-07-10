@@ -57,27 +57,43 @@ const sqlLiteral = (value: string | null): string =>
   value === null ? 'NULL' : `'${value.replace(/'/g, "''")}'`;
 
 export async function up(pgm: MigrationBuilder): Promise<void> {
+  // Step 1 — heal already-ingested chains by NORMALIZED ALIAS, not by exact brand_name. A chain
+  // like McDonald's is often already an AUTO merchant whose brand_name came from the merchant-
+  // fallback LLM ("McDonalds", a different apostrophe glyph, different case…), so matching on the
+  // literal seed brand_name would miss it. Matching on alias_normalized (how ingestion actually
+  // resolves the merchant) sets the dining prior on the row receipts really hit. We set the prior
+  // where it differs (idempotent; heals a NULL or a wrong grocery prior) but never touch status or
+  // identity — so a rejected/INACTIVE or pre-quorum merchant is not resurrected or merged here.
+  const priors = MERCHANT_SEEDS
+    .flatMap((m) => m.aliases.map((alias) =>
+      `(${sqlLiteral(normalizeAlias(alias))}, ${sqlLiteral(m.country_code)}, ${sqlLiteral(m.default_category_id)})`))
+    .join(',\n    ');
+  pgm.sql(`
+    UPDATE merchant m
+    SET default_category_id = s.default_category_id
+    FROM merchant_alias a
+    JOIN (VALUES
+    ${priors}
+    ) AS s(alias_normalized, country_code, default_category_id)
+      ON a.alias_normalized = s.alias_normalized AND a.country_code = s.country_code
+    WHERE m.id = a.merchant_id AND m.default_category_id IS DISTINCT FROM s.default_category_id;
+  `);
+
+  // Step 2 — insert canonical seed rows for fresh environments. DO NOTHING on the (brand_name,
+  // country_code) conflict: an existing row (AUTO or otherwise) is left exactly as it is — its
+  // prior was already healed in step 1, and we must not overwrite its identity/status.
   const merchants = MERCHANT_SEEDS
     .map((m) => `(${sqlLiteral(m.id)}, ${sqlLiteral(m.brand_name)}, ${sqlLiteral(m.country_code)}, ${sqlLiteral(m.default_category_id)}, ${sqlLiteral(m.website)}, 'SEED', 'ACTIVE')`)
     .join(',\n    ');
-  // Conflict on the natural key (brand_name, country_code), NOT the surrogate id: a chain like
-  // McDonald's is often already present as an AUTO merchant (with a different id) from an earlier
-  // ingestion — that is the very case this fix targets. Upserting on the natural key heals that
-  // row's prior in place (keeping its id and existing invoice links) instead of tripping the
-  // (brand_name, country_code) unique index. On a fresh DB it inserts the seed row with our id.
   pgm.sql(`
     INSERT INTO merchant (id, brand_name, country_code, default_category_id, website, created_via, status) VALUES
     ${merchants}
-    ON CONFLICT (brand_name, country_code) DO UPDATE SET
-      default_category_id = EXCLUDED.default_category_id,
-      website = COALESCE(merchant.website, EXCLUDED.website),
-      created_via = 'SEED',
-      status = 'ACTIVE';
+    ON CONFLICT (brand_name, country_code) DO NOTHING;
   `);
 
-  // Attach aliases to whichever merchant row now owns (brand_name, country_code) — our seed id on
-  // a fresh DB, or the pre-existing AUTO id on a healed one — resolved by JOIN so the FK never
-  // dangles. Idempotent on the (alias_normalized, country_code) unique index.
+  // Step 3 — attach aliases to whichever row owns each brand (the seed row on a fresh DB, or a
+  // pre-existing exact-brand row), resolved by JOIN so the FK never dangles. Idempotent on the
+  // (alias_normalized, country_code) unique index — an alias already owned by an AUTO row is left.
   const aliasRows = MERCHANT_SEEDS
     .flatMap((m) => m.aliases.map((alias) =>
       `(${sqlLiteral(m.brand_name)}, ${sqlLiteral(m.country_code)}, ${sqlLiteral(alias)}, ${sqlLiteral(normalizeAlias(alias))})`))

@@ -3,11 +3,12 @@ import type { IProductCatalog, ProductMatch } from '../../ports/data-intelligenc
 import type { IBedrockEmbedder } from '../../ports/data-intelligence/IBedrockEmbedder';
 import type { BedrockConverseRequest, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
 import type { ParsedLine } from '../../domain/ingestion';
-import { ConfidenceThresholds } from '../../domain/ingestion';
+import { ConfidenceThresholds, RESTAURANT_BILL_HINT } from '../../domain/ingestion';
 import { computeNormalizedUnitPrice, parseUnitSize, type BaseUnit } from '../../domain/unitSize';
 import { callJsonWithRetry } from '../../domain/llmJson';
 import { parseProductExpansionJson, type ExpandedItem, type ProductExpansion } from '../../domain/productExpansionSchema';
 import { CATEGORY_TAXONOMY, macroCategoryId } from '../../domain/categoryTaxonomy';
+import { escapeXmlAttr } from '../../domain/xmlEscape';
 import { TAG_VOCABULARY } from '../../domain/tagVocabulary';
 import { PRODUCT_EXPANSION_PROMPT, PRODUCT_EXPANSION_PROMPT_VERSION } from '../../../prompts/productExpansion';
 
@@ -180,21 +181,25 @@ function buildExpansionMessage(rawTexts: string[], merchant?: MerchantExpansionC
   return `${buildMerchantBlock(merchant)}<categories>\n${categories}\n</categories>\n<tags>\n${tags}\n</tags>\n<lines>\n${lines}\n</lines>`;
 }
 
-// Venue hint for the expansion model (fixes/08). Emit brand and/or the merchant's macro
-// prior so a restaurant burger routes to a dining-out leaf, not a grocery leaf. Omitted
-// entirely for an unknown merchant so the message shape stays identical to the legacy call.
+// Venue hint for the expansion model (fixes/08). Emitted ONLY for a food/drink venue — a
+// dining-out/bars macro prior, or a RESTAURANT_BILL parse hint for an unseeded eatery that
+// has no prior yet — so served food routes to a dining leaf, not a grocery leaf. For a
+// non-venue merchant (e.g. a supermarket) the block is omitted, keeping the message shape
+// identical to the legacy call on the common grocery path.
 function buildMerchantBlock(merchant?: MerchantExpansionContext): string {
   if (!merchant) return '';
+  const macroPrior = merchant.categoryPrior ? macroCategoryId(merchant.categoryPrior) : null;
+  const venueCategory =
+    macroPrior === 'cat-dining-out' || macroPrior === 'cat-bars-pubs'
+      ? macroPrior
+      : merchant.documentKindHint === RESTAURANT_BILL_HINT
+        ? 'cat-dining-out'
+        : null;
+  if (!venueCategory) return '';
   const brand = merchant.brandName?.trim() || null;
-  const typicalCategory = merchant.categoryPrior ? macroCategoryId(merchant.categoryPrior) : null;
-  if (!brand && !typicalCategory) return '';
   const attrs = [
     brand ? `brand="${escapeXmlAttr(brand)}"` : null,
-    typicalCategory ? `typical_category="${typicalCategory}"` : null,
+    `typical_category="${venueCategory}"`,
   ].filter(Boolean).join(' ');
   return `<merchant ${attrs}/>\n`;
-}
-
-function escapeXmlAttr(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

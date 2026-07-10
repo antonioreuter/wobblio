@@ -3,10 +3,9 @@ import type { BedrockConverseRequest, BedrockMessage, IBedrockConverse } from '.
 import { voteCategory, type CategoryVoteLine } from '../../domain/classification';
 import { CATEGORY_TAXONOMY, DINING_OUT_CATEGORY_ID, macroCategoryId } from '../../domain/categoryTaxonomy';
 import { callJsonWithRetry } from '../../domain/llmJson';
+import { RESTAURANT_BILL_HINT } from '../../domain/ingestion';
 import { parseClassificationTiebreakJson } from '../../domain/classificationTiebreakSchema';
 import { CLASSIFICATION_TIEBREAK_PROMPT, CLASSIFICATION_TIEBREAK_PROMPT_VERSION } from '../../../prompts/classificationTiebreak';
-
-const RESTAURANT_BILL_HINT = 'RESTAURANT_BILL';
 
 // §6.4 invoice classification: merchant DB prior is authoritative; line-item vote
 // and LLM tiebreak are fallbacks for merchants not yet in the catalog.

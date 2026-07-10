@@ -35,12 +35,8 @@ export async function up(pgm: MigrationBuilder): Promise<void> {
   `);
 }
 
-// Venue leaves become FK targets for invoice_line / product as soon as ingestion runs;
-// only delete the ones still unreferenced so a populated-stage rollback never throws.
-export async function down(pgm: MigrationBuilder): Promise<void> {
-  for (const c of VENUE_CATEGORIES) {
-    pgm.sql(`DELETE FROM product_category WHERE id = ${sqlLiteral(c.id)} AND NOT EXISTS (
-      SELECT 1 FROM invoice_line WHERE category_id = ${sqlLiteral(c.id)}
-    );`);
-  }
-}
+// No-op down, matching the reference-data convention (20260619120000): these leaves become
+// FK targets for invoice_line AND product / product_concept / budget / shopping_list as soon
+// as ingestion runs, so a DELETE would throw on any populated stage (a guard against only
+// invoice_line would still miss a product row). up() is idempotent (ON CONFLICT DO NOTHING).
+export async function down(): Promise<void> {}

@@ -19,12 +19,15 @@ export interface NormalizationResult {
 }
 
 // Venue context for a receipt's merchant, fed into per-line expansion so served food/drink
-// is routed to dining-out/bars leaves rather than grocery leaves (fixes/08). Both fields are
+// is routed to dining-out/bars leaves rather than grocery leaves (fixes/08). All three are
 // optional signals: brand lets the model recognise a known chain; categoryPrior is the
-// merchant's macro default_category_id (a deterministic venue anchor from seeds/classifier).
+// merchant's macro default_category_id (a deterministic venue anchor from seeds/classifier);
+// documentKindHint carries the vision parser's RESTAURANT_BILL flag so an unseeded eatery
+// with no prior yet still routes its lines to dining leaves.
 export interface MerchantExpansionContext {
   brandName: string | null;
   categoryPrior: string | null;
+  documentKindHint?: string | null;
 }
 
 // §6.3 product normalization + categorization. countryCode scopes the catalog: a

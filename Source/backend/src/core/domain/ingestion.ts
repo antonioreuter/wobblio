@@ -92,6 +92,11 @@ export interface ParsedLocation {
   postalCode?: string;
 }
 
+// documentKindHint value the vision parser emits for restaurant/café bills. Consumed by
+// §6.4 classification (forces the dining-out macro) and §6.3 per-line expansion (routes
+// served food/drink to dining leaves for an eatery with no merchant prior yet).
+export const RESTAURANT_BILL_HINT = 'RESTAURANT_BILL';
+
 export interface ParsedReceipt {
   merchantRaw: string;
   transactionDate: string; // ISO YYYY-MM-DD

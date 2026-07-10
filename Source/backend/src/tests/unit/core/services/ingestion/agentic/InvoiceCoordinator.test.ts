@@ -66,7 +66,7 @@ describe('InvoiceCoordinator', () => {
   it('threads the resolved country and canonical ids between tools', async () => {
     await coordinator.extract(RECEIPT, LOCATION, INVOICE_ID);
     expect(merchantTool.run).toHaveBeenCalledWith('Albert Heijn', 'NL');
-    expect(productTool.run).toHaveBeenCalledWith('m1', RECEIPT.lines, 'NL', { brandName: 'AH', categoryPrior: null });
+    expect(productTool.run).toHaveBeenCalledWith('m1', RECEIPT.lines, 'NL', { brandName: 'AH', categoryPrior: null, documentKindHint: 'grocery' });
     expect(classifierTool.run).toHaveBeenCalledWith({
       merchantId: 'm1', merchantPrior: null, documentKindHint: 'grocery', lines: RECEIPT.lines, normalized: NORMALIZED,
     });

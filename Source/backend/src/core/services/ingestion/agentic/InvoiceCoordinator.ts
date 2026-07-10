@@ -37,6 +37,7 @@ export class InvoiceCoordinator {
       this.productTool.run(merchant.merchantId, receipt.lines, location.countryCode, {
         brandName: merchant.brandName,
         categoryPrior: merchant.defaultCategoryId,
+        documentKindHint: receipt.documentKindHint,
       }),
     );
     const categoryId = await this.runStage('INVOICE_CLASSIFICATION', invoiceId, () =>

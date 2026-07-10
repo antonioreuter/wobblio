@@ -1,3 +1,5 @@
+import { escapeXmlAttr as esc } from './xmlEscape';
+
 export interface BudgetFact {
   label: string;
   amount: number;
@@ -40,8 +42,6 @@ export function clampWords(text: string, max: number): string {
 }
 
 const money = (n: number): string => n.toFixed(2);
-const esc = (s: string): string =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // Pre-aggregated facts as an XML document for the B.5 prompt. Values are escaped
 // so receipt-derived text can never break out of attributes into instructions.
