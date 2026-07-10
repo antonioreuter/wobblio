@@ -124,8 +124,13 @@ export function composeCountryVisionPrompt(countryCode: string | undefined): {
   pack: CountryPromptPack;
 } {
   const pack = resolvePack(countryCode);
-  const template = VISION_PARSE_BASE.replace('{{EXCLUSION_LIST}}', pack.exclusionList)
-    .replace('{{CURRENCY_DATE_HINT}}', pack.currencyDateHint)
-    .replace('{{EXAMPLES}}', pack.examples);
+  // split/join, not String.replace: a fragment containing a `$`-sequence ($&, $`, $$, …)
+  // would otherwise be interpreted as a special replacement pattern and corrupt the prompt.
+  const fill = (tpl: string, slot: string, fragment: string): string => tpl.split(slot).join(fragment);
+  const template = fill(
+    fill(fill(VISION_PARSE_BASE, '{{EXCLUSION_LIST}}', pack.exclusionList), '{{CURRENCY_DATE_HINT}}', pack.currencyDateHint),
+    '{{EXAMPLES}}',
+    pack.examples,
+  );
   return { template, version: `${VISION_PARSE_BASE_VERSION}+${pack.code.toLowerCase()}`, pack };
 }
