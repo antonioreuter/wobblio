@@ -44,7 +44,7 @@ describe('InvoiceCoordinator', () => {
 
   beforeEach(() => {
     order.length = 0;
-    merchantTool = { run: vi.fn(async () => { order.push('merchant'); return { merchantId: 'm1', brandName: 'AH', provisional: false, confidence: 0.9 }; }) };
+    merchantTool = { run: vi.fn(async () => { order.push('merchant'); return { merchantId: 'm1', brandName: 'AH', defaultCategoryId: null, provisional: false, confidence: 0.9 }; }) };
     productTool = { run: vi.fn(async () => { order.push('product'); return { lines: NORMALIZED, suggestedTags: ['dairy'] }; }) };
     classifierTool = { run: vi.fn(async () => { order.push('classify'); return 'groceries'; }) };
     tagTool = { run: vi.fn(async () => { order.push('tag'); return ['weekly-groceries']; }) };
@@ -66,9 +66,9 @@ describe('InvoiceCoordinator', () => {
   it('threads the resolved country and canonical ids between tools', async () => {
     await coordinator.extract(RECEIPT, LOCATION, INVOICE_ID);
     expect(merchantTool.run).toHaveBeenCalledWith('Albert Heijn', 'NL');
-    expect(productTool.run).toHaveBeenCalledWith('m1', RECEIPT.lines, 'NL');
+    expect(productTool.run).toHaveBeenCalledWith('m1', RECEIPT.lines, 'NL', { brandName: 'AH', categoryPrior: null });
     expect(classifierTool.run).toHaveBeenCalledWith({
-      merchantId: 'm1', documentKindHint: 'grocery', lines: RECEIPT.lines, normalized: NORMALIZED,
+      merchantId: 'm1', merchantPrior: null, documentKindHint: 'grocery', lines: RECEIPT.lines, normalized: NORMALIZED,
     });
     expect(tagTool.run).toHaveBeenCalledWith({
       merchantId: 'm1', merchantBrand: 'AH', categoryId: 'groceries', lines: RECEIPT.lines, normalized: NORMALIZED, suggestedTags: ['dairy'],
@@ -80,7 +80,7 @@ describe('InvoiceCoordinator', () => {
     expect(result).toEqual({
       receipt: RECEIPT,
       location: LOCATION,
-      merchant: { merchantId: 'm1', brandName: 'AH', provisional: false, confidence: 0.9 },
+      merchant: { merchantId: 'm1', brandName: 'AH', defaultCategoryId: null, provisional: false, confidence: 0.9 },
       normalized: NORMALIZED,
       categoryId: 'groceries',
       tags: ['weekly-groceries'],
@@ -131,7 +131,7 @@ describe('InvoiceCoordinator', () => {
     });
 
     const result = await coordinator.extract(RECEIPT, LOCATION, INVOICE_ID);
-    expect(result.merchant).toEqual({ merchantId: 'm1', brandName: 'AH', provisional: false, confidence: 0.9 });
+    expect(result.merchant).toEqual({ merchantId: 'm1', brandName: 'AH', defaultCategoryId: null, provisional: false, confidence: 0.9 });
   });
 
   it('still rethrows the original tool error when the instrumentation port itself throws on failure', async () => {

@@ -14,6 +14,7 @@ import {
   REMOVED_CATEGORIES,
 } from '../src/migrations/20260619120000_expand_grocery_categories';
 import { DEPOSIT_CATEGORIES } from '../src/migrations/20260619130000_line_order_deposits_emission_block';
+import { VENUE_CATEGORIES } from '../src/migrations/20260710120000_add_dining_out_and_bar_leaves';
 import { categorySeed } from '../src/local/seeds/product-taxonomy';
 import { countrySeed, subdivisionSeed } from '../src/local/seeds/country-subdivisions';
 import { CATEGORY_TAXONOMY } from '../../backend/src/core/domain/categoryTaxonomy';
@@ -30,6 +31,7 @@ const EFFECTIVE_CATEGORIES = [
   }),
   ...ADDED_CATEGORIES,
   ...DEPOSIT_CATEGORIES,
+  ...VENUE_CATEGORIES,
 ];
 
 // Reference data lives in three independently-edited places that the migration runner and

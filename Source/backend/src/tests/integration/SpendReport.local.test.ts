@@ -15,6 +15,7 @@ import type { SpendReportFilter } from '@core/ports/reporting/ISpendReportQuery'
 const tenant = randomUUID();
 const jumbo = randomUUID();
 const albert = randomUUID();
+const mcd = randomUUID();
 const milk = randomUUID();
 const cheese = randomUUID();
 
@@ -45,8 +46,8 @@ describe('SpendReportQueryAdapter (Postgres, line-rooted)', () => {
     await seedPool.query(`INSERT INTO app_user (id, cognito_sub, email, status) VALUES ($1, $2, 'spendrep@test.nl', 'ACTIVE')`, [tenant, `sub-${tenant}`]);
     // Unique brand names to avoid the (brand_name, country_code) uniqueness of seeded merchants.
     await seedPool.query(
-      `INSERT INTO merchant (id, brand_name, country_code, status) VALUES ($1, $3, 'NL', 'ACTIVE'), ($2, $4, 'NL', 'ACTIVE')`,
-      [jumbo, albert, `SpendRep-Jumbo-${jumbo}`, `SpendRep-Albert-${albert}`],
+      `INSERT INTO merchant (id, brand_name, country_code, status) VALUES ($1, $4, 'NL', 'ACTIVE'), ($2, $5, 'NL', 'ACTIVE'), ($3, $6, 'NL', 'ACTIVE')`,
+      [jumbo, albert, mcd, `SpendRep-Jumbo-${jumbo}`, `SpendRep-Albert-${albert}`, `SpendRep-McD-${mcd}`],
     );
     await seedPool.query(
       `INSERT INTO product (id, category_id, display_name, base_unit, status) VALUES
@@ -121,13 +122,20 @@ describe('SpendReportQueryAdapter (Postgres, line-rooted)', () => {
     // back to face value instead → cat-pet reports -3.0, not +5.0.
     const h = await invoice(jumbo, '2026-07-08', 'EUR', null, 'RESOLVED', 'NL', 'NL-NB', 5.0);
     await line(h, null, 'cat-pet', 1, -3.0);
+    // I — fixes/08: a fast-food (McDonald's-like) receipt. Its food/drink lines carry the new
+    // dining-out content leaves, which MUST roll up to the cat-dining-out macro in the report —
+    // NOT to cat-groceries as they did before the fix. total = Σ lines = 11.5.
+    const i = await invoice(mcd, '2026-07-09', 'EUR', null, 'RESOLVED', 'NL', 'NL-NB', 11.5);
+    await line(i, null, 'cat-dining-meals', 1, 8.0);
+    await line(i, null, 'cat-dining-drinks', 1, 2.0);
+    await line(i, null, 'cat-dining-snacks', 1, 1.5);
   });
 
   afterAll(async () => {
     await seedPool.query(`DELETE FROM invoice_line WHERE invoice_id IN (SELECT id FROM invoice WHERE tenant_id = $1)`, [tenant]);
     await seedPool.query(`DELETE FROM invoice WHERE tenant_id = $1`, [tenant]);
     await seedPool.query(`DELETE FROM product WHERE id = ANY($1)`, [[milk, cheese]]);
-    await seedPool.query(`DELETE FROM merchant WHERE id = ANY($1)`, [[jumbo, albert]]);
+    await seedPool.query(`DELETE FROM merchant WHERE id = ANY($1)`, [[jumbo, albert, mcd]]);
     await seedPool.query(`DELETE FROM app_user WHERE id = $1`, [tenant]);
     await seedPool.end();
     await appPool.end();
@@ -218,6 +226,24 @@ describe('SpendReportQueryAdapter (Postgres, line-rooted)', () => {
     expect(amountOf(cats, (r) => r.macroId === 'cat-groceries')).toBeCloseTo(12.8, 5);
     const items = await scoped((a) => a.items(jumbo, 'cat-dairy', ALL_REGIONS));
     expect(items.find((r) => r.name === 'Milk 1L')?.occurrences).toHaveLength(4);
+  });
+
+  it('fixes/08: fast-food dining-out lines roll up to Dining Out, never Groceries', async () => {
+    const cats = await scoped((a) => a.categories(ALL_REGIONS));
+    // Invoice I's meals/drinks/snacks (8.0 + 2.0 + 1.5) all report under the cat-dining-out macro.
+    expect(amountOf(cats, (r) => r.macroId === 'cat-dining-out')).toBeCloseTo(11.5, 5);
+    // And they did NOT leak into groceries — the macro total is unchanged from before the fix.
+    expect(amountOf(cats, (r) => r.macroId === 'cat-groceries')).toBeCloseTo(12.8, 5);
+
+    // L2: the whole receipt attributes to the McDonald's-like merchant under Dining Out.
+    const merchants = await scoped((a) => a.merchants('cat-dining-out', ALL_REGIONS));
+    expect(amountOf(merchants, (r) => r.merchantId === mcd)).toBeCloseTo(11.5, 5);
+
+    // L3: the content leaves keep their identity under the Dining Out macro.
+    const items = await scoped((a) => a.itemCategories('cat-dining-out', mcd, ALL_REGIONS));
+    expect(amountOf(items, (r) => r.categoryId === 'cat-dining-meals')).toBeCloseTo(8.0, 5);
+    expect(amountOf(items, (r) => r.categoryId === 'cat-dining-drinks')).toBeCloseTo(2.0, 5);
+    expect(amountOf(items, (r) => r.categoryId === 'cat-dining-snacks')).toBeCloseTo(1.5, 5);
   });
 
   it('region filter scopes to NL-NB but keeps pending-location NL receipts', async () => {

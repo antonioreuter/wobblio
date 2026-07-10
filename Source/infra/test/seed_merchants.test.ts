@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { MERCHANT_SEEDS as NL_MERCHANT_SEEDS } from '../src/migrations/20260620120000_seed_merchants';
-import { MERCHANT_SEEDS as BR_MERCHANT_SEEDS, normalizeAlias } from '../src/migrations/20260709120000_seed_br_merchants';
+import { MERCHANT_SEEDS as BR_MERCHANT_SEEDS } from '../src/migrations/20260709120000_seed_br_merchants';
+import { MERCHANT_SEEDS as DINING_MERCHANT_SEEDS, normalizeAlias } from '../src/migrations/20260710130000_seed_dining_merchants';
 import { merchantSeeds, normalizeMerchantAlias } from '../src/local/seeds/merchant-aliases';
 import { CATEGORY_TAXONOMY } from '../../backend/src/core/domain/categoryTaxonomy';
 import { normalizeMerchantName } from '../../backend/src/core/domain/merchantNormalize';
@@ -14,7 +15,7 @@ import { normalizeMerchantName } from '../../backend/src/core/domain/merchantNor
 //   3. backend normalizeMerchantName          — how ingestion normalizes names before lookup
 // These tests make any divergence a build failure, so a prior added in one place without
 // the others can never reach prod as a missing category prior or a dead (never-matched) alias.
-const MERCHANT_SEEDS = [...NL_MERCHANT_SEEDS, ...BR_MERCHANT_SEEDS];
+const MERCHANT_SEEDS = [...NL_MERCHANT_SEEDS, ...BR_MERCHANT_SEEDS, ...DINING_MERCHANT_SEEDS];
 
 const serialize = (m: { id: string; brand_name: string; country_code: string; default_category_id: string; website: string | null; aliases: string[] }) =>
   `${m.id}|${m.brand_name}|${m.country_code}|${m.default_category_id}|${m.website ?? ''}|${[...m.aliases].sort().join(',')}`;

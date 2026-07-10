@@ -53,12 +53,14 @@ export class MerchantResolver implements IMerchantResolver {
 
     if (!fallback.isNew && fallback.merchantId) {
       await this.writeBrandAlias(fallback.merchantId, fallback.brandName, countryCode, 'AUTO_LLM');
-      return { merchantId: fallback.merchantId, brandName: fallback.brandName, provisional: false, confidence: LLM_MATCH_CONFIDENCE };
+      const defaultCategoryId = (await this.catalog.getDefaultCategory(fallback.merchantId)) ?? null;
+      return { merchantId: fallback.merchantId, brandName: fallback.brandName, defaultCategoryId, provisional: false, confidence: LLM_MATCH_CONFIDENCE };
     }
 
     const merchantId = await this.catalog.createProvisionalMerchant(fallback.brandName, countryCode, fallback.defaultCategoryId);
     await this.writeBrandAlias(merchantId, fallback.brandName, countryCode, 'AUTO_LLM');
-    return { merchantId, brandName: fallback.brandName, provisional: true, confidence: PROVISIONAL_CONFIDENCE };
+    // The prior we just persisted is the venue hint for §6.3 — no need to read it back.
+    return { merchantId, brandName: fallback.brandName, defaultCategoryId: fallback.defaultCategoryId, provisional: true, confidence: PROVISIONAL_CONFIDENCE };
   }
 
   // Persist the resolved brand (not the raw receipt header) so repeat receipts hard-hit the
@@ -73,8 +75,10 @@ export class MerchantResolver implements IMerchantResolver {
     });
   }
 
+  // The alias JOIN already carries the merchant's default_category_id, so the prior needs
+  // no follow-up SELECT — the hot exact/fuzzy path stays a single query.
   private toResolution(match: MerchantAliasMatch, provisional: boolean): MerchantResolution {
-    return { merchantId: match.merchantId, brandName: match.brandName, provisional, confidence: match.similarity };
+    return { merchantId: match.merchantId, brandName: match.brandName, defaultCategoryId: match.defaultCategoryId, provisional, confidence: match.similarity };
   }
 
   private buildRequest(messages: BedrockMessage[]): BedrockConverseRequest {

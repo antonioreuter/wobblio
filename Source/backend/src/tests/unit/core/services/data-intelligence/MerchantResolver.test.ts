@@ -10,6 +10,7 @@ const match = (overrides: Partial<MerchantAliasMatch> = {}): MerchantAliasMatch 
   merchantId: 'm-exact',
   brandName: 'Albert Heijn',
   similarity: 1,
+  defaultCategoryId: null,
   ...overrides,
 });
 
@@ -25,7 +26,7 @@ describe('MerchantResolver', () => {
       findBrandCandidates: vi.fn().mockResolvedValue([]),
       createProvisionalMerchant: vi.fn(),
       writeAlias: vi.fn(),
-      getDefaultCategory: vi.fn(),
+      getDefaultCategory: vi.fn().mockResolvedValue(null),
     };
     converse = vi.fn();
     sut = new MerchantResolver(catalog, { converse } as unknown as IBedrockConverse, 'model');
@@ -36,9 +37,19 @@ describe('MerchantResolver', () => {
 
     const result = await sut.resolve('Albert Heijn', 'NL');
 
-    expect(result).toEqual({ merchantId: 'm-exact', brandName: 'Albert Heijn', provisional: false, confidence: 1 });
+    expect(result).toEqual({ merchantId: 'm-exact', brandName: 'Albert Heijn', defaultCategoryId: null, provisional: false, confidence: 1 });
     expect(catalog.findFuzzyAliases).not.toHaveBeenCalled();
     expect(converse).not.toHaveBeenCalled();
+  });
+
+  it('surfaces the merchant macro prior (the §6.3 venue hint) carried in the alias match', async () => {
+    catalog.findExactAlias.mockResolvedValue(match({ merchantId: 'm-mcd', brandName: "McDonald's", defaultCategoryId: 'cat-dining-out' }));
+
+    const result = await sut.resolve("McDonald's", 'NL');
+
+    expect(result.defaultCategoryId).toBe('cat-dining-out');
+    // Prior comes from the alias JOIN — no follow-up getDefaultCategory query on the hot path.
+    expect(catalog.getDefaultCategory).not.toHaveBeenCalled();
   });
 
   it('accepts a confident fuzzy match and writes back the resolved brand as an AUTO_FUZZY alias', async () => {
@@ -66,7 +77,7 @@ describe('MerchantResolver', () => {
 
     const result = await sut.resolve('whatever', 'NL');
 
-    expect(result).toEqual({ merchantId: 'a', brandName: 'Aldi', provisional: false, confidence: 0.8 });
+    expect(result).toEqual({ merchantId: 'a', brandName: 'Aldi', defaultCategoryId: null, provisional: false, confidence: 0.8 });
     expect(catalog.writeAlias).toHaveBeenCalledWith(expect.objectContaining({ merchantId: 'a', source: 'AUTO_LLM' }));
   });
 
@@ -80,7 +91,7 @@ describe('MerchantResolver', () => {
 
     const result = await sut.resolve('Albert Heijn XL Eindhoven Winkelcentrum Woensel', 'NL');
 
-    expect(result).toEqual({ merchantId: 'm-seed', brandName: 'Albert Heijn', provisional: false, confidence: 0.8 });
+    expect(result).toEqual({ merchantId: 'm-seed', brandName: 'Albert Heijn', defaultCategoryId: null, provisional: false, confidence: 0.8 });
     expect(catalog.createProvisionalMerchant).not.toHaveBeenCalled();
     expect(catalog.findBrandCandidates).toHaveBeenCalledWith('ALBERT HEIJN XL EINDHOVEN WINKELCENTRUM WOENSEL', 'NL', 5);
     expect(catalog.writeAlias).toHaveBeenCalledWith(expect.objectContaining({
@@ -96,7 +107,7 @@ describe('MerchantResolver', () => {
 
     const result = await sut.resolve('New Shop', 'NL');
 
-    expect(result).toEqual({ merchantId: 'm-new', brandName: 'New Shop', provisional: true, confidence: 0.5 });
+    expect(result).toEqual({ merchantId: 'm-new', brandName: 'New Shop', defaultCategoryId: null, provisional: true, confidence: 0.5 });
     expect(catalog.createProvisionalMerchant).toHaveBeenCalledWith('New Shop', 'NL', null);
     expect(catalog.writeAlias).toHaveBeenCalledWith(expect.objectContaining({ merchantId: 'm-new', source: 'AUTO_LLM' }));
   });

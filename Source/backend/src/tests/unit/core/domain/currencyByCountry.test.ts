@@ -9,6 +9,7 @@ describe('countryCurrency', () => {
     expect(countryCurrency('US')).toBe('USD');
     expect(countryCurrency('CH')).toBe('CHF');
     expect(countryCurrency('PL')).toBe('PLN');
+    expect(countryCurrency('BR')).toBe('BRL');
   });
 
   it('is case- and whitespace-insensitive on the country code', () => {
@@ -17,7 +18,7 @@ describe('countryCurrency', () => {
   });
 
   it('returns null for an unmapped country so the caller can fall back to the modal currency', () => {
-    expect(countryCurrency('BR')).toBeNull();
+    expect(countryCurrency('JP')).toBeNull();
     expect(countryCurrency('ZZ')).toBeNull();
     expect(countryCurrency('')).toBeNull();
   });

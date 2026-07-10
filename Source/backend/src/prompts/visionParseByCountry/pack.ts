@@ -87,8 +87,10 @@ export const NL_PACK: CountryPromptPack = {
 - Payment / card metadata: "BETAALD MET", PAYMENT, PINNEN, MAESTRO, VISA, MASTERCARD, CONTACTLOZE, CARD, KAART, KAARTNR, "CARD SEQUENCE", "AUTH CODE", TRANSACTIE, TRANSACTION, TERMINAL, MERCHANT, PERIODE, TOKEN, AKKOORD, APPROVED.
 - Operational metadata: MEDEWERKER, KASSA, KASSIER, CASHIER, WINKEL, STORE, BARCODE, OPENINGSTIJDEN, "OPENING HOURS", "AANTAL ARTIKELEN", "AANTAL JUICHZEGELS".
 - Generic footer text: privacy/website lines, "Vragen over je kassabon?", "Bekijk het privacy statement", "Customer's receipt", "Bedankt".`,
-  currencyDateHint:
-    '- Default currency is EUR when no symbol is printed. Dutch receipts print dates as DD-MM-YYYY.',
+  // Currency default only. The date order (DD-MM-YYYY) is already covered by the base's
+  // country-driven disambiguation rule; repeating it here added delta from v9 without
+  // value on NL (01 no-regression run), so keep the NL hint minimal.
+  currencyDateHint: '- Default currency is EUR when no printed symbol resolves it.',
   examples: `<example_1>
 A Dutch Albert Heijn receipt with a printed store address, a loyalty header and a discount summary block:
 \`\`\`
@@ -162,10 +164,65 @@ Note: TOTAAL dropped. STATIEGELD kept (deposit). "2 X 1,39" is NOT a separate it
 </example_2>`,
 };
 
-// Registry keyed by uppercase ISO country code. Add a pack here (e.g. DE, BR) and it is
-// picked up automatically; anything unregistered resolves to DEFAULT_PACK.
+// Brazil pack — cupom fiscal / NFC-e receipts. Unlike NL there is no deposit system, so
+// the parsing risk is the opposite: dense Portuguese tax/payment/fiscal noise (Trib aprox,
+// ICMS, TROCO, DINHEIRO, CPF/CNPJ) that must be dropped, plus BRL and DD/MM dates.
+export const BR_PACK: CountryPromptPack = {
+  code: 'BR',
+  exclusionList: `NEVER emit these as lines — they are not purchased goods. Drop them silently:
+- Receipt totals / subtotals: SUBTOTAL, TOTAL, "VALOR TOTAL", "TOTAL R$", "VALOR A PAGAR", "TOTAL A PAGAR", "Qtd. total de itens", "Quantidade total de itens". The receipt-level total goes only in the top-level "total" field.
+- Promo-savings grand totals: "TOTAL DESCONTOS", "DESCONTO TOTAL" — these restate the SUM of the individual discount lines you already emitted. NEVER emit them (double-counts). (A per-item "DESCONTO ..." line WITHOUT a TOTAL prefix IS a real discount line — keep it negative.)
+- Payment / change: TROCO, DINHEIRO, "CARTÃO", CARTAO, "CRÉDITO", "DÉBITO", PIX, "VALOR PAGO", "VALOR RECEBIDO", "FORMA DE PAGAMENTO".
+- Tax lines already included in item prices: "Trib aprox", "Tributos aprox", "Valor aprox dos tributos", "Val Aprox Tributos", "Tributos Totais Incidentes", ICMS, "Lei 12.741".
+- Fiscal / operational metadata: CPF, CNPJ, "CPF/CNPJ", "CPF na nota", "CPF/CNPJ na nota", Consumidor, SAT, "NFC-e", "Nota Fiscal", "Cupom Fiscal", "Chave de acesso", Protocolo, "Número", Série, Caixa, Operador, CAIXA, "Consulte pela chave de acesso".
+- Loyalty: "Programa de fidelidade", Clube, Pontos, Cashback.
+- Generic footer text: privacy/website/QR lines, Obrigado, "Volte sempre", "Agradecemos a preferência".`,
+  currencyDateHint:
+    '- Default currency is BRL (printed as R$) when no symbol resolves it. Brazilian receipts print dates as DD/MM/YYYY.',
+  examples: `<example_1>
+A Brazilian supermarket cupom fiscal (NFC-e) with a quantity continuation line, a club discount, and a tax/payment/CPF footer:
+\`\`\`
+PÃO DE AÇÚCAR
+Rua Domingos de Morais, 100 - São Paulo
+CNPJ 47.508.411/0001-56          05/06/2026
+ARROZ TIO JOÃO 5KG               24,90
+FEIJÃO CARIOCA 1KG                8,49
+LEITE ITALAC 1L
+   3 X 4,49                      13,47
+DESCONTO CLUBE                   -2,00
+Qtd. total de itens: 3
+VALOR TOTAL R$                   44,86
+DINHEIRO                         50,00
+TROCO                             5,14
+Trib aprox R$ 6,58 (14,66%)
+CPF na nota: 123.456.789-00
+\`\`\`
+Correct output:
+\`\`\`json
+{
+  "merchant_raw": "PÃO DE AÇÚCAR",
+  "transaction_date": "2026-06-05",
+  "currency": "BRL",
+  "total": 44.86,
+  "location": { "country_code": "BR", "city": "São Paulo" },
+  "parse_confidence": 0.95,
+  "lines": [
+    { "raw_text": "ARROZ TIO JOÃO 5KG", "quantity": 1, "line_total": 24.90 },
+    { "raw_text": "FEIJÃO CARIOCA 1KG", "quantity": 1, "line_total": 8.49 },
+    { "raw_text": "LEITE ITALAC 1L", "quantity": 3, "line_total": 13.47, "unit_price": 4.49 },
+    { "raw_text": "DESCONTO CLUBE", "quantity": 1, "line_total": -2.00 }
+  ]
+}
+\`\`\`
+Note: CNPJ / Qtd. total de itens / VALOR TOTAL / DINHEIRO / TROCO / Trib aprox / CPF all dropped (fiscal, totals, payment, tax footer). "3 X 4,49" is NOT a separate item — it set LEITE ITALAC to quantity 3, unit_price 4.49, line_total 13.47. DESCONTO CLUBE kept as a NEGATIVE line. currency BRL (R$). location from the printed address. Σ = 24.90+8.49+13.47−2.00 = 44.86 ✓.
+</example_1>`,
+};
+
+// Registry keyed by uppercase ISO country code. Add a pack here and it is picked up
+// automatically; anything unregistered resolves to DEFAULT_PACK.
 const PACK_REGISTRY: Record<string, CountryPromptPack> = {
   NL: NL_PACK,
+  BR: BR_PACK,
 };
 
 // Resolve the pack for a user's country, falling back to the country-neutral default.

@@ -34,11 +34,15 @@ export class InvoiceCoordinator {
       this.merchantTool.run(receipt.merchantRaw, location.countryCode),
     );
     const { lines: normalized, suggestedTags } = await this.runStage('PRODUCT_NORMALIZATION', invoiceId, () =>
-      this.productTool.run(merchant.merchantId, receipt.lines, location.countryCode),
+      this.productTool.run(merchant.merchantId, receipt.lines, location.countryCode, {
+        brandName: merchant.brandName,
+        categoryPrior: merchant.defaultCategoryId,
+      }),
     );
     const categoryId = await this.runStage('INVOICE_CLASSIFICATION', invoiceId, () =>
       this.classifierTool.run({
         merchantId: merchant.merchantId,
+        merchantPrior: merchant.defaultCategoryId,
         documentKindHint: receipt.documentKindHint,
         lines: receipt.lines,
         normalized,

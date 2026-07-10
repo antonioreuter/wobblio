@@ -45,6 +45,13 @@ export const categorySeed: CategorySeed[] = [
   { id: 'cat-nuts',             parent_id: 'cat-groceries', name: 'Nuts & Dried Fruit',   name_nl: 'Noten & Gedroogd Fruit',     level: 2 },
   { id: 'cat-ready-deli',       parent_id: 'cat-groceries', name: 'Ready Meals & Deli',   name_nl: 'Kant-en-klaar & Vleeswaren', level: 2 },
 
+  // ── Dining Out & Bars content sub-categories (level 2) ────────────────────
+  { id: 'cat-dining-meals',     parent_id: 'cat-dining-out', name: 'Meals & Dishes',      name_nl: 'Maaltijden & Gerechten',     level: 2 },
+  { id: 'cat-dining-drinks',    parent_id: 'cat-dining-out', name: 'Drinks',              name_nl: 'Drankjes',                   level: 2 },
+  { id: 'cat-dining-snacks',    parent_id: 'cat-dining-out', name: 'Snacks & Sides',      name_nl: 'Snacks & Bijgerechten',      level: 2 },
+  { id: 'cat-bar-drinks',       parent_id: 'cat-bars-pubs',  name: 'Drinks',              name_nl: 'Drankjes',                   level: 2 },
+  { id: 'cat-bar-food',         parent_id: 'cat-bars-pubs',  name: 'Bar Food',            name_nl: 'Barhapjes',                  level: 2 },
+
   // ── Personal Care & Pharmacy sub-categories (level 2) ─────────────────────
   { id: 'cat-pharmacy',         parent_id: 'cat-personal-care', name: 'Pharmacy',                 name_nl: 'Apotheek',                    level: 2 },
   { id: 'cat-vitamins',         parent_id: 'cat-personal-care', name: 'Vitamins & Supplements',   name_nl: 'Vitaminen & Supplementen',    level: 2 },

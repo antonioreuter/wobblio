@@ -43,6 +43,20 @@ export const CATEGORY_TAXONOMY: CategoryDefinition[] = [
   { id: 'cat-snacks', name: 'Snacks & Sweets', parentId: 'cat-groceries' },
   { id: 'cat-nuts', name: 'Nuts & Dried Fruit', parentId: 'cat-groceries' },
   { id: 'cat-ready-deli', name: 'Ready Meals & Deli', parentId: 'cat-groceries' },
+  // Dining-out content leaves: venue-served food/drink (a restaurant burger is dining-out,
+  // not a grocery ready-meal). Without these, per-line expansion had no home for served
+  // items and dumped them into grocery leaves (fixes/08).
+  // DEPLOY ORDER: these ids are validated in-process (no DB round-trip), so the worker will
+  // emit them the moment it deploys. invoice_line/product.category_id FK product_category —
+  // run migration 20260710120000_add_dining_out_and_bar_leaves BEFORE deploying the worker,
+  // or receipts routed here quarantine (FK 23503 → SYSTEM_FAULT) until it lands. Same rule
+  // for any future leaf: migration first, then code.
+  { id: 'cat-dining-meals', name: 'Meals & Dishes', parentId: 'cat-dining-out' },
+  { id: 'cat-dining-drinks', name: 'Drinks', parentId: 'cat-dining-out' },
+  { id: 'cat-dining-snacks', name: 'Snacks & Sides', parentId: 'cat-dining-out' },
+  // Bars & pubs content leaves (same structural gap as dining-out).
+  { id: 'cat-bar-drinks', name: 'Drinks', parentId: 'cat-bars-pubs' },
+  { id: 'cat-bar-food', name: 'Bar Food', parentId: 'cat-bars-pubs' },
   { id: 'cat-pharmacy', name: 'Pharmacy', parentId: 'cat-personal-care' },
   { id: 'cat-vitamins', name: 'Vitamins & Supplements', parentId: 'cat-personal-care' },
   { id: 'cat-skincare', name: 'Skin & Body Care', parentId: 'cat-personal-care' },

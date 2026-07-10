@@ -38,10 +38,11 @@ describe('canonicalization tools delegate to their service', () => {
     expect(resolver.resolve).toHaveBeenCalledWith('AH', 'NL');
   });
 
-  it('ProductNormalizerTool → normalizer.normalize', async () => {
+  it('ProductNormalizerTool → normalizer.normalize (threading the venue context)', async () => {
     const normalizer = { normalize: vi.fn().mockResolvedValue({ lines: [], suggestedTags: [] }) };
-    await new ProductNormalizerTool(normalizer).run('m1', [], 'NL');
-    expect(normalizer.normalize).toHaveBeenCalledWith('m1', [], 'NL');
+    const merchant = { brandName: "McDonald's", categoryPrior: 'cat-dining-out' };
+    await new ProductNormalizerTool(normalizer).run('m1', [], 'NL', merchant);
+    expect(normalizer.normalize).toHaveBeenCalledWith('m1', [], 'NL', merchant);
   });
 
   it('InvoiceClassifierTool → classifier.classify', async () => {

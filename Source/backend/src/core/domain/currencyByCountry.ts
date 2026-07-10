@@ -13,6 +13,8 @@ const COUNTRY_CURRENCY: Record<string, string> = {
   // Non-euro European + common travel destinations
   GB: 'GBP', CH: 'CHF', DK: 'DKK', SE: 'SEK', NO: 'NOK', PL: 'PLN', CZ: 'CZK',
   US: 'USD',
+  // Secondary market
+  BR: 'BRL',
 };
 
 // The expected currency for a country, or null when the country isn't mapped. Case-insensitive

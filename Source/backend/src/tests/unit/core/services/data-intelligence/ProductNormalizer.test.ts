@@ -153,6 +153,37 @@ describe('ProductNormalizer', () => {
     expect(result.lines[0].normalizedUnitPrice).toBe(4);
   });
 
+  it('threads a <merchant> venue hint into the expansion prompt when a merchant context is given (fixes/08)', async () => {
+    converse.mockResolvedValue(expansion([item({ display_name: 'Big Mac', category_id: 'cat-dining-meals', base_unit: 'PIECE' })]));
+    catalog.searchByEmbedding.mockResolvedValue([]);
+
+    await sut.normalize('m-mcd', [line('BIG MAC')], COUNTRY, { brandName: "McDonald's", categoryPrior: 'cat-dining-out' });
+
+    const content = converse.mock.calls[0][0].messages[0].content as string;
+    expect(content).toContain(`<merchant brand="McDonald's" typical_category="cat-dining-out"/>`);
+  });
+
+  it('rolls a sub-category prior up to its macro in the venue hint', async () => {
+    converse.mockResolvedValue(expansion([item()]));
+    catalog.searchByEmbedding.mockResolvedValue([]);
+
+    await sut.normalize('m1', [line('X')], COUNTRY, { brandName: null, categoryPrior: 'cat-dining-meals' });
+
+    const content = converse.mock.calls[0][0].messages[0].content as string;
+    expect(content).toContain('<merchant typical_category="cat-dining-out"/>');
+  });
+
+  it('omits the <merchant> block entirely for an unknown merchant (legacy message shape)', async () => {
+    converse.mockResolvedValue(expansion([item()]));
+    catalog.searchByEmbedding.mockResolvedValue([]);
+
+    await sut.normalize('m1', [line('Milk')], COUNTRY);
+
+    const content = converse.mock.calls[0][0].messages[0].content as string;
+    expect(content).not.toContain('<merchant');
+    expect(content.startsWith('<categories>')).toBe(true);
+  });
+
   it('ignores a printed size whose unit conflicts with the canonical base unit', async () => {
     converse.mockResolvedValue(expansion([item({ base_unit: 'L', pack_size_base_units: 1 })]));
     const mismatched: ParsedLine = { rawText: 'X', quantity: 1, lineTotal: 2, unitSizeRaw: '3ST' }; // PIECE, not L

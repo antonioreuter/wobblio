@@ -100,28 +100,29 @@ describe('PriceTrendService', () => {
   });
 
   it('prefers the caller\'s own-receipt modal currency over the public one for an unmapped country', async () => {
-    ownHistory.modalCurrency.mockResolvedValue('BRL'); // the user's own receipts are BRL
+    // JP is not in the countryCurrency map, so the service resolves the currency by modal lookup.
+    ownHistory.modalCurrency.mockResolvedValue('JPY'); // the user's own receipts are JPY
     trends.modalCurrency.mockResolvedValue('USD'); // the public store's modal differs
-    const result = await sut.comparison(['milk'], 'BR', 'BR-SP', true);
-    expect(result.currency).toBe('BRL');
+    const result = await sut.comparison(['milk'], 'JP', 'JP-13', true);
+    expect(result.currency).toBe('JPY');
     // the public modal is not consulted once the own modal resolves — own history is never hidden.
     expect(trends.modalCurrency).not.toHaveBeenCalled();
-    expect(ownHistory.history).toHaveBeenCalledWith(expect.objectContaining({ currency: 'BRL' }));
-    expect(trends.comparison).toHaveBeenCalledWith(expect.objectContaining({ currency: 'BRL' }));
+    expect(ownHistory.history).toHaveBeenCalledWith(expect.objectContaining({ currency: 'JPY' }));
+    expect(trends.comparison).toHaveBeenCalledWith(expect.objectContaining({ currency: 'JPY' }));
   });
 
   it('falls back to the public region modal currency when the caller has no own receipts here', async () => {
     ownHistory.modalCurrency.mockResolvedValue(null);
-    trends.modalCurrency.mockResolvedValue('BRL');
-    const result = await sut.comparison(['milk'], 'BR', 'BR-SP', true);
+    trends.modalCurrency.mockResolvedValue('JPY');
+    const result = await sut.comparison(['milk'], 'JP', 'JP-13', true);
     expect(ownHistory.modalCurrency).toHaveBeenCalledWith({
       productIds: ['milk'],
-      countryCode: 'BR',
-      regionCode: 'BR-SP',
+      countryCode: 'JP',
+      regionCode: 'JP-13',
       weeks: TREND_WINDOW_WEEKS,
     });
-    expect(result.currency).toBe('BRL');
-    expect(ownHistory.history).toHaveBeenCalledWith(expect.objectContaining({ currency: 'BRL' }));
+    expect(result.currency).toBe('JPY');
+    expect(ownHistory.history).toHaveBeenCalledWith(expect.objectContaining({ currency: 'JPY' }));
   });
 
   it('serves own history but no market lines when the market trend is excluded (STANDARD)', async () => {

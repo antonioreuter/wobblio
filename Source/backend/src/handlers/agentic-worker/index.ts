@@ -38,6 +38,14 @@ import { MeteringBedrockEmbedder } from '@core/services/ai/MeteringBedrockEmbedd
 import type { TokenMeter } from '@core/domain/tokenMeter';
 import { runIngestionRecord } from '../shared/ingestionWorkerShell';
 import { VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION } from '../../prompts/visionParse';
+import { composeCountryVisionPrompt } from '../../prompts/visionParseByCountry';
+
+// Image receipts: system prompt is composed per receipt from the user's country (packs +
+// neutral default). PDFs stay on the shared monolith — packs are tuned for photo receipts.
+// The PDF path reports a `+pdf`-tagged version so its parses are distinguishable in the
+// swap-comparison telemetry (otherwise a non-NL PDF regression hides under bare `v9`).
+const selectCountryPrompt = (countryCode: string | undefined) => composeCountryVisionPrompt(countryCode);
+const fixedVisionPrompt = () => ({ template: VISION_PARSE_PROMPT, version: `${VISION_PARSE_PROMPT_VERSION}+pdf` });
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 
@@ -67,20 +75,21 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
     const merchantCatalog = new MerchantCatalogAdapter(client);
     const productCatalog = new ProductCatalogAdapter(client);
 
-    const primaryVision = new VisionParseService(meteredConverse, visionModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION);
+    const primaryVision = new VisionParseService(meteredConverse, visionModelId, selectCountryPrompt);
     // Wrap the primary parser so hard image receipts re-parse on the powerful fallback model;
     // if no fallback is provisioned, use the primary directly (identical to today's behaviour).
+    // The fallback shares the country selector so both arms report the same v9c+<country>.
     const visionParser = visionFallbackModelId
       ? new EscalatingReceiptParser(
           primaryVision,
-          new VisionParseService(meteredConverse, visionFallbackModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION, 'VISION_PARSE_FALLBACK'),
+          new VisionParseService(meteredConverse, visionFallbackModelId, selectCountryPrompt, 'VISION_PARSE_FALLBACK'),
           undefined,
           (outcome) => log.info('vision parse escalated to fallback', { event: 'vision_escalation', ...outcome }),
         )
       : primaryVision;
     const ocr = new OcrParserTool(
       visionParser,
-      new VisionParseService(meteredConverse, pdfModelId, VISION_PARSE_PROMPT, VISION_PARSE_PROMPT_VERSION),
+      new VisionParseService(meteredConverse, pdfModelId, fixedVisionPrompt),
     );
     const preparer = new ExtractionPreparer(
       new TenantContextAdapter(client),
@@ -95,7 +104,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
     const coordinator = new InvoiceCoordinator(
       new MerchantResolverTool(new MerchantResolver(merchantCatalog, meteredConverse, auxiliaryModelId)),
       new ProductNormalizerTool(new ProductNormalizer(productCatalog, meteredEmbedder, meteredConverse, auxiliaryModelId)),
-      new InvoiceClassifierTool(new InvoiceClassifier(merchantCatalog, meteredConverse, auxiliaryModelId)),
+      new InvoiceClassifierTool(new InvoiceClassifier(meteredConverse, auxiliaryModelId)),
       new SearchTagGeneratorTool(new TagGenerator()),
       stageInstrumentation,
     );

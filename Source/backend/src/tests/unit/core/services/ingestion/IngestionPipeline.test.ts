@@ -138,7 +138,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
     storage.getObjectBytes.mockResolvedValue(new Uint8Array([1]));
     visionParser.parse.mockResolvedValue(receipt(parseConfidence));
     documentParser.parse.mockResolvedValue(receipt(parseConfidence));
-    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'Albert Heijn', provisional: false, confidence: 0.9 });
+    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'Albert Heijn', defaultCategoryId: null, provisional: false, confidence: 0.9 });
     productNormalizer.normalize.mockResolvedValue({ lines: [normalizedLine(lowConfidence), normalizedLine()], suggestedTags: [] });
     classifier.classify.mockResolvedValue('groceries');
     tagGenerator.generate.mockResolvedValue(['weekly-groceries']);
@@ -336,7 +336,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
 
   it('flags NEEDS_REVIEW when the merchant was resolved provisionally', async () => {
     arrangeHappyPath();
-    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm-prov', brandName: 'Unknown Shop', provisional: true, confidence: 0.5 });
+    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm-prov', brandName: 'Unknown Shop', defaultCategoryId: null, provisional: true, confidence: 0.5 });
 
     const outcome = await sut.process(MESSAGE);
 
@@ -376,7 +376,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
     await sut.process(MESSAGE);
 
     expect(merchantResolver.resolve).toHaveBeenCalledWith(expect.anything(), 'BR');
-    expect(productNormalizer.normalize).toHaveBeenCalledWith('m1', expect.anything(), 'BR');
+    expect(productNormalizer.normalize).toHaveBeenCalledWith('m1', expect.anything(), 'BR', expect.anything());
   });
 
   it('tier 1: keeps the receipt city out of tags and stores it as searchCity', async () => {
@@ -426,7 +426,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
 
   it('persists the merchant + product provisional flags for faithful re-emission', async () => {
     arrangeHappyPath();
-    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'Albert Heijn', provisional: true, confidence: 0.9 });
+    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'Albert Heijn', defaultCategoryId: null, provisional: true, confidence: 0.9 });
     const provisionalLine: NormalizedLine = {
       productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
       normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: true,

@@ -5,12 +5,14 @@ interface AliasRow {
   merchant_id: string;
   brand_name: string;
   sim: string;
+  default_category_id: string | null;
 }
 
 const toMatch = (row: AliasRow): MerchantAliasMatch => ({
   merchantId: row.merchant_id,
   brandName: row.brand_name,
   similarity: parseFloat(row.sim),
+  defaultCategoryId: row.default_category_id,
 });
 
 // §6.2 merchant catalog over the global merchant/merchant_alias tables (no RLS).
@@ -19,7 +21,7 @@ export class MerchantCatalogAdapter implements IMerchantCatalog {
 
   async findExactAlias(normalized: string, countryCode: string): Promise<MerchantAliasMatch | null> {
     const result = await this.db.query<AliasRow>(
-      `SELECT a.merchant_id, m.brand_name, '1'::text AS sim
+      `SELECT a.merchant_id, m.brand_name, m.default_category_id, '1'::text AS sim
        FROM merchant_alias a JOIN merchant m ON m.id = a.merchant_id
        WHERE a.alias_normalized = $1 AND a.country_code = $2
        LIMIT 1`,
@@ -30,7 +32,7 @@ export class MerchantCatalogAdapter implements IMerchantCatalog {
 
   async findFuzzyAliases(normalized: string, countryCode: string, limit: number): Promise<MerchantAliasMatch[]> {
     const result = await this.db.query<AliasRow>(
-      `SELECT a.merchant_id, m.brand_name,
+      `SELECT a.merchant_id, m.brand_name, m.default_category_id,
               similarity(a.alias_normalized, $1)::text AS sim
        FROM merchant_alias a JOIN merchant m ON m.id = a.merchant_id
        WHERE a.country_code = $2 AND a.alias_normalized % $1

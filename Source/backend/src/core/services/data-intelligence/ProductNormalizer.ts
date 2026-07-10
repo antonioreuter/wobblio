@@ -1,4 +1,4 @@
-import type { IProductNormalizer, NormalizationResult, NormalizedLine } from '../../ports/data-intelligence/IProductNormalizer';
+import type { IProductNormalizer, NormalizationResult, NormalizedLine, MerchantExpansionContext } from '../../ports/data-intelligence/IProductNormalizer';
 import type { IProductCatalog, ProductMatch } from '../../ports/data-intelligence/IProductCatalog';
 import type { IBedrockEmbedder } from '../../ports/data-intelligence/IBedrockEmbedder';
 import type { BedrockConverseRequest, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
@@ -7,7 +7,7 @@ import { ConfidenceThresholds } from '../../domain/ingestion';
 import { computeNormalizedUnitPrice, parseUnitSize, type BaseUnit } from '../../domain/unitSize';
 import { callJsonWithRetry } from '../../domain/llmJson';
 import { parseProductExpansionJson, type ExpandedItem, type ProductExpansion } from '../../domain/productExpansionSchema';
-import { CATEGORY_TAXONOMY } from '../../domain/categoryTaxonomy';
+import { CATEGORY_TAXONOMY, macroCategoryId } from '../../domain/categoryTaxonomy';
 import { TAG_VOCABULARY } from '../../domain/tagVocabulary';
 import { PRODUCT_EXPANSION_PROMPT, PRODUCT_EXPANSION_PROMPT_VERSION } from '../../../prompts/productExpansion';
 
@@ -41,7 +41,7 @@ export class ProductNormalizer implements IProductNormalizer {
     private readonly modelId: string,
   ) {}
 
-  async normalize(merchantId: string | null, lines: ParsedLine[], countryCode: string): Promise<NormalizationResult> {
+  async normalize(merchantId: string | null, lines: ParsedLine[], countryCode: string, merchant?: MerchantExpansionContext): Promise<NormalizationResult> {
     const normalizedTexts = lines.map(line => normalizeProductText(line.rawText));
     // Sequential, not Promise.all: every stage shares one pg connection, which
     // cannot run queries concurrently.
@@ -51,7 +51,7 @@ export class ProductNormalizer implements IProductNormalizer {
     }
 
     const unmatched = exact.flatMap((match, index) => (match ? [] : [index]));
-    const expansion = await this.expandBatched(unmatched.map(index => lines[index].rawText));
+    const expansion = await this.expandBatched(unmatched.map(index => lines[index].rawText), merchant);
 
     const resolved = new Array<ResolvedProduct>(lines.length);
     exact.forEach((match, index) => {
@@ -106,23 +106,23 @@ export class ProductNormalizer implements IProductNormalizer {
 
   // Chunk so each expansion call's JSON output stays under the model's token cap; items
   // concatenate in order (positional), tags union across batches.
-  private async expandBatched(rawTexts: string[]): Promise<ProductExpansion> {
+  private async expandBatched(rawTexts: string[], merchant?: MerchantExpansionContext): Promise<ProductExpansion> {
     if (rawTexts.length === 0) return { items: [], suggestedTags: [] };
     const items: ExpandedItem[] = [];
     const tags = new Set<string>();
     for (let start = 0; start < rawTexts.length; start += EXPANSION_BATCH) {
-      const batch = await this.expand(rawTexts.slice(start, start + EXPANSION_BATCH));
+      const batch = await this.expand(rawTexts.slice(start, start + EXPANSION_BATCH), merchant);
       items.push(...batch.items);
       batch.suggestedTags.forEach(tag => tags.add(tag));
     }
     return { items, suggestedTags: [...tags] };
   }
 
-  private async expand(rawTexts: string[]): Promise<ProductExpansion> {
+  private async expand(rawTexts: string[], merchant?: MerchantExpansionContext): Promise<ProductExpansion> {
     return callJsonWithRetry({
       call: request => this.converse.converse(request),
       buildRequest: messages => this.buildRequest(messages),
-      messages: [{ role: 'user', content: buildExpansionMessage(rawTexts) }],
+      messages: [{ role: 'user', content: buildExpansionMessage(rawTexts, merchant) }],
       validate: content => parseProductExpansionJson(content, rawTexts.length),
     });
   }
@@ -173,9 +173,28 @@ function normalizeProductText(raw: string): string {
   return raw.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 }
 
-function buildExpansionMessage(rawTexts: string[]): string {
+function buildExpansionMessage(rawTexts: string[], merchant?: MerchantExpansionContext): string {
   const categories = CATEGORY_TAXONOMY.map(c => `<category id="${c.id}">${c.name}</category>`).join('\n');
   const tags = TAG_VOCABULARY.map(t => `<tag>${t.key}</tag>`).join('\n');
   const lines = rawTexts.map((text, index) => `<line index="${index}">${text}</line>`).join('\n');
-  return `<categories>\n${categories}\n</categories>\n<tags>\n${tags}\n</tags>\n<lines>\n${lines}\n</lines>`;
+  return `${buildMerchantBlock(merchant)}<categories>\n${categories}\n</categories>\n<tags>\n${tags}\n</tags>\n<lines>\n${lines}\n</lines>`;
+}
+
+// Venue hint for the expansion model (fixes/08). Emit brand and/or the merchant's macro
+// prior so a restaurant burger routes to a dining-out leaf, not a grocery leaf. Omitted
+// entirely for an unknown merchant so the message shape stays identical to the legacy call.
+function buildMerchantBlock(merchant?: MerchantExpansionContext): string {
+  if (!merchant) return '';
+  const brand = merchant.brandName?.trim() || null;
+  const typicalCategory = merchant.categoryPrior ? macroCategoryId(merchant.categoryPrior) : null;
+  if (!brand && !typicalCategory) return '';
+  const attrs = [
+    brand ? `brand="${escapeXmlAttr(brand)}"` : null,
+    typicalCategory ? `typical_category="${typicalCategory}"` : null,
+  ].filter(Boolean).join(' ');
+  return `<merchant ${attrs}/>\n`;
+}
+
+function escapeXmlAttr(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

@@ -1,5 +1,4 @@
 import type { IInvoiceClassifier, ClassificationInput } from '../../ports/data-intelligence/IInvoiceClassifier';
-import type { IMerchantCatalog } from '../../ports/data-intelligence/IMerchantCatalog';
 import type { BedrockConverseRequest, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
 import { voteCategory, type CategoryVoteLine } from '../../domain/classification';
 import { CATEGORY_TAXONOMY, DINING_OUT_CATEGORY_ID, macroCategoryId } from '../../domain/categoryTaxonomy';
@@ -13,7 +12,6 @@ const RESTAURANT_BILL_HINT = 'RESTAURANT_BILL';
 // and LLM tiebreak are fallbacks for merchants not yet in the catalog.
 export class InvoiceClassifier implements IInvoiceClassifier {
   constructor(
-    private readonly catalog: IMerchantCatalog,
     private readonly converse: IBedrockConverse,
     private readonly modelId: string,
   ) {}
@@ -22,9 +20,9 @@ export class InvoiceClassifier implements IInvoiceClassifier {
     if (input.documentKindHint === RESTAURANT_BILL_HINT) return DINING_OUT_CATEGORY_ID;
 
     // Merchant prior is authoritative — a DB-classified merchant is never overridden
-    // by line-item votes or LLM; the fallback path only runs for unknown merchants.
-    const prior = input.merchantId ? await this.catalog.getDefaultCategory(input.merchantId) : null;
-    if (prior) return macroCategoryId(prior);
+    // by line-item votes or LLM; the fallback path only runs for unknown merchants. The
+    // prior is resolved upstream (§6.2) and passed in, so no catalog re-read here.
+    if (input.merchantPrior) return macroCategoryId(input.merchantPrior);
 
     // No merchant prior: line-item majority vote, then LLM tiebreak.
     const vote = voteCategory(toVoteLines(input));

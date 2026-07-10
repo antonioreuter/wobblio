@@ -27,9 +27,11 @@ describe('VisionParseService', () => {
   let converse: ReturnType<typeof vi.fn>;
   let sut: VisionParseService;
 
+  const fixedPrompt = () => ({ template: 'PROMPT', version: 'vision-parse/v1' });
+
   beforeEach(() => {
     converse = vi.fn();
-    sut = new VisionParseService({ converse } as unknown as IBedrockConverse, 'mock-model', 'PROMPT', 'vision-parse/v1');
+    sut = new VisionParseService({ converse } as unknown as IBedrockConverse, 'mock-model', fixedPrompt);
   });
 
   it('returns the parsed receipt on a valid first response', async () => {
@@ -51,10 +53,26 @@ describe('VisionParseService', () => {
     expect(converse.mock.calls[0][0].stage).toBe('VISION_PARSE');
 
     const fallback = new VisionParseService(
-      { converse } as unknown as IBedrockConverse, 'mock-model', 'PROMPT', 'vision-parse/v1', 'VISION_PARSE_FALLBACK',
+      { converse } as unknown as IBedrockConverse, 'mock-model', fixedPrompt, 'VISION_PARSE_FALLBACK',
     );
     await fallback.parse(image, ctx);
     expect(converse.mock.calls[1][0].stage).toBe('VISION_PARSE_FALLBACK');
+  });
+
+  it('selects the prompt per receipt from the country and sends it as system prompt + version', async () => {
+    converse.mockResolvedValue(converseResult(VALID_JSON));
+    const selectPrompt = vi.fn((country: string | undefined) => ({
+      template: `PROMPT-${country}`,
+      version: `vision-parse/v9c+${(country ?? 'default').toLowerCase()}`,
+    }));
+    const service = new VisionParseService({ converse } as unknown as IBedrockConverse, 'mock-model', selectPrompt);
+
+    await service.parse(image, { countryCode: 'BR', processedDate: '2026-06-18' });
+
+    expect(selectPrompt).toHaveBeenCalledWith('BR');
+    const request = converse.mock.calls[0][0];
+    expect(request.systemPrompt).toBe('PROMPT-BR');
+    expect(request.promptVersion).toBe('vision-parse/v9c+br');
   });
 
   it('forwards a PDF as a document attachment', async () => {

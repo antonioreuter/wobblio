@@ -3,6 +3,9 @@ import type { NormalizedLine } from '@core/ports/data-intelligence/IProductNorma
 
 export interface ClassificationInput {
   merchantId: string | null;
+  // The merchant's default_category_id, already resolved upstream (§6.2). Authoritative
+  // when set — passed in so the classifier does not re-read it from the catalog.
+  merchantPrior: string | null;
   documentKindHint?: string;
   lines: ParsedLine[];
   normalized: NormalizedLine[];

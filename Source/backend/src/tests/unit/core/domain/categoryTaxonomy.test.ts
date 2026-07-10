@@ -5,6 +5,7 @@ import {
   depositCategoryFor,
   discountCategoryFor,
   isValidCategoryId,
+  macroCategoryId,
 } from '@core/domain/categoryTaxonomy';
 
 describe('categoryTaxonomy structural buckets', () => {
@@ -44,5 +45,21 @@ describe('categoryTaxonomy structural buckets', () => {
 
   it('returns just the id itself for a macro with no leaves', () => {
     expect(categoryIdsUnderMacro('not-a-category')).toEqual(['not-a-category']);
+  });
+
+  it('rolls venue content leaves up to their macro (fixes/08)', () => {
+    expect(macroCategoryId('cat-dining-meals')).toBe('cat-dining-out');
+    expect(macroCategoryId('cat-dining-drinks')).toBe('cat-dining-out');
+    expect(macroCategoryId('cat-dining-snacks')).toBe('cat-dining-out');
+    expect(macroCategoryId('cat-bar-drinks')).toBe('cat-bars-pubs');
+    expect(macroCategoryId('cat-bar-food')).toBe('cat-bars-pubs');
+  });
+
+  it('venue content leaves are valid category ids and collected under their macro', () => {
+    for (const id of ['cat-dining-meals', 'cat-dining-drinks', 'cat-dining-snacks', 'cat-bar-drinks', 'cat-bar-food']) {
+      expect(isValidCategoryId(id)).toBe(true);
+    }
+    expect(categoryIdsUnderMacro('cat-dining-out')).toContain('cat-dining-meals');
+    expect(categoryIdsUnderMacro('cat-bars-pubs')).toContain('cat-bar-food');
   });
 });

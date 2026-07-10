@@ -7,6 +7,7 @@ export interface MerchantAliasMatch {
   merchantId: string;
   brandName: string;
   similarity: number; // 1 for an exact alias, pg_trgm score (0..1) for a fuzzy match
+  defaultCategoryId: string | null; // merchant macro prior, carried in the alias JOIN (no follow-up SELECT)
 }
 
 // Brand-level candidate offered to the LLM fallback so it can match an existing brand

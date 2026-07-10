@@ -1,6 +1,7 @@
 export interface MerchantResolution {
   merchantId: string | null;
   brandName: string | null; // resolved brand, for merchant-scoped tagging
+  defaultCategoryId: string | null; // merchant macro prior (§6.4), also the §6.3 per-line venue hint
   provisional: boolean; // true when a PROVISIONAL merchant was auto-created
   confidence: number; // 0..1
 }
