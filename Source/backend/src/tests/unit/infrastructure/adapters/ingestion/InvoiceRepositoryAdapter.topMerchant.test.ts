@@ -41,7 +41,11 @@ describe('InvoiceRepositoryAdapter.getTopMerchantsThisMonth', () => {
     expect(sql).toContain("i.status <> 'DISCARDED'");
     expect(sql).toContain('i.total IS NOT NULL');
     expect(sql).toContain("date_trunc('month', CURRENT_DATE)");
-    expect(sql).toMatch(/ORDER BY SUM\(i\.total\) DESC/);
+    // Totals are converted to the tenant's home currency (frozen per-invoice rate),
+    // and foreign rows with no rate are dropped rather than summed at face value.
+    expect(sql).toMatch(/SUM\(i\.total \* COALESCE\(i\.fx_rate_used, 1\)\)/);
+    expect(sql).toContain('i.fx_rate_used IS NOT NULL OR i.currency = u.home_currency OR i.currency IS NULL');
+    expect(sql).toMatch(/ORDER BY SUM\(i\.total \* COALESCE\(i\.fx_rate_used, 1\)\) DESC/);
     expect(sql).toMatch(/LIMIT \$1/);
   });
 });

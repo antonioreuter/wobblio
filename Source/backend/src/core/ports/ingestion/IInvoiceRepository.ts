@@ -140,6 +140,13 @@ export interface InvoiceListItem {
   transactionDate: string | null;
   total: number | null;
   currency: string | null;
+  // The receipt total in the tenant's home currency at the frozen transaction-date rate. The
+  // ingestion harmonizer populates it for BOTH same-currency receipts (= total, rate 1) and
+  // converted foreign receipts. It is null only when the receipt cannot be valued in the home
+  // currency: an unconvertible foreign receipt (no FX rate), or a legacy pre-FX row that never
+  // ran through harmonization. Lets currency-spanning aggregations (dashboard MTD spend, charts)
+  // sum a home-currency figure instead of raw totals.
+  totalHomeCurrency: number | null;
   searchTags: string[];
   searchTagLabels: string[];
   searchCity: string | null;
@@ -168,11 +175,12 @@ export interface InvoiceDetailLine {
 export interface InvoiceDetail extends InvoiceListItem {
   imageS3Key: string;
   lines: InvoiceDetailLine[];
-  // §11 FX header: the receipt total converted into the viewer's home currency at the frozen
-  // transaction-date rate, the effective from→home rate that produced it, and the home-currency
-  // code the converted figure is denominated in. All null when the invoice is already in the home
-  // currency or no rate was available — the detail header then shows only the original amount.
-  totalHomeCurrency: number | null;
+  // §11 FX header: the effective from→home rate that produced totalHomeCurrency (inherited from
+  // InvoiceListItem), and the home-currency code the converted figure is denominated in. For a
+  // same-currency receipt the rate is 1 (not null); it is null only for an unconvertible foreign
+  // receipt (no rate) or a legacy pre-FX row. homeCurrency comes from the tenant profile, so the
+  // header suppresses the "≈ home total" line by comparing homeCurrency to the receipt currency,
+  // not by a null rate.
   fxRateUsed: number | null;
   homeCurrency: string | null;
   // The tenant's accuracy verdict on this receipt, or null if never rated.

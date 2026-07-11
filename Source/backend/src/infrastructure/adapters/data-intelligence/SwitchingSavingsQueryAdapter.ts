@@ -21,12 +21,27 @@ export class SwitchingSavingsQueryAdapter implements ISwitchingSavingsQuery {
 
   async savingsLines(input: SwitchingSavingsInput): Promise<SavingsLine[]> {
     const k = input.minObservations ?? MIN_REGION_OBSERVATIONS;
+    // Bind the currency once and reference it on both sides so the join never compares a EUR paid
+    // price to a BRL regional median. Null currency (unresolved) leaves both clauses empty. Like
+    // currencyFilter (see queryFilters.ts), this is a strict `=` that excludes NULL-currency rows —
+    // a price comparison deliberately drops what it can't trust to be the view currency, unlike the
+    // spend-total gates which count NULL as home-currency face value.
+    const params: unknown[] = [input.regionCode, input.windowDays, k, input.countryCode];
+    let regionalCurrency = '';
+    let mineCurrency = '';
+    if (input.currency !== null) {
+      params.push(input.currency);
+      regionalCurrency = `AND currency = $${params.length}`;
+      mineCurrency = `AND i.currency = $${params.length}`;
+    }
     const result = await this.db.query<SavingsRow>(
       `WITH regional AS (
          SELECT product_id,
                 percentile_cont(0.5) WITHIN GROUP (ORDER BY pack_price) AS region_median
          FROM price_observation
          WHERE region_code = $1
+           AND country_code = $4
+           ${regionalCurrency}
            AND quarantined = false
            AND was_discounted = false
            AND pack_price > 0
@@ -48,13 +63,14 @@ export class SwitchingSavingsQueryAdapter implements ISwitchingSavingsQuery {
            AND l.is_deposit_or_fee = false
            AND l.is_discount = false
            AND l.product_id IS NOT NULL
+           ${mineCurrency}
        )
        SELECT m.paid_pack_price::text AS paid,
               r.region_median::text AS region_median,
               m.quantity::text AS quantity
        FROM mine m
        JOIN regional r ON r.product_id = m.product_id`,
-      [input.regionCode, input.windowDays, k],
+      params,
     );
     return result.rows.map((row) => ({
       paidUnitPrice: parseFloat(row.paid),

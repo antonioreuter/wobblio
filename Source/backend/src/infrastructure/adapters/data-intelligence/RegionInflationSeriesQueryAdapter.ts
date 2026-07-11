@@ -5,6 +5,7 @@ import type {
 } from '@core/ports/data-intelligence/IInflationSeriesQuery';
 import type { MonthlyProductMedian } from '@core/domain/inflationSeries';
 import { MIN_REGION_OBSERVATIONS } from './RegionInflationQueryAdapter';
+import { currencyFilter } from './queryFilters';
 
 interface MedianRow {
   period: string;
@@ -21,6 +22,8 @@ export class RegionInflationSeriesQueryAdapter implements IRegionInflationSeries
 
   async monthlyMedians(input: RegionSeriesInput): Promise<MonthlyProductMedian[]> {
     const k = input.minObservations ?? MIN_REGION_OBSERVATIONS;
+    const params: unknown[] = [input.regionCode, input.months, k, input.countryCode];
+    const currencyClause = currencyFilter('currency', input.currency, params);
     const result = await this.db.query<MedianRow>(
       `WITH obs AS (
          SELECT to_char(observed_on, 'YYYY-MM') AS period,
@@ -30,6 +33,8 @@ export class RegionInflationSeriesQueryAdapter implements IRegionInflationSeries
                 base_unit
          FROM price_observation
          WHERE region_code = $1
+           AND country_code = $4
+           ${currencyClause}
            AND quarantined = false
            AND was_discounted = false
            AND pack_price > 0
@@ -52,7 +57,7 @@ export class RegionInflationSeriesQueryAdapter implements IRegionInflationSeries
        JOIN prod p ON p.product_id = o.product_id
        GROUP BY o.period, o.product_id
        HAVING COUNT(*) >= $3::int`,
-      [input.regionCode, input.months, k],
+      params,
     );
     return result.rows.map((row) => ({
       period: row.period,

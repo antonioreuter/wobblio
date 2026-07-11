@@ -8,6 +8,11 @@ import type { MatchedBasketItem } from '../../domain/personalInflation';
 // product carries a per-unit price and one base unit, else €/item (pack price).
 export interface RegionInflationInput {
   regionCode: string; // ISO 3166-2, country-qualified (e.g. 'NL-NB')
+  // The region's country (region_code alone is not globally unique) and the view currency; both
+  // gate the store so a region's basket is single-country and single-currency (never blends, say,
+  // BRL and EUR observations). currency null omits only the currency filter.
+  countryCode: string;
+  currency: string | null;
   // Current = [today-windowDays, today]; prior = the window immediately before it.
   windowDays: number;
   // §6.8 read-time serving gate k. Defaults to MIN_REGION_OBSERVATIONS.

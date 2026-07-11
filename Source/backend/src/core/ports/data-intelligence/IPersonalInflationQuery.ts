@@ -10,6 +10,10 @@ export interface PersonalInflationInput {
   /// Length in days of each compared period. Current = [today-windowDays, today];
   /// prior = [today-2·windowDays, today-windowDays].
   windowDays: number;
+  /// The caller's home currency. Receipts in any other currency are excluded so a matched
+  /// basket never blends, say, BRL and EUR prices into one median. Null (unresolved) omits
+  /// the filter — the caller then accepts a possibly-mixed basket rather than an empty one.
+  homeCurrency: string | null;
 }
 
 export interface IPersonalInflationQuery {

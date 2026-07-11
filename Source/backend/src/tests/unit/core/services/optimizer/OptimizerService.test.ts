@@ -39,7 +39,7 @@ describe('OptimizerService', () => {
       }),
     };
     routing = { get: vi.fn().mockResolvedValue({ minSplitSaving: 5, maxStores: 3 }) };
-    contributorContext = { getContext: vi.fn().mockResolvedValue({ optedOut: false, regionCode: 'NL-NB', countryCode: 'NL', trustScore: 50 }) };
+    contributorContext = { getContext: vi.fn().mockResolvedValue({ optedOut: false, regionCode: 'NL-NB', countryCode: 'NL', trustScore: 50, homeCurrency: 'EUR' }) };
     sut = new OptimizerService(lists, priceMatrix, routing, contributorContext);
   });
 
@@ -58,7 +58,7 @@ describe('OptimizerService', () => {
 
     const result = await sut.optimize('u1', 'PREMIUM', 'l1');
 
-    expect(priceMatrix.build).toHaveBeenCalledWith(['p1'], 'NL-NB');
+    expect(priceMatrix.build).toHaveBeenCalledWith(['p1'], 'NL-NB', 'NL', 'EUR');
     expect(result.unresolvedItems).toContain('Birthday card');
     expect(result.stores[0].lines[0].productId).toBe('p1');
     expect(result.stores[0].lines[0].quantity).toBe(2);
@@ -66,11 +66,11 @@ describe('OptimizerService', () => {
 
   it('falls back to the contributor country code when the context has no region', async () => {
     lists.getDetail.mockResolvedValue(detail);
-    contributorContext.getContext.mockResolvedValue({ optedOut: false, regionCode: null, countryCode: 'NL', trustScore: 50 });
+    contributorContext.getContext.mockResolvedValue({ optedOut: false, regionCode: null, countryCode: 'NL', trustScore: 50, homeCurrency: 'EUR' });
 
     await sut.optimize('u1', 'PREMIUM', 'l1');
 
-    expect(priceMatrix.build).toHaveBeenCalledWith(['p1'], 'NL');
+    expect(priceMatrix.build).toHaveBeenCalledWith(['p1'], 'NL', 'NL', 'EUR');
   });
 
   it('prefers the list\'s Premium region override over the contributor context', async () => {
@@ -78,7 +78,7 @@ describe('OptimizerService', () => {
 
     await sut.optimize('u1', 'PREMIUM', 'l1');
 
-    expect(priceMatrix.build).toHaveBeenCalledWith(['p1'], 'NL-ZH');
+    expect(priceMatrix.build).toHaveBeenCalledWith(['p1'], 'NL-ZH', 'NL', 'EUR');
   });
 
   it('drops excluded merchants from the candidate set before optimizing', async () => {

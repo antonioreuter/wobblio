@@ -3,7 +3,14 @@ import { computeDailySeriesForMonth, computeSpendMetrics } from './invoice-metri
 import { type Invoice } from '@/components/workspace/invoice-data'
 
 describe('invoice-metrics Unit Tests', () => {
-  const createMockInvoice = (dateISO: string, total: number): Invoice => ({
+  // `totalHomeCurrency` defaults to `total` (same-currency receipt). Pass a distinct value to
+  // simulate a foreign receipt whose home-currency conversion differs from its raw total.
+  const createMockInvoice = (
+    dateISO: string,
+    total: number,
+    totalHomeCurrency: number | null = total,
+    currency: string | null = 'EUR',
+  ): Invoice => ({
     id: 'mock-id',
     merchant: 'Test Merchant',
     category: 'Groceries',
@@ -15,7 +22,8 @@ describe('invoice-metrics Unit Tests', () => {
     tags: [],
     searchCity: null,
     total,
-    currency: 'EUR',
+    currency,
+    totalHomeCurrency,
     locationStatus: 'RESOLVED',
     locationCountryCode: null,
     locationRegionCode: null,
@@ -92,6 +100,42 @@ describe('invoice-metrics Unit Tests', () => {
       expect(result.lastMonth).toBe(40.00)
       expect(result.deltaPct).toBeCloseTo(25) // 25% increase
       expect(result.series.length).toBe(6)
+    })
+
+    it('sums the home-currency amount for foreign receipts, not the raw total', () => {
+      const now = new Date('2026-06-15')
+      // A R$928 Brazilian receipt worth ~€158.70 in home currency, plus a €50 euro receipt.
+      // The euro receipt has totalHomeCurrency === total; the BRL one must contribute its
+      // converted value (158.70), never its raw 928.
+      const mockInvoices: Invoice[] = [
+        createMockInvoice('2026-06-10', 50.00),
+        createMockInvoice('2026-06-12', 928.00, 158.70, 'BRL'),
+      ]
+
+      const result = computeSpendMetrics(mockInvoices, now)
+      expect(result.thisMonth).toBeCloseTo(208.70) // 50 + 158.70, not 50 + 928
+    })
+
+    it('counts a legacy row (no conversion, unknown currency) as home-currency face value', () => {
+      const now = new Date('2026-06-15')
+      // Pre-FX row: currency was never captured (null) and no conversion stored → treated as home.
+      const mockInvoices: Invoice[] = [createMockInvoice('2026-06-10', 42.00, null, null)]
+
+      const result = computeSpendMetrics(mockInvoices, now)
+      expect(result.thisMonth).toBe(42.00)
+    })
+
+    it('excludes an unconvertible foreign receipt instead of summing its raw total', () => {
+      const now = new Date('2026-06-15')
+      // A BRL receipt with a known foreign currency but no conversion (missing FX rate). Summing
+      // its raw 928 into a euro total is the bug; the server drops it, so the client must too.
+      const mockInvoices: Invoice[] = [
+        createMockInvoice('2026-06-10', 50.00),
+        createMockInvoice('2026-06-12', 928.00, null, 'BRL'),
+      ]
+
+      const result = computeSpendMetrics(mockInvoices, now)
+      expect(result.thisMonth).toBe(50.00) // 50 only — the unconvertible BRL receipt is excluded
     })
   })
 })

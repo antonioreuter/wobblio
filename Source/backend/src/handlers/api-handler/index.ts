@@ -352,18 +352,22 @@ const SAVINGS_WINDOW_DAYS = 365;
 async function handleInflationInsight(db: PoolClient, user: AppUser): Promise<APIGatewayProxyResult> {
   const profile = await new AppUserRepositoryAdapter(db).getProfile(user.cognitoSub);
   const regionCode = profile ? resolveObservationRegion(profile.regionCode, profile.country) : null;
+  const countryCode = profile ? profile.country : null;
+  // Home currency scopes every basket to a single currency (country-based comparisons never blend,
+  // e.g., BRL and EUR prices). Null only if the profile is missing — then the filter is skipped.
+  const currency = profile ? profile.currency : null;
 
   // Personal side is RLS-scoped → one tenant transaction. The savings join reaches the RLS-exempt
   // regional side but is anchored on the caller's own lines, so it belongs here too.
   const personal = await withTenantTx(db, user.id, async () => ({
-    basket: await new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: INFLATION_WINDOW_DAYS }),
-    series: await new PersonalInflationSeriesQueryAdapter(db).monthlyMedians({ months: TREND_MONTHS }),
-    savingsLines: regionCode
-      ? await new SwitchingSavingsQueryAdapter(db).savingsLines({ regionCode, windowDays: SAVINGS_WINDOW_DAYS })
+    basket: await new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: INFLATION_WINDOW_DAYS, homeCurrency: currency }),
+    series: await new PersonalInflationSeriesQueryAdapter(db).monthlyMedians({ months: TREND_MONTHS, homeCurrency: currency }),
+    savingsLines: regionCode && countryCode
+      ? await new SwitchingSavingsQueryAdapter(db).savingsLines({ regionCode, countryCode, currency, windowDays: SAVINGS_WINDOW_DAYS })
       : [],
   }));
 
-  const region = await resolveRegionSeries(db, regionCode);
+  const region = await resolveRegionSeries(db, regionCode, countryCode, currency);
   const personalResult = computeMatchedBasketInflation(personal.basket);
 
   return json(200, {
@@ -380,11 +384,16 @@ async function handleInflationInsight(db: PoolClient, user: AppUser): Promise<AP
 
 // Regional matched basket + monthly series from the de-identified price_observation store (no tenant
 // context — those rows carry none). Empty when the region is unknown; the domain then yields nulls.
-async function resolveRegionSeries(db: PoolClient, regionCode: string | null) {
-  if (!regionCode) return { basket: [], series: [] };
+async function resolveRegionSeries(
+  db: PoolClient,
+  regionCode: string | null,
+  countryCode: string | null,
+  currency: string | null,
+) {
+  if (!regionCode || !countryCode) return { basket: [], series: [] };
   return {
-    basket: await new RegionInflationQueryAdapter(db).matchedBasket({ regionCode, windowDays: INFLATION_WINDOW_DAYS }),
-    series: await new RegionInflationSeriesQueryAdapter(db).monthlyMedians({ regionCode, months: TREND_MONTHS }),
+    basket: await new RegionInflationQueryAdapter(db).matchedBasket({ regionCode, countryCode, currency, windowDays: INFLATION_WINDOW_DAYS }),
+    series: await new RegionInflationSeriesQueryAdapter(db).monthlyMedians({ regionCode, countryCode, currency, months: TREND_MONTHS }),
   };
 }
 

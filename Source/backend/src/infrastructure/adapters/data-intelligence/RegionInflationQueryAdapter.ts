@@ -4,6 +4,7 @@ import type {
   RegionInflationInput,
 } from '@core/ports/data-intelligence/IRegionInflationQuery';
 import type { MatchedBasketItem } from '@core/domain/personalInflation';
+import { currencyFilter } from './queryFilters';
 
 interface BasketRow {
   product_id: string;
@@ -26,6 +27,8 @@ export class RegionInflationQueryAdapter implements IRegionInflationQuery {
 
   async matchedBasket(input: RegionInflationInput): Promise<MatchedBasketItem[]> {
     const k = input.minObservations ?? MIN_REGION_OBSERVATIONS;
+    const params: unknown[] = [input.regionCode, input.windowDays, k, input.countryCode];
+    const currencyClause = currencyFilter('currency', input.currency, params);
     const result = await this.db.query<BasketRow>(
       `WITH obs AS (
          SELECT product_id,
@@ -38,6 +41,8 @@ export class RegionInflationQueryAdapter implements IRegionInflationQuery {
                 END AS bucket
          FROM price_observation
          WHERE region_code = $1
+           AND country_code = $4
+           ${currencyClause}
            AND quarantined = false
            AND was_discounted = false
            AND pack_price > 0
@@ -71,7 +76,7 @@ export class RegionInflationQueryAdapter implements IRegionInflationQuery {
        WHERE c.bucket = 'current'
          AND c.n >= $3::int
          AND pr.n >= $3::int`,
-      [input.regionCode, input.windowDays, k],
+      params,
     );
 
     return result.rows.map((row) => ({

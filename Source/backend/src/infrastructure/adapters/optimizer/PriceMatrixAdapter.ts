@@ -21,7 +21,12 @@ interface AvgRow {
 export class PriceMatrixAdapter implements IPriceMatrix {
   constructor(private readonly client: PoolClient) {}
 
-  async build(productIds: string[], regionCode: string): Promise<PriceMatrix> {
+  async build(
+    productIds: string[],
+    regionCode: string,
+    countryCode: string,
+    currency: string,
+  ): Promise<PriceMatrix> {
     if (productIds.length === 0) return { merchants: [], cells: [], userAverages: {} };
 
     const cellRows = await this.client.query<CellRow>(
@@ -31,10 +36,11 @@ export class PriceMatrixAdapter implements IPriceMatrix {
               max(po.observed_on)::text AS last_observed_on
        FROM price_observation po
        JOIN merchant m ON m.id = po.merchant_id
-       WHERE po.region_code = $1 AND po.product_id = ANY($2::uuid[]) AND po.quarantined = false
+       WHERE po.region_code = $1 AND po.country_code = $3 AND po.currency = $4
+         AND po.product_id = ANY($2::uuid[]) AND po.quarantined = false
        GROUP BY po.product_id, po.merchant_id, m.brand_name
        HAVING count(*) >= 3`,
-      [regionCode, productIds],
+      [regionCode, productIds, countryCode, currency],
     );
 
     const avgRows = await this.client.query<AvgRow>(
@@ -42,8 +48,9 @@ export class PriceMatrixAdapter implements IPriceMatrix {
        FROM invoice_line l
        JOIN invoice i ON i.id = l.invoice_id
        WHERE l.product_id = ANY($1::uuid[]) AND i.status IN ('PARSED', 'NEEDS_REVIEW')
+         AND i.currency = $2
        GROUP BY l.product_id`,
-      [productIds],
+      [productIds, currency],
     );
 
     return {

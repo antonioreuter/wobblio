@@ -9,6 +9,22 @@ export interface SpendMetrics {
 
 const monthKey = (d: Date): number => d.getUTCFullYear() * 12 + d.getUTCMonth()
 
+// The home-currency amount a receipt contributes to a spend total, or null when it can't be
+// honestly valued in the home currency and must be skipped (never summed at raw face value —
+// that would add R$928 to a euro total as if it were €928). This mirrors the server-side
+// budget/top-merchant gate:
+//   • totalHomeCurrency present → use it. The ingestion harmonizer populates it for BOTH
+//     same-currency receipts (= total) and converted foreign receipts, so this covers the
+//     common case.
+//   • absent + currency unknown (null) → legacy pre-FX row; treat as home-currency face value,
+//     matching the server's `OR currency IS NULL` leg.
+//   • absent + a known foreign currency → unconvertible (no FX rate); skip it, exactly as the
+//     server drops these rather than counting a foreign amount as home currency.
+const homeAmount = (inv: Invoice): number | null => {
+  if (inv.totalHomeCurrency != null) return inv.totalHomeCurrency
+  return inv.currency == null ? inv.total : null
+}
+
 export function computeSpendMetrics(invoices: Invoice[], now: Date): SpendMetrics {
   const thisKey = monthKey(now)
   const lastKey = thisKey - 1
@@ -18,10 +34,12 @@ export function computeSpendMetrics(invoices: Invoice[], now: Date): SpendMetric
   const byMonth = new Map<number, number>()
 
   for (const inv of invoices) {
+    const amount = homeAmount(inv)
+    if (amount === null) continue // unconvertible foreign receipt — excluded, like the server
     const key = monthKey(new Date(inv.dateISO))
-    byMonth.set(key, (byMonth.get(key) ?? 0) + inv.total)
-    if (key === thisKey) thisMonth += inv.total
-    if (key === lastKey) lastMonth += inv.total
+    byMonth.set(key, (byMonth.get(key) ?? 0) + amount)
+    if (key === thisKey) thisMonth += amount
+    if (key === lastKey) lastMonth += amount
   }
 
   const series = Array.from({ length: 6 }, (_, i) => {
@@ -52,10 +70,12 @@ export function computeDailySeriesForMonth(
   const byDay = new Map<number, number>()
 
   for (const inv of invoices) {
+    const amount = homeAmount(inv)
+    if (amount === null) continue // unconvertible foreign receipt — excluded, like the server
     const d = new Date(inv.dateISO)
     if (d.getUTCMonth() === currentMonth && d.getUTCFullYear() === currentYear) {
       const day = d.getUTCDate()
-      byDay.set(day, (byDay.get(day) ?? 0) + inv.total)
+      byDay.set(day, (byDay.get(day) ?? 0) + amount)
     }
   }
 

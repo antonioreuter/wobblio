@@ -4,6 +4,7 @@ import type {
   PersonalSeriesInput,
 } from '@core/ports/data-intelligence/IInflationSeriesQuery';
 import type { MonthlyProductMedian } from '@core/domain/inflationSeries';
+import { currencyFilter } from './queryFilters';
 
 interface MedianRow {
   period: string;
@@ -19,6 +20,8 @@ export class PersonalInflationSeriesQueryAdapter implements IPersonalInflationSe
   constructor(private readonly db: Pool | PoolClient) {}
 
   async monthlyMedians(input: PersonalSeriesInput): Promise<MonthlyProductMedian[]> {
+    const params: unknown[] = [input.months];
+    const currencyClause = currencyFilter('i.currency', input.homeCurrency, params);
     const result = await this.db.query<MedianRow>(
       `WITH lines AS (
          SELECT to_char(i.transaction_date, 'YYYY-MM') AS period,
@@ -37,6 +40,7 @@ export class PersonalInflationSeriesQueryAdapter implements IPersonalInflationSe
            AND l.is_deposit_or_fee = false
            AND l.is_discount = false
            AND l.product_id IS NOT NULL
+           ${currencyClause}
        ),
        prod AS (
          SELECT product_id,
@@ -53,7 +57,7 @@ export class PersonalInflationSeriesQueryAdapter implements IPersonalInflationSe
        FROM lines l
        JOIN prod p ON p.product_id = l.product_id
        GROUP BY l.period, l.product_id`,
-      [input.months],
+      params,
     );
     return result.rows.map((row) => ({
       period: row.period,

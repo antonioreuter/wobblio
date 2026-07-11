@@ -31,6 +31,9 @@ const jsMedian = (xs: number[]): number => {
 const WINDOW = 90;
 const MONTHS = 6;
 const SAVINGS_WINDOW = 365;
+const COUNTRY = 'NL';
+const HOME_CURRENCY = 'EUR';
+const FOREIGN_CURRENCY = 'BRL'; // a receipt/observation in this currency must never blend in
 const CURRENT_DAY = 15; // inside the current window
 const PRIOR_DAY = 120; // inside the prior window (and within a month bucket ~4 months back)
 
@@ -52,13 +55,17 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
   let pD: string;
   let obsMerchant: string;
 
-  const insertInvoice = async (tenantId: string, transactionDate: string): Promise<string> => {
+  const insertInvoice = async (
+    tenantId: string,
+    transactionDate: string,
+    currency = HOME_CURRENCY,
+  ): Promise<string> => {
     const res = await pool.query<{ id: string }>(
       `INSERT INTO invoice
-         (tenant_id, uploaded_by_user_id, status, transaction_date, image_s3_key, image_sha256,
+         (tenant_id, uploaded_by_user_id, status, transaction_date, currency, image_s3_key, image_sha256,
           location_country_code, location_region_code, location_status)
-       VALUES ($1, $1, 'PARSED', $2, $3, $4, 'NL', $5, 'RESOLVED') RETURNING id`,
-      [tenantId, transactionDate, `k-${randomUUID()}`, randomUUID().replace(/-/g, ''), region],
+       VALUES ($1, $1, 'PARSED', $2, $6, $3, $4, 'NL', $5, 'RESOLVED') RETURNING id`,
+      [tenantId, transactionDate, `k-${randomUUID()}`, randomUUID().replace(/-/g, ''), region, currency],
     );
     return res.rows[0].id;
   };
@@ -81,15 +88,16 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
     regionCode: string,
     observedOn: string,
     packPrice: number,
-    over: { quarantined?: boolean; wasDiscounted?: boolean } = {},
+    over: { quarantined?: boolean; wasDiscounted?: boolean; countryCode?: string; currency?: string } = {},
   ): Promise<unknown> =>
     pool.query(
       `INSERT INTO price_observation
          (product_id, merchant_id, country_code, region_code, observed_on, pack_price,
           normalized_unit_price, base_unit, currency, was_discounted, quality, quarantined,
           contributor_trust_at_write)
-       VALUES ($1, $2, 'NL', $3, $4, $5, NULL, NULL, 'EUR', $6, 'AUTO', $7, 50)`,
-      [productId, obsMerchant, regionCode, observedOn, packPrice, over.wasDiscounted ?? false, over.quarantined ?? false],
+       VALUES ($1, $2, $8, $3, $4, $5, NULL, NULL, $9, $6, 'AUTO', $7, 50)`,
+      [productId, obsMerchant, regionCode, observedOn, packPrice, over.wasDiscounted ?? false,
+       over.quarantined ?? false, over.countryCode ?? COUNTRY, over.currency ?? HOME_CURRENCY],
     );
 
   beforeAll(async () => {
@@ -197,7 +205,7 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
 
   it('personal matched basket: median-of-medians per product, excluding noise and other tenants', async () => {
     const basket = await asTenant(tenantA, (db) =>
-      new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: WINDOW }),
+      new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: WINDOW, homeCurrency: HOME_CURRENCY }),
     );
 
     const byId = new Map(basket.map((r) => [r.productId, r]));
@@ -216,7 +224,7 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
 
   it('personal matched basket is RLS-scoped: tenantB never sees tenantA rows', async () => {
     const basket = await asTenant(tenantB, (db) =>
-      new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: WINDOW }),
+      new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: WINDOW, homeCurrency: HOME_CURRENCY }),
     );
     // tenantB has only a single current-window pA line and no prior → nothing matches.
     expect(basket).toEqual([]);
@@ -224,7 +232,7 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
 
   it('personal monthly series: per-month medians for the caller, RLS-scoped', async () => {
     const rows = await asTenant(tenantA, (db) =>
-      new PersonalInflationSeriesQueryAdapter(db).monthlyMedians({ months: MONTHS }),
+      new PersonalInflationSeriesQueryAdapter(db).monthlyMedians({ months: MONTHS, homeCurrency: HOME_CURRENCY }),
     );
     const currentPeriod = isoDay(CURRENT_DAY).slice(0, 7);
     const priorPeriod = isoDay(PRIOR_DAY).slice(0, 7);
@@ -239,7 +247,7 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
   });
 
   it('regional matched basket: k>=3 gate, quarantine/discount/region filters', async () => {
-    const basket = await new RegionInflationQueryAdapter(pool).matchedBasket({ regionCode: region, windowDays: WINDOW });
+    const basket = await new RegionInflationQueryAdapter(pool).matchedBasket({ regionCode: region, countryCode: COUNTRY, currency: HOME_CURRENCY, windowDays: WINDOW });
     const byId = new Map(basket.map((r) => [r.productId, r]));
 
     expect(byId.has(pD)).toBe(false); // only 2 current obs → below quorum
@@ -253,13 +261,13 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
   });
 
   it('regional matched basket honors the region filter (other region invisible)', async () => {
-    const basket = await new RegionInflationQueryAdapter(pool).matchedBasket({ regionCode: otherRegion, windowDays: WINDOW });
+    const basket = await new RegionInflationQueryAdapter(pool).matchedBasket({ regionCode: otherRegion, countryCode: COUNTRY, currency: HOME_CURRENCY, windowDays: WINDOW });
     // otherRegion has only 1 obs per window for pA → below quorum → nothing served.
     expect(basket).toEqual([]);
   });
 
   it('regional monthly series: per-month medians gated on k>=3', async () => {
-    const rows = await new RegionInflationSeriesQueryAdapter(pool).monthlyMedians({ regionCode: region, months: MONTHS });
+    const rows = await new RegionInflationSeriesQueryAdapter(pool).monthlyMedians({ regionCode: region, countryCode: COUNTRY, currency: HOME_CURRENCY, months: MONTHS });
     const currentPeriod = isoDay(CURRENT_DAY).slice(0, 7);
     const cell = (period: string, pid: string) =>
       rows.find((r) => r.period === period && r.productId === pid);
@@ -270,7 +278,7 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
 
   it('switching savings: caller lines paired with the regional median, sub-quorum products dropped', async () => {
     const lines = await asTenant(tenantA, (db) =>
-      new SwitchingSavingsQueryAdapter(db).savingsLines({ regionCode: region, windowDays: SAVINGS_WINDOW }),
+      new SwitchingSavingsQueryAdapter(db).savingsLines({ regionCode: region, countryCode: COUNTRY, currency: HOME_CURRENCY, windowDays: SAVINGS_WINDOW }),
     );
 
     // Every regular pA/pB/pC line pairs with its regional median; pD (sub-quorum region) and the
@@ -295,11 +303,40 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
     expect(saved!).toBeGreaterThan(0);
   });
 
+  it('excludes foreign-currency rows: a BRL basket never blends into the EUR headline', async () => {
+    // Seed a Brazilian (BRL) receipt + BRL regional observations for pA in the same region/window.
+    // With the country+currency gate they must be invisible to the EUR-scoped queries, and visible
+    // only when the caller's currency is BRL — proving the gate selects by currency, not always-EUR.
+    const brCurrent = await insertInvoice(tenantA, isoDay(CURRENT_DAY), FOREIGN_CURRENCY);
+    await insertLine(brCurrent, pA, 50.0);
+    await insertLine(brCurrent, pA, 50.0);
+    const brPrior = await insertInvoice(tenantA, isoDay(PRIOR_DAY), FOREIGN_CURRENCY);
+    await insertLine(brPrior, pA, 40.0);
+    for (const v of [60, 60, 60]) await insertObs(pA, region, isoDay(CURRENT_DAY), v, { currency: FOREIGN_CURRENCY });
+    for (const v of [48, 48, 48]) await insertObs(pA, region, isoDay(PRIOR_DAY), v, { currency: FOREIGN_CURRENCY });
+
+    // EUR scope: pA medians are unchanged — the BRL 50/40 (personal) and 60/48 (region) are dropped.
+    const eurPersonal = await asTenant(tenantA, (db) =>
+      new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: WINDOW, homeCurrency: HOME_CURRENCY }),
+    );
+    expect(new Map(eurPersonal.map((r) => [r.productId, r])).get(pA)!.currentMedian).toBeCloseTo(1.1, 4);
+    const eurRegion = await new RegionInflationQueryAdapter(pool).matchedBasket({ regionCode: region, countryCode: COUNTRY, currency: HOME_CURRENCY, windowDays: WINDOW });
+    expect(new Map(eurRegion.map((r) => [r.productId, r])).get(pA)!.currentMedian).toBeCloseTo(1.44, 4);
+
+    // BRL scope: now only the BRL rows surface for pA.
+    const brlPersonal = await asTenant(tenantA, (db) =>
+      new PersonalInflationQueryAdapter(db).matchedBasket({ windowDays: WINDOW, homeCurrency: FOREIGN_CURRENCY }),
+    );
+    expect(new Map(brlPersonal.map((r) => [r.productId, r])).get(pA)!.currentMedian).toBeCloseTo(50.0, 4);
+    const brlRegion = await new RegionInflationQueryAdapter(pool).matchedBasket({ regionCode: region, countryCode: COUNTRY, currency: FOREIGN_CURRENCY, windowDays: WINDOW });
+    expect(new Map(brlRegion.map((r) => [r.productId, r])).get(pA)!.currentMedian).toBeCloseTo(60.0, 4);
+  });
+
   it('composes a full 6-month personal-vs-region trend the way the handler does', async () => {
     const personalSeries = await asTenant(tenantA, (db) =>
-      new PersonalInflationSeriesQueryAdapter(db).monthlyMedians({ months: MONTHS }),
+      new PersonalInflationSeriesQueryAdapter(db).monthlyMedians({ months: MONTHS, homeCurrency: HOME_CURRENCY }),
     );
-    const regionSeries = await new RegionInflationSeriesQueryAdapter(pool).monthlyMedians({ regionCode: region, months: MONTHS });
+    const regionSeries = await new RegionInflationSeriesQueryAdapter(pool).monthlyMedians({ regionCode: region, countryCode: COUNTRY, currency: HOME_CURRENCY, months: MONTHS });
 
     const trend = mergeInflationSeries(
       computeInflationSeries(personalSeries),

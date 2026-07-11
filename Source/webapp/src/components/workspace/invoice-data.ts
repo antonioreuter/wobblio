@@ -26,6 +26,10 @@ export interface Invoice {
   // ISO 4217 code the `total` is charged in (from the list API). Null on legacy
   // rows; the drawer/table fall back to a symbol-less amount rather than a euro lie.
   currency: string | null
+  // `total` converted to the user's home currency at the frozen transaction-date rate.
+  // Null when already home-currency or no rate was available. Currency-spanning
+  // aggregations (dashboard MTD spend, charts) sum this, not the raw `total`.
+  totalHomeCurrency: number | null
   locationStatus: LocationStatus
   locationCountryCode: string | null
   locationRegionCode: string | null
@@ -126,6 +130,7 @@ function buildInvoices(): Invoice[] {
       searchCity: null,
       total: Math.round((8 + ((k * 7.37) % 72)) * 100) / 100,
       currency: 'EUR',
+      totalHomeCurrency: Math.round((8 + ((k * 7.37) % 72)) * 100) / 100,
       locationStatus: 'RESOLVED',
       locationCountryCode: null,
       locationRegionCode: null,

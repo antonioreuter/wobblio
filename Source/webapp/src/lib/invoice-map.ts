@@ -13,6 +13,10 @@ export interface BackendInvoice {
   transactionDate: string | null
   total: number | null
   currency: string | null
+  // Receipt total converted to the user's home currency (frozen transaction-date rate).
+  // Null when already home-currency or no rate was available. Optional until every backend
+  // deploy ships it; the dashboard falls back to `total` when absent.
+  totalHomeCurrency?: number | null
   searchTags: string[]
   searchTagLabels?: string[]
   searchCity?: string | null
@@ -103,6 +107,7 @@ export function mapInvoice(b: BackendInvoice): Invoice {
     searchCity: b.searchCity ?? null,
     total: b.total ?? 0,
     currency: b.currency ?? null,
+    totalHomeCurrency: b.totalHomeCurrency ?? null,
     locationStatus: b.locationStatus ?? 'RESOLVED',
     locationCountryCode: b.locationCountryCode ?? null,
     locationRegionCode: b.locationRegionCode ?? null,

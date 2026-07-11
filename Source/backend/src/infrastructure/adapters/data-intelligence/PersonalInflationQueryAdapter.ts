@@ -4,6 +4,7 @@ import type {
   PersonalInflationInput,
 } from '@core/ports/data-intelligence/IPersonalInflationQuery';
 import type { MatchedBasketItem } from '@core/domain/personalInflation';
+import { currencyFilter } from './queryFilters';
 
 interface BasketRow {
   product_id: string;
@@ -22,6 +23,8 @@ export class PersonalInflationQueryAdapter implements IPersonalInflationQuery {
   constructor(private readonly db: Pool | PoolClient) {}
 
   async matchedBasket(input: PersonalInflationInput): Promise<MatchedBasketItem[]> {
+    const params: unknown[] = [input.windowDays];
+    const currencyClause = currencyFilter('i.currency', input.homeCurrency, params);
     const result = await this.db.query<BasketRow>(
       `WITH lines AS (
          SELECT l.product_id,
@@ -42,6 +45,7 @@ export class PersonalInflationQueryAdapter implements IPersonalInflationQuery {
            AND l.is_deposit_or_fee = false
            AND l.is_discount = false
            AND l.product_id IS NOT NULL
+           ${currencyClause}
        ),
        prod AS (
          -- per-unit only when every line for the product has a per-unit price and one base unit;
@@ -68,7 +72,7 @@ export class PersonalInflationQueryAdapter implements IPersonalInflationQuery {
        FROM medians c
        JOIN medians pr ON pr.product_id = c.product_id AND pr.bucket = 'prior'
        WHERE c.bucket = 'current'`,
-      [input.windowDays],
+      params,
     );
 
     return result.rows.map((row) => ({

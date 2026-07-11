@@ -6,6 +6,9 @@ import type { MonthlyProductMedian } from '../../domain/inflationSeries';
 
 export interface PersonalSeriesInput {
   months: number; // how many trailing calendar months to return, including the current one
+  // Caller's home currency; other-currency receipts are excluded so a product's monthly series
+  // never blends currencies. Null (unresolved) omits the filter.
+  homeCurrency: string | null;
 }
 
 export interface IPersonalInflationSeriesQuery {
@@ -14,6 +17,10 @@ export interface IPersonalInflationSeriesQuery {
 
 export interface RegionSeriesInput {
   regionCode: string;
+  // The region's country (region_code alone is not globally unique) and the view currency; both
+  // gate the de-identified store so a region's series is single-country and single-currency.
+  countryCode: string;
+  currency: string | null;
   months: number;
   minObservations?: number; // §6.8 per-month serving gate k; defaults to 3
 }

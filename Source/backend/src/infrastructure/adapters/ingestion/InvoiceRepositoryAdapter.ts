@@ -30,6 +30,7 @@ interface InvoiceListRow {
   transaction_date: string | null;
   total: string | null;
   currency: string | null;
+  total_home_currency: string | null;
   search_tags: string[];
   search_city: string | null;
   created_at: string;
@@ -49,6 +50,7 @@ const toListItem = (row: InvoiceListRow): InvoiceListItem => ({
   transactionDate: row.transaction_date,
   total: num(row.total),
   currency: row.currency,
+  totalHomeCurrency: num(row.total_home_currency),
   searchTags: row.search_tags,
   searchTagLabels: row.search_tags.map(tagLabelFor),
   searchCity: row.search_city,
@@ -61,7 +63,8 @@ const toListItem = (row: InvoiceListRow): InvoiceListItem => ({
 const LIST_COLUMNS = `
   i.id, i.status, m.brand_name AS merchant_name, i.category_id,
   i.transaction_date::text AS transaction_date, i.total::text AS total,
-  i.currency, i.search_tags, i.search_city, i.created_at::text AS created_at,
+  i.currency, i.total_home_currency::text AS total_home_currency,
+  i.search_tags, i.search_city, i.created_at::text AS created_at,
   i.location_status, i.location_country_code, i.location_region_code`;
 
 interface InvoiceRow {
@@ -377,14 +380,17 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
 
   async getTopMerchantsThisMonth(limit: number): Promise<TopMerchant[]> {
     const result = await this.client.query<{ merchant_name: string; total: string }>(
-      `SELECT m.brand_name AS merchant_name, SUM(i.total)::text AS total
-       FROM invoice i JOIN merchant m ON m.id = i.merchant_id
+      `SELECT m.brand_name AS merchant_name, SUM(i.total * COALESCE(i.fx_rate_used, 1))::text AS total
+       FROM invoice i
+       JOIN merchant m ON m.id = i.merchant_id
+       JOIN app_user u ON u.id = (current_setting('app.current_tenant_id', true))::uuid
        WHERE i.status <> 'DISCARDED'
          AND i.total IS NOT NULL
+         AND (i.fx_rate_used IS NOT NULL OR i.currency = u.home_currency OR i.currency IS NULL)
          AND i.transaction_date >= date_trunc('month', CURRENT_DATE)
          AND i.transaction_date <  date_trunc('month', CURRENT_DATE) + interval '1 month'
        GROUP BY m.brand_name
-       ORDER BY SUM(i.total) DESC
+       ORDER BY SUM(i.total * COALESCE(i.fx_rate_used, 1)) DESC
        LIMIT $1`,
       [limit],
     );
@@ -392,9 +398,9 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
   }
 
   async getDetail(invoiceId: string): Promise<InvoiceDetail | null> {
-    const head = await this.client.query<InvoiceListRow & { image_s3_key: string; feedback_verdict: InvoiceVerdict | null; failure_reason_code: FailureReasonCode | null; total_home_currency: string | null; fx_rate_used: string | null; home_currency: string | null }>(
+    const head = await this.client.query<InvoiceListRow & { image_s3_key: string; feedback_verdict: InvoiceVerdict | null; failure_reason_code: FailureReasonCode | null; fx_rate_used: string | null; home_currency: string | null }>(
       `SELECT ${LIST_COLUMNS}, i.image_s3_key, i.failure_reason_code, f.verdict AS feedback_verdict,
-              i.total_home_currency::text AS total_home_currency, i.fx_rate_used::text AS fx_rate_used,
+              i.fx_rate_used::text AS fx_rate_used,
               u.home_currency
        FROM invoice i
        LEFT JOIN merchant m ON m.id = i.merchant_id
@@ -430,7 +436,6 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     return {
       ...toListItem(head.rows[0]),
       imageS3Key: head.rows[0].image_s3_key,
-      totalHomeCurrency: num(head.rows[0].total_home_currency),
       fxRateUsed: num(head.rows[0].fx_rate_used),
       homeCurrency: head.rows[0].home_currency,
       feedbackVerdict: head.rows[0].feedback_verdict,
