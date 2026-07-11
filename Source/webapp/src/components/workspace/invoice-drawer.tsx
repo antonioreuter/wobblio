@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Calendar, ImageIcon, MapPin, Share2, Shield, ShieldCheck, Tag as TagIcon, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react'
+import { ArrowRightLeft, Box, Calendar, Coins, ImageIcon, MapPin, Share2, Shield, ShieldCheck, Tag as TagIcon, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react'
 import { Badge, MerchantIcon, Tag } from '@/components/ds'
 import { fmtMoney, fmtDate, type Invoice } from './invoice-data'
 import { InvoiceLocationGate } from './invoice-location-gate'
@@ -126,12 +126,6 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
           <div className="drawer-head-right">
             <div className="drawer-amounts">
               <span className="drawer-total">{fmtMoney(detail?.total ?? invoice.total, detail?.currency ?? invoice.currency)}</span>
-              {detail?.fxRateUsed != null && detail.totalHomeCurrency != null && detail.homeCurrency && detail.homeCurrency !== detail.currency && (
-                <>
-                  <span className="drawer-sub">≈ {fmtMoney(detail.totalHomeCurrency, detail.homeCurrency)}</span>
-                  <span className="drawer-sub">{`1 ${detail.homeCurrency} = ${(1 / detail.fxRateUsed).toFixed(4)} ${detail.currency}`}</span>
-                </>
-              )}
             </div>
             <button type="button" className="drawer-close" aria-label="Close" onClick={onClose}>
               ✕
@@ -153,6 +147,21 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
               <span className="dd-label"><Shield size={14} /> Status</span>
               <Badge tone={invoice.status[0]}>{invoice.status[1]}</Badge>
             </div>
+            {/* §11 FX: for a foreign receipt, surface the home-currency total and
+                the frozen exchange rate as detail rows (not header amounts) — line
+                items stay in the receipt's original currency. */}
+            {detail?.fxRateUsed != null && detail.totalHomeCurrency != null && detail.homeCurrency && detail.homeCurrency !== detail.currency && (
+              <>
+                <div className="dd-row">
+                  <span className="dd-label"><Coins size={14} /> Total in {detail.homeCurrency}</span>
+                  <span className="dd-val">≈ {fmtMoney(detail.totalHomeCurrency, detail.homeCurrency)}</span>
+                </div>
+                <div className="dd-row">
+                  <span className="dd-label"><ArrowRightLeft size={14} /> Exchange rate</span>
+                  <span className="dd-val">{`1 ${detail.homeCurrency} = ${(1 / detail.fxRateUsed).toFixed(4)} ${detail.currency}`}</span>
+                </div>
+              </>
+            )}
             <div className="dd-row">
               <span className="dd-label"><TagIcon size={14} /> Tags</span>
               <div className="tag-row">
