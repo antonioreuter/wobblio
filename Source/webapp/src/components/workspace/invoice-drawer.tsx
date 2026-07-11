@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Box, Calendar, ImageIcon, MapPin, Share2, Shield, ShieldCheck, Tag as TagIcon, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react'
 import { Badge, MerchantIcon, Tag } from '@/components/ds'
-import { eur, fmtDate, type Invoice } from './invoice-data'
+import { fmtMoney, fmtDate, type Invoice } from './invoice-data'
 import { InvoiceLocationGate } from './invoice-location-gate'
 import { ReceiptViewer } from './receipt-viewer'
 
@@ -30,6 +30,14 @@ interface InvoiceDetail {
   locationLabel?: string | null
   lines: DetailLine[]
   feedbackVerdict?: 'UP' | 'DOWN' | null
+  total?: number | null
+  currency?: string | null
+  // §11 FX header: total converted into the viewer's home currency at the frozen
+  // transaction-date rate, the effective from→home rate, and the home-currency code.
+  // All null when the receipt is already in the home currency or no rate was available.
+  totalHomeCurrency?: number | null
+  fxRateUsed?: number | null
+  homeCurrency?: string | null
 }
 
 export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSplit, onLocationConfirmed }: InvoiceDrawerProps) {
@@ -116,7 +124,15 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
             </div>
           </div>
           <div className="drawer-head-right">
-            <span className="drawer-total">{eur(invoice.total)}</span>
+            <div className="drawer-amounts">
+              <span className="drawer-total">{fmtMoney(detail?.total ?? invoice.total, detail?.currency ?? null)}</span>
+              {detail?.fxRateUsed != null && detail.totalHomeCurrency != null && detail.homeCurrency && detail.homeCurrency !== detail.currency && (
+                <>
+                  <span className="drawer-sub">≈ {fmtMoney(detail.totalHomeCurrency, detail.homeCurrency)}</span>
+                  <span className="drawer-sub">{`1 ${detail.homeCurrency} = ${(1 / detail.fxRateUsed).toFixed(4)} ${detail.currency}`}</span>
+                </>
+              )}
+            </div>
             <button type="button" className="drawer-close" aria-label="Close" onClick={onClose}>
               ✕
             </button>
@@ -181,7 +197,7 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
                   {it.categoryName && <span className="ri-cat">{it.categoryName}</span>}
                 </span>
                 <span className="ri-qty">×{it.quantity}</span>
-                <span className="ri-amt">{eur(it.lineTotal)}</span>
+                <span className="ri-amt">{fmtMoney(it.lineTotal, detail?.currency ?? null)}</span>
               </div>
             ))}
 
@@ -194,7 +210,7 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
             )}
 
             <div className="receipt-totals">
-              <div className="receipt-grand"><span>Total</span><span>{eur(invoice.total)}</span></div>
+              <div className="receipt-grand"><span>Total</span><span>{fmtMoney(detail?.total ?? invoice.total, detail?.currency ?? null)}</span></div>
             </div>
           </div>
 

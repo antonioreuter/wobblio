@@ -84,7 +84,7 @@ export const eur = (n: number): string => '€' + n.toFixed(2)
 // Only unambiguous glyphs live here; everything else (CHF, the 'kr' Nordic trio, …) falls back to
 // its ISO code via currencySymbol(), which is clearer than a shared/ambiguous symbol.
 export const CURRENCY_SYMBOLS: Record<string, string> = {
-  EUR: '€', GBP: '£', USD: '$', PLN: 'zł', CZK: 'Kč',
+  EUR: '€', GBP: '£', USD: '$', PLN: 'zł', CZK: 'Kč', BRL: 'R$',
 }
 export const fmtMoney = (amount: number, currency: string | null): string => {
   if (!currency) return amount.toFixed(2)

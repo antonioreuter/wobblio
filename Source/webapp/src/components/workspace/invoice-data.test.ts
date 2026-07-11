@@ -6,6 +6,7 @@ describe('fmtMoney', () => {
     expect(fmtMoney(12.5, 'EUR')).toBe('€12.50')
     expect(fmtMoney(12.5, 'GBP')).toBe('£12.50')
     expect(fmtMoney(12.5, 'USD')).toBe('$12.50')
+    expect(fmtMoney(12.5, 'BRL')).toBe('R$12.50')
   })
 
   it('falls back to a code prefix for unknown currencies', () => {
@@ -23,10 +24,11 @@ describe('currencySymbol', () => {
     expect(currencySymbol('GBP')).toBe('£')
     expect(currencySymbol('USD')).toBe('$')
     expect(currencySymbol('PLN')).toBe('zł')
+    expect(currencySymbol('BRL')).toBe('R$')
   })
 
   it('falls back to the ISO code for unmapped currencies (never a misleading €)', () => {
-    expect(currencySymbol('BRL')).toBe('BRL')
+    expect(currencySymbol('CHF')).toBe('CHF')
   })
 
   it('returns an empty string when no currency is resolved', () => {
