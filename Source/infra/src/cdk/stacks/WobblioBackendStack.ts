@@ -332,6 +332,7 @@ export class WobblioBackendStack extends Stack {
       dbSecretArn,
     );
     dbSecret.grantRead(apiHandlerFn);
+    dbSecret.grantRead(cronFxRateFetchFn);
     dbSecret.grantRead(cronWaitlistReleaseFn);
     dbSecret.grantRead(cronReleaseHeldLocationsFn);
     dbSecret.grantRead(cronBudgetResetFn);
