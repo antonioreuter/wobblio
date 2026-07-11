@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Share2 } from 'lucide-react'
-import { eur, type Invoice } from './invoice-data'
+import { fmtMoney, type Invoice } from './invoice-data'
 import { ShareLink } from './share-link'
 
 interface ShareDialogProps {
@@ -41,7 +41,7 @@ export function ShareDialog({ invoice, onClose, onCopy }: ShareDialogProps) {
   }, [invoice.id])
 
   const link = linkState.status === 'ready' ? linkState.link : null
-  const waText = `Here's our ${invoice.merchant} receipt (${eur(invoice.total)}) on Wobblio: ${link ?? ''}`
+  const waText = `Here's our ${invoice.merchant} receipt (${fmtMoney(invoice.total, invoice.currency)}) on Wobblio: ${link ?? ''}`
 
   if (typeof document === 'undefined') return null
 
@@ -61,7 +61,7 @@ export function ShareDialog({ invoice, onClose, onCopy }: ShareDialogProps) {
           <div className="confirm-head">
             <h3 className="confirm-title">Share this receipt</h3>
             <p className="confirm-msg">
-              Send the {invoice.merchant} receipt ({eur(invoice.total)}) to your household.
+              Send the {invoice.merchant} receipt ({fmtMoney(invoice.total, invoice.currency)}) to your household.
               Anyone with the link gets a read-only view — share it straight to WhatsApp or copy it below.
             </p>
           </div>

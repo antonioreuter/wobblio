@@ -15,6 +15,7 @@ const invoice = (overrides: Partial<Invoice>): Invoice => ({
   tags: [],
   searchCity: null,
   total: 12.5,
+  currency: 'EUR',
   locationStatus: 'RESOLVED',
   locationCountryCode: 'NL',
   locationRegionCode: null,

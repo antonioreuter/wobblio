@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { eur, type Invoice } from './invoice-data'
+import { fmtMoney, type Invoice } from './invoice-data'
 import { type Budget } from './budget-data'
 import { InvoiceDrawer } from './invoice-drawer'
 import { ConfirmDialog } from './confirm-dialog'
@@ -141,7 +141,7 @@ function completionToast(inv: Invoice): { msg: string; tone: ToastTone } | null 
   switch (inv.rawStatus) {
     case 'PARSED':
     case 'NEEDS_REVIEW':
-      return { msg: `Receipt ready — ${inv.merchant}, ${eur(inv.total)}.`, tone: 'success' }
+      return { msg: `Receipt ready — ${inv.merchant}, ${fmtMoney(inv.total, inv.currency)}.`, tone: 'success' }
     case 'SUSPECTED_DUPLICATE':
       return { msg: 'Looks like a duplicate — open it to confirm or remove it.', tone: 'success' }
     case 'FAILED_PROCESSING':

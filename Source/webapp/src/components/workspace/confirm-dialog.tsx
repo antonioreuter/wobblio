@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, Trash2 } from 'lucide-react'
 import { MerchantIcon } from '@/components/ds'
-import { eur, fmtDate, type Invoice } from './invoice-data'
+import { fmtMoney, fmtDate, type Invoice } from './invoice-data'
 
 interface ConfirmDialogProps {
   title: string
@@ -62,7 +62,7 @@ export function ConfirmDialog({
               <span className="cp-name">{invoice.merchant}</span>
               <span className="cp-sub">{fmtDate(invoice.dateISO)} · {invoice.category}</span>
             </div>
-            <span className="cp-amt">{eur(invoice.total)}</span>
+            <span className="cp-amt">{fmtMoney(invoice.total, invoice.currency)}</span>
           </div>
         )}
         <div className="confirm-actions">

@@ -102,6 +102,7 @@ export function mapInvoice(b: BackendInvoice): Invoice {
     tags: b.searchTagLabels ?? b.searchTags ?? [],
     searchCity: b.searchCity ?? null,
     total: b.total ?? 0,
+    currency: b.currency ?? null,
     locationStatus: b.locationStatus ?? 'RESOLVED',
     locationCountryCode: b.locationCountryCode ?? null,
     locationRegionCode: b.locationRegionCode ?? null,

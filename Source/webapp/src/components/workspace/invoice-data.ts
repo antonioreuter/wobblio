@@ -23,6 +23,9 @@ export interface Invoice {
   // Free-text receipt city, searchable but never rendered as a tag chip.
   searchCity: string | null
   total: number
+  // ISO 4217 code the `total` is charged in (from the list API). Null on legacy
+  // rows; the drawer/table fall back to a symbol-less amount rather than a euro lie.
+  currency: string | null
   locationStatus: LocationStatus
   locationCountryCode: string | null
   locationRegionCode: string | null
@@ -122,6 +125,7 @@ function buildInvoices(): Invoice[] {
       tags,
       searchCity: null,
       total: Math.round((8 + ((k * 7.37) % 72)) * 100) / 100,
+      currency: 'EUR',
       locationStatus: 'RESOLVED',
       locationCountryCode: null,
       locationRegionCode: null,

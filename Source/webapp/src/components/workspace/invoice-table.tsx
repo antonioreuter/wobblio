@@ -3,7 +3,7 @@
 import type { CSSProperties } from 'react'
 import { MapPin, ReceiptText, Share2, Trash2 } from 'lucide-react'
 import { Badge, Tag, CategoryIcon } from '@/components/ds'
-import { eur, fmtDate, needsLocationConfirmation, type Invoice } from './invoice-data'
+import { fmtMoney, fmtDate, needsLocationConfirmation, type Invoice } from './invoice-data'
 import { StatusHelpButton } from './status-legend'
 
 interface InvoiceTableProps {
@@ -107,7 +107,7 @@ export function InvoiceTable({
                     {inv.tags.map((t) => <Tag key={t}>{t}</Tag>)}
                   </div>
                 </td>
-                <td className="num cell-total">{eur(inv.total)}</td>
+                <td className="num cell-total">{fmtMoney(inv.total, inv.currency)}</td>
                 <td className="cell-actions">
                   <div className="row-actions">
                     <button

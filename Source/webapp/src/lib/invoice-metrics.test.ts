@@ -15,6 +15,7 @@ describe('invoice-metrics Unit Tests', () => {
     tags: [],
     searchCity: null,
     total,
+    currency: 'EUR',
     locationStatus: 'RESOLVED',
     locationCountryCode: null,
     locationRegionCode: null,

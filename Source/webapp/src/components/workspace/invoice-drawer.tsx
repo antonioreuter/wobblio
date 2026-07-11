@@ -125,7 +125,7 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
           </div>
           <div className="drawer-head-right">
             <div className="drawer-amounts">
-              <span className="drawer-total">{fmtMoney(detail?.total ?? invoice.total, detail?.currency ?? null)}</span>
+              <span className="drawer-total">{fmtMoney(detail?.total ?? invoice.total, detail?.currency ?? invoice.currency)}</span>
               {detail?.fxRateUsed != null && detail.totalHomeCurrency != null && detail.homeCurrency && detail.homeCurrency !== detail.currency && (
                 <>
                   <span className="drawer-sub">≈ {fmtMoney(detail.totalHomeCurrency, detail.homeCurrency)}</span>
@@ -197,7 +197,7 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
                   {it.categoryName && <span className="ri-cat">{it.categoryName}</span>}
                 </span>
                 <span className="ri-qty">×{it.quantity}</span>
-                <span className="ri-amt">{fmtMoney(it.lineTotal, detail?.currency ?? null)}</span>
+                <span className="ri-amt">{fmtMoney(it.lineTotal, detail?.currency ?? invoice.currency)}</span>
               </div>
             ))}
 
@@ -210,7 +210,7 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
             )}
 
             <div className="receipt-totals">
-              <div className="receipt-grand"><span>Total</span><span>{fmtMoney(detail?.total ?? invoice.total, detail?.currency ?? null)}</span></div>
+              <div className="receipt-grand"><span>Total</span><span>{fmtMoney(detail?.total ?? invoice.total, detail?.currency ?? invoice.currency)}</span></div>
             </div>
           </div>
 
