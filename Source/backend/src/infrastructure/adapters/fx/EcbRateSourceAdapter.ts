@@ -1,8 +1,10 @@
 import type { EcbDailyRates, IEcbRateSource } from '@core/ports/fx/IEcbRateSource';
 
 const ECB_DAILY_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml';
-const DATE_RE = /time="(\d{4}-\d{2}-\d{2})"/;
-const RATE_RE = /currency="([A-Z]{3})"\s+rate="([\d.]+)"/g;
+// ECB serves attributes single-quoted in the daily file but double-quoted in the 90-day history
+// file, so accept either quote style rather than assume one.
+const DATE_RE = /time=["'](\d{4}-\d{2}-\d{2})["']/;
+const RATE_RE = /currency=["']([A-Z]{3})["']\s+rate=["']([\d.]+)["']/g;
 
 // Fetches the ECB daily reference rates (free, no key). The document is a small, stable XML with
 // one <Cube time=...> and a flat list of <Cube currency=.. rate=../> — parsed by regex to avoid
