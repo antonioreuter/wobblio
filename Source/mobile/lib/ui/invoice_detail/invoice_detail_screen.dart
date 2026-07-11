@@ -225,6 +225,36 @@ class _HeaderCard extends StatelessWidget {
               ),
             ],
           ),
+          // §11 FX: for a foreign receipt, show the total in the viewer's home
+          // currency plus the exchange rate used — line items stay in the
+          // receipt's original currency (Option 1).
+          if (detail.showsCurrencyConversion) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('IN ${detail.homeCurrency}',
+                    style: AppTypography.overline(),),
+                Text(
+                  '≈ ${formatMoney(detail.homeCurrency!, detail.totalHomeCurrency!)}',
+                  style: AppTypography.body(
+                      size: 16,
+                      weight: FontWeight.w700,
+                      color: AppColors.textSecondary,),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                detail.exchangeRateLabel ?? '',
+                style: AppTypography.body(
+                    size: 12, color: AppColors.textMuted,),
+              ),
+            ),
+          ],
         ],
       ),
     );

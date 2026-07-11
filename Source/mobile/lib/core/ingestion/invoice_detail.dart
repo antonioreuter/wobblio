@@ -82,6 +82,9 @@ class InvoiceDetail extends Equatable {
     required this.currency,
     required this.imageUrl,
     required this.lines,
+    this.totalHomeCurrency,
+    this.fxRateUsed,
+    this.homeCurrency,
     this.locationLabel,
     this.feedbackVerdict,
     this.processingStage,
@@ -96,6 +99,15 @@ class InvoiceDetail extends Equatable {
   final String currency;
   final String? imageUrl; // presigned GET (≤300s)
   final List<InvoiceLineDetail> lines;
+
+  /// §11 FX header (18/foreign receipts): the total converted into the viewer's
+  /// home currency at the frozen transaction-date rate, the effective from→home
+  /// rate, and the home-currency code. All null when the receipt is already in
+  /// the home currency or no rate was available — the header then shows only the
+  /// original amount.
+  final double? totalHomeCurrency;
+  final double? fxRateUsed;
+  final String? homeCurrency;
   final String? locationLabel; // e.g. "North Brabant, Netherlands"
   final String? feedbackVerdict; // 'UP' | 'DOWN' | null, raw backend value
 
@@ -105,6 +117,26 @@ class InvoiceDetail extends Equatable {
   final String? processingStage;
 
   bool get isSuspectedDuplicate => status == 'SUSPECTED_DUPLICATE';
+
+  /// True when the receipt was charged in a currency other than the viewer's
+  /// home currency and a conversion is available — the only case the detail
+  /// header shows the converted total + exchange rate alongside the original.
+  bool get showsCurrencyConversion =>
+      fxRateUsed != null &&
+      totalHomeCurrency != null &&
+      homeCurrency != null &&
+      homeCurrency != currency;
+
+  /// Human-readable rate for the header, expressed as units of the receipt
+  /// currency per one unit of home currency (e.g. "1 EUR = 5.8505 BRL").
+  /// [fxRateUsed] is stored as home-per-receipt-unit, so the intuitive
+  /// receipt-per-home figure is its reciprocal. Null when no conversion applies.
+  String? get exchangeRateLabel {
+    final rate = fxRateUsed;
+    if (!showsCurrencyConversion || rate == null || rate == 0) return null;
+    final receiptPerHome = 1 / rate;
+    return '1 $homeCurrency = ${receiptPerHome.toStringAsFixed(4)} $currency';
+  }
 
   @override
   List<Object?> get props => [
@@ -116,6 +148,9 @@ class InvoiceDetail extends Equatable {
         currency,
         imageUrl,
         lines,
+        totalHomeCurrency,
+        fxRateUsed,
+        homeCurrency,
         locationLabel,
         feedbackVerdict,
         processingStage,

@@ -392,11 +392,14 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
   }
 
   async getDetail(invoiceId: string): Promise<InvoiceDetail | null> {
-    const head = await this.client.query<InvoiceListRow & { image_s3_key: string; feedback_verdict: InvoiceVerdict | null; failure_reason_code: FailureReasonCode | null }>(
-      `SELECT ${LIST_COLUMNS}, i.image_s3_key, i.failure_reason_code, f.verdict AS feedback_verdict
+    const head = await this.client.query<InvoiceListRow & { image_s3_key: string; feedback_verdict: InvoiceVerdict | null; failure_reason_code: FailureReasonCode | null; total_home_currency: string | null; fx_rate_used: string | null; home_currency: string | null }>(
+      `SELECT ${LIST_COLUMNS}, i.image_s3_key, i.failure_reason_code, f.verdict AS feedback_verdict,
+              i.total_home_currency::text AS total_home_currency, i.fx_rate_used::text AS fx_rate_used,
+              u.home_currency
        FROM invoice i
        LEFT JOIN merchant m ON m.id = i.merchant_id
        LEFT JOIN invoice_feedback f ON f.invoice_id = i.id
+       LEFT JOIN app_user u ON u.id = (current_setting('app.current_tenant_id', true))::uuid
        WHERE i.id = $1`,
       [invoiceId],
     );
@@ -427,6 +430,9 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     return {
       ...toListItem(head.rows[0]),
       imageS3Key: head.rows[0].image_s3_key,
+      totalHomeCurrency: num(head.rows[0].total_home_currency),
+      fxRateUsed: num(head.rows[0].fx_rate_used),
+      homeCurrency: head.rows[0].home_currency,
       feedbackVerdict: head.rows[0].feedback_verdict,
       failureReasonCode: head.rows[0].failure_reason_code,
       lines: detailLines,

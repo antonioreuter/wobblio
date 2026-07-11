@@ -168,6 +168,13 @@ export interface InvoiceDetailLine {
 export interface InvoiceDetail extends InvoiceListItem {
   imageS3Key: string;
   lines: InvoiceDetailLine[];
+  // §11 FX header: the receipt total converted into the viewer's home currency at the frozen
+  // transaction-date rate, the effective from→home rate that produced it, and the home-currency
+  // code the converted figure is denominated in. All null when the invoice is already in the home
+  // currency or no rate was available — the detail header then shows only the original amount.
+  totalHomeCurrency: number | null;
+  fxRateUsed: number | null;
+  homeCurrency: string | null;
   // The tenant's accuracy verdict on this receipt, or null if never rated.
   feedbackVerdict: InvoiceVerdict | null;
   // Friendly failure reason for a FAILED_PROCESSING invoice (§03.4), powering the "why?"

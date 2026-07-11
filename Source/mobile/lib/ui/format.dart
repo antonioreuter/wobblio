@@ -9,6 +9,7 @@ String formatMoney(String currency, double amount) {
     'EUR' => '€$value',
     'USD' => '\$$value',
     'GBP' => '£$value',
+    'BRL' => 'R\$$value',
     _ => '$currency $value',
   };
 }
