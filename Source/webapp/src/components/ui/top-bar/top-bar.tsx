@@ -18,7 +18,6 @@ const ROUTE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/invoices': 'Invoices',
   '/spend': 'Spend Breakdown',
-  '/review': 'Awaiting Check',
   '/reports': 'Price Trends',
   '/lists': 'Shopping Lists',
   '/budgets': 'Budgets',

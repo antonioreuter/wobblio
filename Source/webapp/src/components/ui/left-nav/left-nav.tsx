@@ -4,7 +4,6 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  CheckSquare,
   LayoutDashboard,
   LineChart,
   PieChart,
@@ -33,7 +32,6 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/invoices', icon: ReceiptText, label: 'Invoices' },
-  { href: '/review', icon: CheckSquare, label: 'Awaiting Check' },
   { href: '/reports', icon: LineChart, label: 'Price Trends' },
   { href: '/spend', icon: PieChart, label: 'Spend Breakdown' },
   { href: '/lists', icon: ShoppingCart, label: 'Shopping Lists' },
