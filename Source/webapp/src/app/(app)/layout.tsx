@@ -61,8 +61,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="workspace">
         <NavDrawerProvider>
           <div className="app-shell" data-surface="calm">
-            <LeftNav userRole={userRole} />
-            <LeftNavDrawer userRole={userRole} />
+            <LeftNav />
+            <LeftNavDrawer />
             <div className="app-body">
               <WorkspaceProvider pdfUploadEnabled={userRole !== 'STANDARD'} userRole={userRole}>
                 <TopBar userInitials={userInitials} userRole={userRole} />

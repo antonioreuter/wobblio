@@ -16,7 +16,6 @@ export {
   type TrendPoint,
   type TrendUnit,
 } from './use-price-trends'
-export { ComingSoon } from './coming-soon'
 export { ConfirmDialog } from './confirm-dialog'
 export { BudgetList } from './budget-list'
 export { BudgetFormDialog } from './budget-form-dialog'

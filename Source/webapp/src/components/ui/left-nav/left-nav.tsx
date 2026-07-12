@@ -10,17 +10,12 @@ import {
   ReceiptText,
   Settings,
   ShoppingCart,
-  Terminal,
   Users,
   Wallet,
   X,
 } from 'lucide-react'
 import { WobblioLogo } from '@/components/ds'
 import { useNavDrawer } from './nav-drawer-context'
-
-interface LeftNavProps {
-  userRole?: string
-}
 
 interface NavItem {
   href: string
@@ -40,24 +35,15 @@ const PRIMARY_NAV: NavItem[] = [
   { href: '/settings', icon: Settings, label: 'Settings' },
 ]
 
-const ADMIN_NAV: NavItem = {
-  href: '/admin',
-  icon: Terminal,
-  label: 'Console',
-  ariaLabel: 'Admin',
-}
-
 function NavLinks({
-  userRole,
   variant,
   onNavigate,
 }: {
-  userRole?: string
   variant: 'rail' | 'drawer'
   onNavigate?: () => void
 }) {
   const pathname = usePathname() ?? ''
-  const items = userRole === 'ADMIN' ? [...PRIMARY_NAV, ADMIN_NAV] : PRIMARY_NAV
+  const items = PRIMARY_NAV
 
   return (
     <>
@@ -96,20 +82,20 @@ function NavLinks({
   )
 }
 
-export function LeftNav({ userRole }: LeftNavProps) {
+export function LeftNav() {
   return (
     <aside className="app-rail">
       <Link href="/dashboard" className="rail-logo" aria-label="Wobblio">
         <WobblioLogo size={30} />
       </Link>
       <nav className="rail-menu" aria-label="App navigation">
-        <NavLinks userRole={userRole} variant="rail" />
+        <NavLinks variant="rail" />
       </nav>
     </aside>
   )
 }
 
-export function LeftNavDrawer({ userRole }: LeftNavProps) {
+export function LeftNavDrawer() {
   const { open, closeDrawer } = useNavDrawer()
 
   useEffect(() => {
@@ -150,7 +136,7 @@ export function LeftNavDrawer({ userRole }: LeftNavProps) {
           </button>
         </div>
         <nav className="drawer-menu" aria-label="App navigation">
-          <NavLinks userRole={userRole} variant="drawer" onNavigate={closeDrawer} />
+          <NavLinks variant="drawer" onNavigate={closeDrawer} />
         </nav>
       </aside>
     </>

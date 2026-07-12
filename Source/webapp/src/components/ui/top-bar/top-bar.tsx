@@ -23,7 +23,6 @@ const ROUTE_TITLES: Record<string, string> = {
   '/budgets': 'Budgets',
   '/household': 'Household',
   '/settings': 'Settings',
-  '/admin': 'Console',
 }
 
 function deriveTitle(pathname: string): string {
