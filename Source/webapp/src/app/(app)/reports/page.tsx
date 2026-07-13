@@ -6,7 +6,9 @@ import { Calendar, Clock, Crown, LineChart as LineChartIcon, Lock, Table2, Trash
 import { Card } from '@/components/ds'
 import { formatDelta, formatViewMoney } from '@/lib/currency'
 import {
-  currencySymbol,
+  ComparisonSetsPanel,
+  fetchComparisonSets,
+  type ComparisonSet,
   FilterSelect,
   fmtDate,
   inRange,
@@ -24,7 +26,7 @@ import {
   type TrendComparison,
   type TrendPreset,
   type TrendProduct,
-  type TrendUnit,
+  type SeriesSize,
 } from '@/components/workspace'
 
 interface ChartSeries {
@@ -38,7 +40,8 @@ interface ChartSeries {
   stale: boolean
   staleDays: number
   own: boolean // the caller's own purchases — dashed line, "Your purchases" legend
-  unit: TrendUnit // null = per item (size unknown); else €/unit and cross-comparable
+  size: SeriesSize // descriptive pack size chip; prices are always the pack price paid (fix 09/01)
+  ambiguous: boolean // 09/05: name may cover different SKUs at this store — shown as a warning
   // Own-mode only (§6.5.5 personal history); null/0 for market series.
   purchaseCount: number
   lastPurchasedOn: string | null
@@ -52,14 +55,12 @@ const OWN_LABEL = 'Your purchases'
 // Market is Premium-only — STANDARD is pinned to 'own'.
 type CompareMode = 'own' | 'market'
 
-// Honest price-unit label. A known pack size makes the value a comparable <sym>/unit; an unknown
-// size means the value is per item (per pack) and must not be compared across stores. `sym` is the
-// view currency glyph (from the response currency), never a hardcoded euro.
-function unitLabel(unit: TrendUnit, sym: string): string {
-  if (unit === 'L') return `${sym}/L`
-  if (unit === 'KG') return `${sym}/kg`
-  if (unit === 'PIECE') return `${sym}/pc`
-  return 'per item · size not detected'
+// Descriptive size chip (fix 09/01). Prices are always the pack price paid — never per unit —
+// so the chip only describes the pack: the receipt/annotated size ("2L", "2L · set by you") or
+// "size not stated" when unknown. Never a €/unit label.
+function sizeChip(size: SeriesSize): string {
+  if (size.sizeText === null) return 'size not stated'
+  return size.sizeSource === 'USER' ? `${size.sizeText} · set by you` : size.sizeText
 }
 
 export default function ReportsPage() {
@@ -96,6 +97,16 @@ export default function ReportsPage() {
   // public market trend to Premium (returns empty `lines` otherwise).
   const { comparison, loading } = usePriceTrends(ids, country, region, true)
 
+  // 09/04 comparison sets offered as one-tap presets that prefill the picker. Sets with >3 members
+  // are truncated to the first 3 (TREND_MAX_PRODUCTS); the user can then adjust.
+  const [presets, setPresets] = useState<ComparisonSet[]>([])
+  useEffect(() => { void fetchComparisonSets().then(setPresets) }, [])
+  const applyPreset = (set: ComparisonSet) => {
+    setSelected(
+      set.members.slice(0, MAX_PRODUCTS).map((m) => ({ id: m.productId, name: m.displayName, brand: m.brand })),
+    )
+  }
+
   const atMax = selected.length >= MAX_PRODUCTS
   const add = (p: TrendProduct) => {
     if (!atMax && !selected.some((s) => s.id === p.id)) setSelected((s) => [...s, p])
@@ -112,7 +123,7 @@ export default function ReportsPage() {
     from && to ? Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) : 0
   const rangeInvalid = preset === 'custom' && from !== '' && to !== '' && (rangeDays < 0 || rangeDays > 183)
 
-  const { series, labels, unitWarning } = useMemo(
+  const { series, labels, sizeWarning } = useMemo(
     () => buildChart(comparison, selected, mode, preset, from, to, rangeInvalid),
     [comparison, selected, mode, preset, from, to, rangeInvalid],
   )
@@ -227,6 +238,23 @@ export default function ReportsPage() {
               </span>
             ))}
           </div>
+          {presets.filter((s) => s.members.length > 0).length > 0 && (
+            <div className="trend-picker" style={{ marginTop: 6 }} data-testid="trend-presets">
+              <span className="filter-label" style={{ marginRight: 4 }}>Comparison sets:</span>
+              {presets.filter((s) => s.members.length > 0).map((set) => (
+                <button
+                  type="button"
+                  key={set.id}
+                  className="btn btn--text"
+                  style={{ padding: '4px 10px' }}
+                  onClick={() => applyPreset(set)}
+                  data-testid="trend-preset"
+                >
+                  {set.name ?? 'Untitled set'} ({Math.min(set.members.length, MAX_PRODUCTS)})
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="filter-foot">
@@ -249,7 +277,7 @@ export default function ReportsPage() {
 
       <Card className="panel">
         <div className="panel-header" style={{ marginBottom: 8 }}>
-          <span className="panel-title">Price per unit</span>
+          <span className="panel-title">Price paid per item</span>
           <div className="trend-mode-row">
             <div className="trend-mode-toggle" role="group" aria-label="Comparison basis">
               <button
@@ -308,9 +336,12 @@ export default function ReportsPage() {
           view={view}
           series={series}
           labels={labels}
-          unitWarning={unitWarning}
+          sizeWarning={sizeWarning}
         />
       </Card>
+
+      {/* 09/04 — user-asserted cross-merchant comparability, tenant-scoped. */}
+      <ComparisonSetsPanel countryCode={country} regionCode={region} />
     </div>
   )
 }
@@ -323,7 +354,7 @@ function TrendChartBody({
   view,
   series,
   labels,
-  unitWarning,
+  sizeWarning,
 }: {
   loading: boolean
   hasProducts: boolean
@@ -332,7 +363,7 @@ function TrendChartBody({
   view: 'chart' | 'table'
   series: ChartSeries[]
   labels: string[]
-  unitWarning: boolean
+  sizeWarning: boolean
 }) {
   if (!hasProducts) {
     return (
@@ -370,25 +401,28 @@ function TrendChartBody({
     )
   }
 
-  // View currency (§6.5 honesty) — the whole comparison is single-currency; render its symbol,
-  // never a hardcoded euro.
+  // View currency (§6.5 honesty) — the whole comparison is single-currency.
   const currency = comparison?.currency ?? null
-  const sym = currencySymbol(currency)
 
   return (
     <>
-      {unitWarning && (
-        <div className="trend-unit-caveat" data-testid="trends-unit-caveat" role="note">
+      {sizeWarning && (
+        <div className="trend-unit-caveat" data-testid="trends-size-note" role="note">
           <Clock size={13} />
           <span>
-            Sizes aren’t detected for some items, so those lines show price <strong>per item</strong> —
-            not a per-unit value.{' '}
-            {mode === 'market'
-              ? 'Confirm a size on the receipt to compare across stores.'
-              : 'Confirm a size on the receipt to track the per-unit price.'}
+            Sizes differ or aren’t stated — you’re comparing prices <strong>as paid</strong>, not per unit.
           </span>
         </div>
       )}
+      {series.filter((s) => s.ambiguous).map((s) => (
+        <div key={`amb-${s.id}`} className="trend-unit-caveat" data-testid="trends-ambiguity-banner" role="note">
+          <Clock size={13} />
+          <span>
+            <strong>{s.product} · {s.merchant}</strong> — this name may cover different products at this
+            store, so its prices vary widely. It isn’t crowned as a best price.
+          </span>
+        </div>
+      ))}
       {view === 'table' ? (
         <TrendTable series={series} labels={labels} currency={currency} />
       ) : (
@@ -396,7 +430,7 @@ function TrendChartBody({
       )}
       <div className="trend-legend">
         {series.map((s) => (
-          <LegendItem key={s.id} s={s} mode={mode} currency={currency} sym={sym} />
+          <LegendItem key={s.id} s={s} mode={mode} currency={currency} />
         ))}
       </div>
     </>
@@ -410,12 +444,10 @@ function LegendItem({
   s,
   mode,
   currency,
-  sym,
 }: {
   s: ChartSeries
   mode: CompareMode
   currency: string | null
-  sym: string
 }) {
   const money = (v: number | null) => (v !== null ? formatViewMoney(v, currency) : '—')
   const vals = s.data.filter((v): v is number => v !== null)
@@ -433,8 +465,8 @@ function LegendItem({
       <div className="legend-meta">
         <span className="legend-name">
           {s.product} · <strong>{s.merchant}</strong>
-          <span className="legend-unit" title={s.unit ? 'comparable per-unit price' : 'size not detected — price per item'}>
-            {unitLabel(s.unit, sym)}
+          <span className="legend-unit" title={s.size.sizeText ? 'pack size' : 'size not stated'}>
+            {sizeChip(s.size)}
           </span>
           {s.stale && (
             <span className="legend-stale" title={`No data for ${s.staleDays} days`}>
@@ -478,11 +510,11 @@ function buildChart(
   from: string,
   to: string,
   rangeInvalid: boolean,
-): { series: ChartSeries[]; labels: string[]; unitWarning: boolean } {
+): { series: ChartSeries[]; labels: string[]; sizeWarning: boolean } {
   // Only the active mode's source feeds the chart — own purchases or the market trend, never both.
   const sourceLines = mode === 'market' ? comparison?.lines ?? [] : comparison?.ownHistory ?? []
   if (!comparison || sourceLines.length === 0) {
-    return { series: [], labels: [], unitWarning: false }
+    return { series: [], labels: [], sizeWarning: false }
   }
 
   const nameById = new Map(products.map((p) => [p.id, p.name]))
@@ -516,7 +548,8 @@ function buildChart(
             stale: l.stale,
             staleDays: l.staleDays,
             own: false,
-            unit: l.unit,
+            size: l.size,
+            ambiguous: l.ambiguous,
             purchaseCount: 0,
             lastPurchasedOn: null,
             lastPrice: null,
@@ -538,7 +571,8 @@ function buildChart(
             stale: false,
             staleDays: 0,
             own: true,
-            unit: l.unit,
+            size: l.size,
+            ambiguous: false,
             purchaseCount: l.purchaseCount,
             lastPurchasedOn: l.lastPurchasedOn,
             lastPrice: l.lastPrice,
@@ -550,9 +584,9 @@ function buildChart(
   const visible = modeSeries.filter(
     (s) => s.data.some((v) => v !== null) || s.discounts.some((v) => v !== null),
   )
-  // Honesty guard: warn when any visible line has an unknown size (per-item) or the visible
-  // lines mix units — those lines are NOT directly comparable across stores.
-  const units = new Set(visible.map((s) => s.unit))
-  const unitWarning = units.has(null) || [...units].filter((u) => u !== null).length > 1
-  return { series: visible, labels, unitWarning }
+  // Honesty guard (fix 09/01): note when a plotted comparison mixes differing or unknown sizes —
+  // prices are shown as paid, never per unit. A single series is always self-consistent.
+  const sizeTexts = new Set(visible.map((s) => s.size.sizeText))
+  const sizeWarning = visible.length > 1 && (sizeTexts.has(null) || sizeTexts.size > 1)
+  return { series: visible, labels, sizeWarning }
 }

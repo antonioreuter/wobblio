@@ -81,27 +81,30 @@ describe('Data-intelligence adapters — Postgres', () => {
         displayName: `Test Milk ${randomUUID().slice(0, 8)}`,
         brand: null,
         categoryId: 'cat-dairy',
+        countryCode: 'NL',
+        merchantId: null,
         baseUnit: 'L',
         packSizeBaseUnits: 1,
         embedding,
       });
 
-      const matches = await catalog.searchByEmbedding(embedding, 'cat-dairy', 5);
+      // Candidate search is merchant-scoped (09/02); null here matches the null-merchant product.
+      const matches = await catalog.searchByEmbedding(null, embedding, 'cat-dairy', 'NL', 5);
       const self = matches.find(m => m.productId === productId);
       expect(self).toBeDefined();
       expect(self!.similarity).toBeGreaterThan(0.99);
       expect(self!.categoryId).toBe('cat-dairy');
 
-      const filteredOut = await catalog.searchByEmbedding(embedding, 'cat-transport', 5);
+      const filteredOut = await catalog.searchByEmbedding(null, embedding, 'cat-transport', 'NL', 5);
       expect(filteredOut.some(m => m.productId === productId)).toBe(false);
     });
 
     it('writes back a merchant-scoped alias and finds it exactly', async () => {
       const catalog = new ProductCatalogAdapter(pool);
-      const productId = await catalog.createProvisionalProduct({ displayName: 'Test Bread', brand: null, categoryId: 'cat-bakery', baseUnit: 'PIECE', packSizeBaseUnits: null, embedding: uniqueEmbedding() });
+      const productId = await catalog.createProvisionalProduct({ displayName: 'Test Bread', brand: null, categoryId: 'cat-bakery', countryCode: 'NL', merchantId: null, baseUnit: 'PIECE', packSizeBaseUnits: null, embedding: uniqueEmbedding() });
       const alias = `BREAD ${randomUUID().slice(0, 8)}`.toUpperCase();
       await catalog.writeAlias({ productId, aliasNormalized: alias, merchantId: null, source: 'AUTO_LLM' });
-      const found = await catalog.findExactAlias(null, alias);
+      const found = await catalog.findExactAlias(null, alias, 'NL');
       expect(found?.productId).toBe(productId);
       expect(found?.baseUnit).toBe('PIECE');
     });
@@ -109,7 +112,7 @@ describe('Data-intelligence adapters — Postgres', () => {
     it('persists brand and drops the dead concept / alias-counter columns', async () => {
       const catalog = new ProductCatalogAdapter(pool);
       const name = `Branded Item ${randomUUID().slice(0, 8)}`;
-      const productId = await catalog.createProvisionalProduct({ displayName: name, brand: 'Lucovitaal', categoryId: 'cat-vitamins', baseUnit: 'PIECE', packSizeBaseUnits: null, embedding: uniqueEmbedding() });
+      const productId = await catalog.createProvisionalProduct({ displayName: name, brand: 'Lucovitaal', categoryId: 'cat-vitamins', countryCode: 'NL', merchantId: null, baseUnit: 'PIECE', packSizeBaseUnits: null, embedding: uniqueEmbedding() });
       await catalog.writeAlias({ productId, aliasNormalized: name.toUpperCase(), merchantId: null, source: 'AUTO_LLM' });
 
       const stored = await pool.query('SELECT brand FROM product WHERE id = $1', [productId]);
@@ -133,8 +136,8 @@ describe('Data-intelligence adapters — Postgres', () => {
       await new PriceObservationStoreAdapter(pool).emit([
         {
           productId, merchantId: merchant!.merchantId, countryCode: 'NL', regionCode: 'NL-NB',
-          observedOn: '2026-06-10', packPrice: 1.29, normalizedUnitPrice: 1.29, baseUnit: 'L',
-          currency: 'EUR', wasDiscounted: false, quarantined: true, contributorTrustAtWrite: 50,
+          observedOn: '2026-06-10', packPrice: 1.29,
+          currency: 'EUR', wasDiscounted: false, quality: 'AUTO', quarantined: true, contributorTrustAtWrite: 50,
         },
       ]);
 

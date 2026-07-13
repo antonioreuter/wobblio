@@ -54,6 +54,8 @@ export const SHOPPING_LIST_CATEGORY_LABELS: Record<ShoppingListCategoryId, strin
 
 export type Confidence = 'high' | 'medium' | 'low'
 
+export type ComparabilityReason = 'comparable' | 'watch_only' | 'ambiguous' | 'no_link'
+
 export interface StoreLine {
   productId: string
   displayName: string
@@ -63,6 +65,17 @@ export interface StoreLine {
   observationCount: number
   lastObservedOn: string | null
   confidence: Confidence
+  // 09/05: why this item's comparison-set siblings were (or weren't) considered — drives the
+  // "linked/watch-only/ambiguous/no link" hint so the UI explains instead of silently omitting.
+  reason?: ComparabilityReason
+}
+
+// 09/05 zero-usable-links fallback: own-history whole-basket total per merchant, never crowned.
+export interface OwnHistoryBasketTotal {
+  merchantId: string
+  name: string
+  total: number
+  itemsPriced: number
 }
 
 export interface StoreSubList {
@@ -80,6 +93,8 @@ export interface OptimizationResult {
   stores: StoreSubList[]
   unresolvedItems: string[]
   reason: string | null
+  // Populated only in the zero-usable-links fallback (09/05); null otherwise.
+  ownHistoryBasket?: OwnHistoryBasketTotal[] | null
 }
 
 // Active-list cap by role (§10): STANDARD gets 3, everyone else 10. Mirrors the

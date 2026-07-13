@@ -56,7 +56,7 @@ describe('ProductNormalizer', () => {
 
     const result = await sut.normalize('m1', [line('MELK', 1, 2)], COUNTRY);
 
-    expect(result.lines[0]).toMatchObject({ productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1, normalizedUnitPrice: 2, productProvisional: false });
+    expect(result.lines[0]).toMatchObject({ productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1, sizeSource: null, productProvisional: false });
     expect(result.suggestedTags).toEqual([]);
     expect(converse).not.toHaveBeenCalled();
     expect(embedder.embed).not.toHaveBeenCalled();
@@ -73,8 +73,9 @@ describe('ProductNormalizer', () => {
     expect(result.lines[0]).toMatchObject({ productId: 'p2', productProvisional: false, lowConfidence: false });
     expect(result.suggestedTags).toEqual(['groceries']);
     expect(catalog.writeAlias).toHaveBeenCalledWith(expect.objectContaining({ productId: 'p2', source: 'AUTO_LLM' }));
-    // Embedding search is country-scoped too (3rd positional arg).
-    expect(catalog.searchByEmbedding).toHaveBeenCalledWith(expect.anything(), expect.anything(), COUNTRY, 1);
+    // Per-merchant identity (09/02): candidate search is scoped to the receipt's merchant (1st arg)
+    // and country (4th arg), so a ≥0.92 match at another merchant is never even a candidate.
+    expect(catalog.searchByEmbedding).toHaveBeenCalledWith('m1', expect.anything(), expect.anything(), COUNTRY, 1);
   });
 
   it('flags the low-confidence band (0.85–0.92)', async () => {
@@ -95,7 +96,8 @@ describe('ProductNormalizer', () => {
     const result = await sut.normalize('m1', [line('Discount 1+1 Lucovitaal')], COUNTRY);
 
     expect(result.lines[0]).toMatchObject({ productId: 'p-new', productProvisional: true, lowConfidence: false });
-    expect(catalog.createProvisionalProduct).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'Lucovitaal', brand: 'Lucovitaal', countryCode: COUNTRY }));
+    // Per-merchant identity (09/02): a new product is stamped with the receipt's merchant.
+    expect(catalog.createProvisionalProduct).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'Lucovitaal', brand: 'Lucovitaal', countryCode: COUNTRY, merchantId: 'm1' }));
   });
 
   it('creates a provisional product when the best match is below the floor', async () => {
@@ -107,12 +109,27 @@ describe('ProductNormalizer', () => {
     expect(result.lines[0].productProvisional).toBe(true);
   });
 
+  it('yields a distinct product per merchant for the same line text (09/02 per-merchant identity)', async () => {
+    // Each merchant's candidate search is scoped to that merchant, so an identical name at a new
+    // merchant finds no candidate and creates its own product stamped with that merchant.
+    converse.mockResolvedValue(expansion([item({ display_name: 'Halfvolle melk' })]));
+    catalog.searchByEmbedding.mockResolvedValue([]);
+
+    await sut.normalize('ah', [line('Halfvolle melk')], COUNTRY);
+    await sut.normalize('jumbo', [line('Halfvolle melk')], COUNTRY);
+
+    expect(catalog.searchByEmbedding).toHaveBeenNthCalledWith(1, 'ah', expect.anything(), expect.anything(), COUNTRY, 1);
+    expect(catalog.searchByEmbedding).toHaveBeenNthCalledWith(2, 'jumbo', expect.anything(), expect.anything(), COUNTRY, 1);
+    expect(catalog.createProvisionalProduct).toHaveBeenNthCalledWith(1, expect.objectContaining({ merchantId: 'ah' }));
+    expect(catalog.createProvisionalProduct).toHaveBeenNthCalledWith(2, expect.objectContaining({ merchantId: 'jumbo' }));
+  });
+
   it('treats deposit/fee lines as non-products with no embedding', async () => {
     converse.mockResolvedValue(expansion([item({ display_name: 'Statiegeld', category_id: 'cat-other', is_deposit_or_fee: true })]));
 
     const result = await sut.normalize('m1', [line('Statiegeld', 1, 0.25)], COUNTRY);
 
-    expect(result.lines[0]).toMatchObject({ productId: null, isDepositOrFee: true, baseUnit: null, packQuantity: null, normalizedUnitPrice: null });
+    expect(result.lines[0]).toMatchObject({ productId: null, isDepositOrFee: true, baseUnit: null, packQuantity: null, sizeSource: null });
     expect(embedder.embed).not.toHaveBeenCalled();
   });
 
@@ -142,15 +159,15 @@ describe('ProductNormalizer', () => {
     expect(result.lines).toHaveLength(21);
   });
 
-  it('prefers the printed unit size over the LLM/catalog pack size', async () => {
+  it('prefers the printed unit size over the LLM/catalog pack size and tags it RECEIPT', async () => {
     converse.mockResolvedValue(expansion([item({ pack_size_base_units: 1 })])); // LLM says 1 L
     const withSize: ParsedLine = { rawText: 'Melk 500ML', quantity: 1, lineTotal: 2, unitSizeRaw: '500ML' };
 
     const result = await sut.normalize('m1', [withSize], COUNTRY);
 
-    // 500ML parses to 0.5 L → normalized unit price 2 / 1 / 0.5 = 4 (not 2 from the LLM's 1 L).
+    // 500ML parses to 0.5 L → descriptive pack size 0.5, evidence RECEIPT (fix 09/01: no price math).
     expect(result.lines[0].packQuantity).toBe(0.5);
-    expect(result.lines[0].normalizedUnitPrice).toBe(4);
+    expect(result.lines[0].sizeSource).toBe('RECEIPT');
   });
 
   it('threads a <merchant> venue hint into the expansion prompt when a merchant context is given (fixes/08)', async () => {

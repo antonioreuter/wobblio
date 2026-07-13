@@ -274,7 +274,10 @@ class _LineEditorSheetState extends State<_LineEditorSheet> {
   late final TextEditingController _quantity;
   late final TextEditingController _unitPrice;
   late final TextEditingController _lineTotal;
+  late final TextEditingController _sizeAmount;
   late String? _productId;
+  // "Set size" (09/05): a user-annotated pack size in base units + its unit. Stamped USER on save.
+  String? _sizeUnit;
 
   @override
   void initState() {
@@ -284,6 +287,11 @@ class _LineEditorSheetState extends State<_LineEditorSheet> {
         text:
             widget.line.unitPrice == null ? '' : _fmt(widget.line.unitPrice!),);
     _lineTotal = TextEditingController(text: _fmt(widget.line.lineTotal));
+    _sizeAmount = TextEditingController(
+        text: widget.line.packQuantity == null
+            ? ''
+            : _fmt(widget.line.packQuantity!),);
+    _sizeUnit = widget.line.baseUnit;
     _productId = widget.line.productId;
   }
 
@@ -292,17 +300,28 @@ class _LineEditorSheetState extends State<_LineEditorSheet> {
     _quantity.dispose();
     _unitPrice.dispose();
     _lineTotal.dispose();
+    _sizeAmount.dispose();
     super.dispose();
   }
 
   void _save() {
-    final edited = widget.line.copyWith(
+    var edited = widget.line.copyWith(
       productId: _productId,
       quantity: double.tryParse(_quantity.text) ?? widget.line.quantity,
       unitPrice:
           _unitPrice.text.isEmpty ? null : double.tryParse(_unitPrice.text),
       lineTotal: double.tryParse(_lineTotal.text) ?? widget.line.lineTotal,
     );
+    // Only stamp the size when the user provided both amount and unit; size is identity
+    // metadata (feeds comparability), never a price.
+    final sizeAmount = double.tryParse(_sizeAmount.text);
+    if (sizeAmount != null && sizeAmount > 0 && _sizeUnit != null) {
+      edited = edited.copyWith(
+        packQuantity: sizeAmount,
+        baseUnit: _sizeUnit,
+        sizeSource: 'USER',
+      );
+    }
     Navigator.of(context).pop(edited);
   }
 
@@ -341,6 +360,29 @@ class _LineEditorSheetState extends State<_LineEditorSheet> {
                 Expanded(child: _num(_unitPrice, 'Unit price')),
                 const SizedBox(width: 8),
                 Expanded(child: _num(_lineTotal, 'Line total')),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // "Set size" (09/05): descriptive pack size for cross-store comparison — never a price.
+            Row(
+              children: [
+                Expanded(
+                  child: _num(_sizeAmount, 'Pack size (e.g. 2 for 2L)'),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    key: const Key('line-size-unit'),
+                    initialValue: _sizeUnit,
+                    decoration: const InputDecoration(labelText: 'Unit'),
+                    items: const [
+                      DropdownMenuItem(value: 'L', child: Text('L')),
+                      DropdownMenuItem(value: 'KG', child: Text('kg')),
+                      DropdownMenuItem(value: 'PIECE', child: Text('pcs')),
+                    ],
+                    onChanged: (v) => setState(() => _sizeUnit = v),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),

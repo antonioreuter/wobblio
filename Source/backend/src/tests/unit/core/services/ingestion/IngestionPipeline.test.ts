@@ -47,7 +47,7 @@ const normalizedLine = (lowConfidence = false): NormalizedLine => ({
   categoryId: null,
   baseUnit: null,
   packQuantity: null,
-  normalizedUnitPrice: null,
+  sizeSource: null,
   isDepositOrFee: false,
   productProvisional: false,
   confidence: 0,
@@ -251,7 +251,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
     invoiceRepo.hasEmittedDuplicateByHash.mockResolvedValue(true);
     const pricedLine: NormalizedLine = {
       productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
-      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
+      sizeSource: null, isDepositOrFee: false, productProvisional: false,
       confidence: 0.95, lowConfidence: false,
     };
     productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine, normalizedLine()], suggestedTags: [] });
@@ -279,7 +279,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
     arrangeHappyPath();
     const pricedLine: NormalizedLine = {
       productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
-      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
+      sizeSource: null, isDepositOrFee: false, productProvisional: false,
       confidence: 0.95, lowConfidence: false,
     };
     productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine, normalizedLine()], suggestedTags: [] });
@@ -296,7 +296,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
     arrangeHappyPath(0.5); // below visionMin → whole receipt indicted
     const priced: NormalizedLine = {
       productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
-      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
+      sizeSource: null, isDepositOrFee: false, productProvisional: false,
       confidence: 0.95, lowConfidence: false,
     };
     productNormalizer.normalize.mockResolvedValue({ lines: [priced, normalizedLine()], suggestedTags: [] });
@@ -322,7 +322,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
     invoiceRepo.findFuzzyDuplicate.mockResolvedValue(true);
     const pricedLine: NormalizedLine = {
       productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
-      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: false,
+      sizeSource: null, isDepositOrFee: false, productProvisional: false,
       confidence: 0.95, lowConfidence: false,
     };
     productNormalizer.normalize.mockResolvedValue({ lines: [pricedLine, normalizedLine()], suggestedTags: [] });
@@ -429,7 +429,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
     merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'Albert Heijn', defaultCategoryId: null, provisional: true, confidence: 0.9 });
     const provisionalLine: NormalizedLine = {
       productId: 'p1', categoryId: 'cat-dairy', baseUnit: 'L', packQuantity: 1,
-      normalizedUnitPrice: 2.0, isDepositOrFee: false, productProvisional: true,
+      sizeSource: null, isDepositOrFee: false, productProvisional: true,
       confidence: 0.95, lowConfidence: false,
     };
     productNormalizer.normalize.mockResolvedValue({ lines: [provisionalLine, normalizedLine()], suggestedTags: [] });

@@ -15,6 +15,9 @@ class InvoiceLineDetail extends Equatable {
     required this.confidence,
     this.isDiscount = false,
     this.isDepositOrFee = false,
+    this.packQuantity,
+    this.baseUnit,
+    this.sizeSource,
   });
 
   final String id;
@@ -31,12 +34,21 @@ class InvoiceLineDetail extends Equatable {
   // everywhere).
   final bool isDiscount;
   final bool isDepositOrFee;
+  // Descriptive pack size (09/01): shown as a chip and edited via "Set size" (09/05). Prices are
+  // always the price paid — size is never turned into a per-unit figure. sizeSource is
+  // RECEIPT (printed) | USER (annotated) | null (unknown).
+  final double? packQuantity;
+  final String? baseUnit;
+  final String? sizeSource;
 
   InvoiceLineDetail copyWith({
     String? productId,
     double? quantity,
     double? unitPrice,
     double? lineTotal,
+    double? packQuantity,
+    String? baseUnit,
+    String? sizeSource,
   }) =>
       InvoiceLineDetail(
         id: id,
@@ -49,6 +61,9 @@ class InvoiceLineDetail extends Equatable {
         confidence: confidence,
         isDiscount: isDiscount,
         isDepositOrFee: isDepositOrFee,
+        packQuantity: packQuantity ?? this.packQuantity,
+        baseUnit: baseUnit ?? this.baseUnit,
+        sizeSource: sizeSource ?? this.sizeSource,
       );
 
   @override
@@ -63,6 +78,9 @@ class InvoiceLineDetail extends Equatable {
         confidence,
         isDiscount,
         isDepositOrFee,
+        packQuantity,
+        baseUnit,
+        sizeSource,
       ];
 }
 

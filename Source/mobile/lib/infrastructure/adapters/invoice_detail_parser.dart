@@ -41,4 +41,7 @@ InvoiceLineDetail parseInvoiceLine(Map<String, dynamic> l) => InvoiceLineDetail(
       confidence: (l['confidence'] as num?)?.toDouble() ?? 1,
       isDiscount: (l['isDiscount'] as bool?) ?? false,
       isDepositOrFee: (l['isDepositOrFee'] as bool?) ?? false,
+      packQuantity: (l['packQuantity'] as num?)?.toDouble(),
+      baseUnit: l['baseUnit'] as String?,
+      sizeSource: l['sizeSource'] as String?,
     );

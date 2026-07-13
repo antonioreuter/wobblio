@@ -30,7 +30,7 @@ const LOCATION: ResolvedIngestionLocation = {
 
 const NORMALIZED: NormalizedLine[] = [{
   productId: 'p1', categoryId: 'groceries', baseUnit: 'L', packQuantity: 1,
-  normalizedUnitPrice: 3.0, isDepositOrFee: false, productProvisional: false, confidence: 0.95, lowConfidence: false,
+  sizeSource: null, isDepositOrFee: false, productProvisional: false, confidence: 0.95, lowConfidence: false,
 }];
 
 describe('InvoiceCoordinator', () => {

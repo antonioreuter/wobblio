@@ -14,8 +14,8 @@ interface MedianRow {
 
 // Per-month, per-product median prices from the caller's OWN invoices (RLS-scoped — tenant context
 // MUST be set first). Same price basis and line filters as PersonalInflationQueryAdapter (regular,
-// non-discount, non-deposit lines; €/unit when known for the product else €/item), grouped by the
-// invoice month instead of a current/prior bucket. The domain turns these into the baselined index.
+// non-discount, non-deposit lines; pack price paid — the sole signal, never per-unit, fix 09/01),
+// grouped by the invoice month instead of a current/prior bucket. The domain baselines these.
 export class PersonalInflationSeriesQueryAdapter implements IPersonalInflationSeriesQuery {
   constructor(private readonly db: Pool | PoolClient) {}
 
@@ -26,9 +26,7 @@ export class PersonalInflationSeriesQueryAdapter implements IPersonalInflationSe
       `WITH lines AS (
          SELECT to_char(i.transaction_date, 'YYYY-MM') AS period,
                 l.product_id,
-                (l.line_total / NULLIF(l.quantity, 0)) AS pack_price,
-                l.normalized_unit_price,
-                l.base_unit
+                (l.line_total / NULLIF(l.quantity, 0)) AS pack_price
          FROM invoice_line l
          JOIN invoice i ON i.id = l.invoice_id
          WHERE i.status IN ('PARSED', 'NEEDS_REVIEW')
@@ -41,21 +39,11 @@ export class PersonalInflationSeriesQueryAdapter implements IPersonalInflationSe
            AND l.is_discount = false
            AND l.product_id IS NOT NULL
            ${currencyClause}
-       ),
-       prod AS (
-         SELECT product_id,
-                (COUNT(*) FILTER (WHERE normalized_unit_price IS NULL) = 0
-                   AND COUNT(DISTINCT base_unit) = 1) AS unit_known
-         FROM lines
-         GROUP BY product_id
        )
        SELECT l.period,
               l.product_id,
-              percentile_cont(0.5) WITHIN GROUP (
-                ORDER BY CASE WHEN p.unit_known THEN l.normalized_unit_price ELSE l.pack_price END
-              )::text AS median
+              percentile_cont(0.5) WITHIN GROUP (ORDER BY l.pack_price)::text AS median
        FROM lines l
-       JOIN prod p ON p.product_id = l.product_id
        GROUP BY l.period, l.product_id`,
       params,
     );

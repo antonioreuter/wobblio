@@ -1,8 +1,13 @@
 // Parse free-text unit sizes off receipt lines into a canonical base unit + pack
-// size, and compute the comparable normalized unit price. Unparseable sizes return
-// null — the line then yields no price observation (§6.3).
+// size. This is descriptive/identity metadata only — no per-unit price is ever
+// derived from it (fix 09/01: receipt-verbatim pricing). Unparseable sizes return null.
 
 export type BaseUnit = 'KG' | 'L' | 'PIECE';
+
+// Evidence state for a line's / series' pack size (fix 09/01). RECEIPT: a size token was
+// printed on the receipt line and transcribed verbatim. USER: the shopper set it via the
+// review-screen "Set size" affordance. null (absent): size is unknown — never inferred.
+export type SizeSource = 'RECEIPT' | 'USER';
 
 export interface ParsedUnitSize {
   packQuantity: number; // pack size expressed in base units (e.g. 0.5 for 500g)
@@ -58,16 +63,35 @@ export function parseUnitSize(raw: string | null | undefined): ParsedUnitSize | 
   return parseSingle(cleaned);
 }
 
-// normalized_unit_price = line_total ÷ quantity ÷ pack_size_base_units (§6.3).
-export function computeNormalizedUnitPrice(
-  lineTotal: number,
-  quantity: number,
+// Render a pack size back to a human size chip ("2L", "500g", "3pc") for the descriptive
+// size chip in trends / shopping lists (fix 09/01). Sub-unit weights/volumes show in the
+// smaller unit so "0.5 KG" reads as "500g". null pack size → null (no chip). Pure display.
+export function formatSizeText(packQuantity: number | null, baseUnit: BaseUnit | null): string | null {
+  if (packQuantity === null || packQuantity <= 0 || baseUnit === null) return null;
+  if (baseUnit === 'KG') {
+    return packQuantity < 1 ? `${roundTo(packQuantity * 1000, 0)}g` : `${trimNum(packQuantity)}kg`;
+  }
+  if (baseUnit === 'L') {
+    return packQuantity < 1 ? `${roundTo(packQuantity * 1000, 0)}ml` : `${trimNum(packQuantity)}L`;
+  }
+  return `${trimNum(packQuantity)}pc`;
+}
+
+function trimNum(value: number): string {
+  return `${roundTo(value, 3)}`;
+}
+
+// Descriptive size for a market/catalog series or comparison-set member (fix 09/01): a chip like
+// "2L". A catalog size has no per-line evidence, so a known size is labeled RECEIPT (catalog sizes
+// are receipt-transcribed under prompt v5) and an absent size carries none. Own-history derives its
+// own USER-vs-RECEIPT source from the tenant's lines and does NOT use this. One place for the rule
+// so the trend chip and the comparison-set chip never disagree.
+export function catalogSize(
   packQuantity: number | null,
-): number | null {
-  if (packQuantity === null || packQuantity <= 0) return null;
-  if (quantity <= 0) return null;
-  if (lineTotal <= 0) return null;
-  return roundTo(lineTotal / quantity / packQuantity, 4);
+  baseUnit: BaseUnit | null,
+): { sizeText: string | null; sizeSource: SizeSource | null } {
+  const sizeText = formatSizeText(packQuantity, baseUnit);
+  return { sizeText, sizeSource: sizeText === null ? null : 'RECEIPT' };
 }
 
 export function roundTo(value: number, decimals: number): number {

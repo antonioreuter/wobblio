@@ -161,6 +161,15 @@ class HttpShoppingListRepository implements IShoppingListRepository {
           .toList(),
       unresolvedItems: rawUnresolved.map((e) => '$e').toList(),
       reason: data['reason'] as String?,
+      ownHistoryBasket: ((data['ownHistoryBasket'] as List?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map((r) => OwnHistoryBasketTotal(
+                merchantId: r['merchantId'] as String,
+                name: (r['name'] as String?) ?? '',
+                total: (r['total'] as num?)?.toDouble() ?? 0,
+                itemsPriced: (r['itemsPriced'] as num?)?.toInt() ?? 0,
+              ),)
+          .toList(),
     );
   }
 
@@ -185,5 +194,6 @@ class HttpShoppingListRepository implements IShoppingListRepository {
         observationCount: (row['observationCount'] as num?)?.toInt() ?? 0,
         lastObservedOn: row['lastObservedOn'] as String?,
         confidence: (row['confidence'] as String?) ?? 'low',
+        reason: row['reason'] as String?,
       );
 }

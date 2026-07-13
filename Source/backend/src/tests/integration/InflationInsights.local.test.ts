@@ -93,9 +93,8 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
     pool.query(
       `INSERT INTO price_observation
          (product_id, merchant_id, country_code, region_code, observed_on, pack_price,
-          normalized_unit_price, base_unit, currency, was_discounted, quality, quarantined,
-          contributor_trust_at_write)
-       VALUES ($1, $2, $8, $3, $4, $5, NULL, NULL, $9, $6, 'AUTO', $7, 50)`,
+          currency, was_discounted, quality, quarantined, contributor_trust_at_write)
+       VALUES ($1, $2, $8, $3, $4, $5, $9, $6, 'AUTO', $7, 50)`,
       [productId, obsMerchant, regionCode, observedOn, packPrice, over.wasDiscounted ?? false,
        over.quarantined ?? false, over.countryCode ?? COUNTRY, over.currency ?? HOME_CURRENCY],
     );
@@ -130,7 +129,7 @@ describe('Inflation insights adapters — personal (RLS) + regional (price_obser
     const mkProduct = () =>
       products.createProvisionalProduct({
         displayName: `Infl ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
-        baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+        merchantId: null, baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
       });
     [pA, pB, pC, pD] = await Promise.all([mkProduct(), mkProduct(), mkProduct(), mkProduct()]);
     obsMerchant = await new MerchantCatalogAdapter(pool).createProvisionalMerchant(

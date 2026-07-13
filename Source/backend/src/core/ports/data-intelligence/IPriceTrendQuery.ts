@@ -2,7 +2,7 @@
 // Reads the global, RLS-exempt price_observation store. Separate from the write-only
 // IPriceObservationStore (ISP): emission and serving are distinct capabilities.
 
-import type { BaseUnit } from '../../domain/unitSize';
+import type { SizeSource } from '../../domain/unitSize';
 
 export interface PriceTrendQueryInput {
   productIds: string[]; // 1..3 selected products
@@ -27,10 +27,17 @@ export interface RegionCurrencyQueryInput {
 
 export interface WeeklyMedianPoint {
   weekStart: string; // ISO date, Monday of the bucket
-  // Weekly median price. Its meaning follows the line's `unit`: €/unit when the cell's pack
-  // size is known, otherwise €/item (pack price). null if the week had only discounts.
+  // Weekly median of the pack price paid (line_total ÷ quantity) — the only price signal
+  // (fix 09/01). Never per-unit. null if the week had only discounts.
   median: number | null;
   discountMedian: number | null; // weekly median of discounted observations, rendered as distinct markers
+}
+
+// Descriptive size metadata for a series' product (fix 09/01): a chip like "2L" shown next to
+// the name, never a per-unit price basis. sizeText is null when the size is unknown.
+export interface SeriesSize {
+  sizeText: string | null;
+  sizeSource: SizeSource | null; // RECEIPT (catalog/printed) | USER (annotated) | null (unknown)
 }
 
 // One served line per (product, merchant) cell that clears the k≥3 gate in the SQL.
@@ -41,9 +48,11 @@ export interface PriceTrendLine {
   points: WeeklyMedianPoint[];
   observationCount: number; // distinct non-quarantined observations in the window (≥ kMin)
   lastObservedOn: string; // ISO date — drives staleness greying upstream
-  // The comparable unit when every observation in the cell carries the same known pack size
-  // (median is €/unit); null when pack size is unknown (median is €/item — not cross-comparable).
-  unit: BaseUnit | null;
+  // Descriptive pack size for this (product, merchant) series — a chip, not a price basis.
+  size: SeriesSize;
+  // 09/05 price-ambiguity flag: the (product, merchant) name may cover different SKUs (bimodal
+  // history). Drives the trend banner; such a series is never crowned or fed to the optimizer.
+  ambiguous: boolean;
 }
 
 export interface IPriceTrendQuery {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseUnitSize, computeNormalizedUnitPrice, roundTo } from '@core/domain/unitSize';
+import { parseUnitSize, formatSizeText, roundTo } from '@core/domain/unitSize';
 
 describe('parseUnitSize', () => {
   it('returns null for empty input', () => {
@@ -56,25 +56,26 @@ describe('parseUnitSize', () => {
   });
 });
 
-describe('computeNormalizedUnitPrice', () => {
-  it('computes price per base unit', () => {
-    expect(computeNormalizedUnitPrice(3, 2, 0.5)).toBe(3);
+describe('formatSizeText', () => {
+  it('renders litres and sub-litre volumes in the readable unit', () => {
+    expect(formatSizeText(2, 'L')).toBe('2L');
+    expect(formatSizeText(0.5, 'L')).toBe('500ml');
+    expect(formatSizeText(0.33, 'L')).toBe('330ml');
   });
 
-  it('returns null when pack quantity is null', () => {
-    expect(computeNormalizedUnitPrice(3, 1, null)).toBeNull();
+  it('renders kilograms and sub-kilo weights in the readable unit', () => {
+    expect(formatSizeText(1, 'KG')).toBe('1kg');
+    expect(formatSizeText(0.5, 'KG')).toBe('500g');
   });
 
-  it('returns null when pack quantity is non-positive', () => {
-    expect(computeNormalizedUnitPrice(3, 1, -1)).toBeNull();
+  it('renders piece counts', () => {
+    expect(formatSizeText(6, 'PIECE')).toBe('6pc');
   });
 
-  it('returns null when quantity is non-positive', () => {
-    expect(computeNormalizedUnitPrice(3, 0, 1)).toBeNull();
-  });
-
-  it('returns null when line total is non-positive', () => {
-    expect(computeNormalizedUnitPrice(-3, 1, 1)).toBeNull();
+  it('returns null when the size is unknown', () => {
+    expect(formatSizeText(null, 'L')).toBeNull();
+    expect(formatSizeText(0.5, null)).toBeNull();
+    expect(formatSizeText(0, 'KG')).toBeNull();
   });
 });
 

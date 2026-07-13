@@ -96,6 +96,16 @@ class _ShoppingListView extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if ((state.optimization?.ownHistoryBasket ?? const [])
+                      .isNotEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      sliver: SliverToBoxAdapter(
+                        child: _OwnHistoryBasket(
+                          totals: state.optimization!.ownHistoryBasket,
+                        ),
+                      ),
+                    ),
                   if (state.estimatedTotal > 0)
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -218,6 +228,50 @@ class _SavingsBanner extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// 09/05 zero-usable-links fallback: own-history whole-basket total per merchant, clearly labeled
+// as own-history-based (never a crowned cross-store claim).
+class _OwnHistoryBasket extends StatelessWidget {
+  const _OwnHistoryBasket({required this.totals});
+
+  final List<OwnHistoryBasketTotal> totals;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassContainer(
+      padding: const EdgeInsets.all(15),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Your usual basket, from your own history',
+              style: AppTypography.body(
+                  size: AppTypography.textSm, weight: FontWeight.w700,),),
+          const SizedBox(height: 8),
+          for (final t in totals)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('${t.name} · ${t.itemsPriced} priced',
+                      style: AppTypography.body(size: AppTypography.textSm),),
+                  Text(formatMoney('EUR', t.total),
+                      style: AppTypography.display(
+                          size: AppTypography.textSm,
+                          weight: FontWeight.w700,
+                          tabularNumbers: true,),),
+                ],
+              ),
+            ),
+          const SizedBox(height: 6),
+          Text('Link items across stores to unlock split suggestions.',
+              style: AppTypography.body(
+                  size: AppTypography.textXs, color: AppColors.textMuted,),),
         ],
       ),
     );

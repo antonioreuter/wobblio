@@ -17,7 +17,6 @@ import type {
 import type { InvoiceStatus, InvoiceVerdict } from '@core/domain/ingestion';
 import type { FailureReasonCode, UnreadableReason } from '@core/domain/failureReasons';
 import type { InvoiceLocationStatus } from '@core/domain/region';
-import type { ObservationLine } from '@core/domain/priceObservation';
 import { categoryNameFor } from '@core/domain/categoryTaxonomy';
 import { InvalidCorrectionError } from '@core/domain/errors';
 import { tagLabelFor } from '@core/domain/tagVocabulary';
@@ -200,13 +199,13 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       await this.client.query(
         `INSERT INTO invoice_line
            (invoice_id, line_index, raw_text, product_id, product_provisional, category_id,
-            quantity, pack_quantity, base_unit, unit_price, normalized_unit_price, line_total,
+            quantity, pack_quantity, base_unit, size_source, unit_price, line_total,
             is_discount, is_deposit_or_fee, confidence)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
         [
           input.invoiceId, line.lineIndex, line.rawText, line.productId, line.productProvisional,
-          line.categoryId, line.quantity, line.packQuantity, line.baseUnit, line.unitPrice,
-          line.normalizedUnitPrice, line.lineTotal, line.isDiscount, line.isDepositOrFee,
+          line.categoryId, line.quantity, line.packQuantity, line.baseUnit, line.sizeSource,
+          line.unitPrice, line.lineTotal, line.isDiscount, line.isDepositOrFee,
           line.confidence,
         ],
       );
@@ -248,15 +247,12 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     const lines = await this.client.query<{
       product_id: string | null;
       product_provisional: boolean;
-      base_unit: ObservationLine['baseUnit'];
-      normalized_unit_price: string | null;
       is_deposit_or_fee: boolean;
       quantity: string;
       line_total: string;
       unit_price: string | null;
     }>(
-      `SELECT product_id, product_provisional, base_unit,
-              normalized_unit_price::text AS normalized_unit_price, is_deposit_or_fee,
+      `SELECT product_id, product_provisional, is_deposit_or_fee,
               quantity::text AS quantity, line_total::text AS line_total,
               unit_price::text AS unit_price
        FROM invoice_line WHERE invoice_id = $1 ORDER BY line_index`,
@@ -272,8 +268,6 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       lines: lines.rows.map(l => ({
         productId: l.product_id,
         productProvisional: l.product_provisional,
-        baseUnit: l.base_unit,
-        normalizedUnitPrice: num(l.normalized_unit_price),
         isDepositOrFee: l.is_deposit_or_fee,
         quantity: parseFloat(l.quantity),
         lineTotal: parseFloat(l.line_total),
@@ -345,11 +339,17 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     );
     try {
       for (const line of input.lines) {
+        // "Set size" (09/05): when the user annotated a pack size, stamp it USER-sourced; otherwise
+        // COALESCE leaves any existing receipt size untouched. Size is identity metadata — no price.
         await this.client.query(
           `UPDATE invoice_line
-             SET product_id = $3, quantity = $4, unit_price = $5, line_total = $6, confidence = 1
+             SET product_id = $3, quantity = $4, unit_price = $5, line_total = $6, confidence = 1,
+                 pack_quantity = COALESCE($7, pack_quantity),
+                 base_unit = COALESCE($8, base_unit),
+                 size_source = CASE WHEN $7 IS NOT NULL THEN 'USER'::size_source ELSE size_source END
            WHERE id = $1 AND invoice_id = $2`,
-          [line.id, input.invoiceId, line.productId, line.quantity, line.unitPrice, line.lineTotal],
+          [line.id, input.invoiceId, line.productId, line.quantity, line.unitPrice, line.lineTotal,
+           line.size?.packQuantity ?? null, line.size?.baseUnit ?? null],
         );
       }
     } catch (err) {
@@ -411,10 +411,11 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     );
     if (!head.rows[0]) return null;
 
-    const lines = await this.client.query<{ id: string; raw_text: string; product_id: string | null; quantity: string; unit_price: string | null; line_total: string; category_name: string | null; confidence: string; is_discount: boolean; is_deposit_or_fee: boolean }>(
+    const lines = await this.client.query<{ id: string; raw_text: string; product_id: string | null; quantity: string; unit_price: string | null; line_total: string; category_name: string | null; confidence: string; is_discount: boolean; is_deposit_or_fee: boolean; pack_quantity: string | null; base_unit: 'KG' | 'L' | 'PIECE' | null; size_source: 'RECEIPT' | 'USER' | null }>(
       `SELECT il.id, il.raw_text, il.product_id, il.quantity::text, il.unit_price::text,
               il.line_total::text, pc.name AS category_name, il.confidence::text AS confidence,
-              il.is_discount, il.is_deposit_or_fee
+              il.is_discount, il.is_deposit_or_fee,
+              il.pack_quantity::text AS pack_quantity, il.base_unit, il.size_source
        FROM invoice_line il LEFT JOIN product_category pc ON pc.id = il.category_id
        WHERE il.invoice_id = $1 ORDER BY il.line_index`,
       [invoiceId],
@@ -431,6 +432,9 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       confidence: parseFloat(l.confidence),
       isDiscount: l.is_discount,
       isDepositOrFee: l.is_deposit_or_fee,
+      packQuantity: num(l.pack_quantity),
+      baseUnit: l.base_unit,
+      sizeSource: l.size_source,
     }));
 
     return {

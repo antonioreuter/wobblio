@@ -30,13 +30,17 @@ describe('OptimizerService', () => {
     };
     priceMatrix = {
       build: vi.fn().mockResolvedValue({
-        merchants: [{ id: 'A', name: 'AH' }, { id: 'B', name: 'Jumbo' }],
-        cells: [
-          { productId: 'p1', merchantId: 'A', price: 2, observationCount: 9, lastObservedOn: '2026-06-15' },
-          { productId: 'p1', merchantId: 'B', price: 1, observationCount: 9, lastObservedOn: '2026-06-15' },
-        ],
-        userAverages: {},
+        matrix: {
+          merchants: [{ id: 'A', name: 'AH' }, { id: 'B', name: 'Jumbo' }],
+          cells: [
+            { productId: 'p1', merchantId: 'A', price: 2, observationCount: 9, lastObservedOn: '2026-06-15' },
+            { productId: 'p1', merchantId: 'B', price: 1, observationCount: 9, lastObservedOn: '2026-06-15' },
+          ],
+          userAverages: {},
+        },
+        reasons: { p1: 'comparable' },
       }),
+      ownHistoryBasket: vi.fn().mockResolvedValue([]),
     };
     routing = { get: vi.fn().mockResolvedValue({ minSplitSaving: 5, maxStores: 3 }) };
     contributorContext = { getContext: vi.fn().mockResolvedValue({ optedOut: false, regionCode: 'NL-NB', countryCode: 'NL', trustScore: 50, homeCurrency: 'EUR' }) };
@@ -89,5 +93,46 @@ describe('OptimizerService', () => {
     // B (the cheaper store) is excluded, so the item must land on A.
     expect(result.stores).toHaveLength(1);
     expect(result.stores[0].merchantId).toBe('A');
+  });
+
+  it('annotates each served line with its comparability reason (09/05)', async () => {
+    lists.getDetail.mockResolvedValue(detail);
+    const result = await sut.optimize('u1', 'PREMIUM', 'l1');
+    const lines = result.stores.flatMap((s) => s.lines);
+    expect(lines).not.toHaveLength(0);
+    expect(lines.every((l) => l.reason === 'comparable')).toBe(true);
+  });
+
+  it('falls back to own-history basket totals when no item is priceable at ≥2 merchants (09/05)', async () => {
+    lists.getDetail.mockResolvedValue(detail);
+    // Only one merchant carries the item → no usable cross-store link.
+    priceMatrix.build.mockResolvedValue({
+      matrix: {
+        merchants: [{ id: 'A', name: 'AH' }],
+        cells: [{ productId: 'p1', merchantId: 'A', price: 2, observationCount: 9, lastObservedOn: '2026-06-15' }],
+        userAverages: {},
+      },
+      reasons: { p1: 'no_link' },
+    });
+    priceMatrix.ownHistoryBasket.mockResolvedValue([
+      { merchantId: 'A', name: 'AH', total: 5.2, itemsPriced: 1 },
+      { merchantId: 'B', name: 'Jumbo', total: 4.9, itemsPriced: 1 },
+    ]);
+
+    const result = await sut.optimize('u1', 'PREMIUM', 'l1');
+
+    expect(priceMatrix.ownHistoryBasket).toHaveBeenCalledWith(['p1'], 'EUR');
+    expect(result.ownHistoryBasket).toEqual([
+      { merchantId: 'A', name: 'AH', total: 5.2, itemsPriced: 1 },
+      { merchantId: 'B', name: 'Jumbo', total: 4.9, itemsPriced: 1 },
+    ]);
+    expect(result.reason).toContain('own-history');
+  });
+
+  it('does not populate the own-history fallback when a cross-store option exists', async () => {
+    lists.getDetail.mockResolvedValue(detail);
+    const result = await sut.optimize('u1', 'PREMIUM', 'l1');
+    expect(priceMatrix.ownHistoryBasket).not.toHaveBeenCalled();
+    expect(result.ownHistoryBasket).toBeNull();
   });
 });

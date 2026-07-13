@@ -23,6 +23,19 @@ interface DetailLine {
   unitPrice: number | null
   lineTotal: number
   categoryName: string | null
+  // Descriptive pack size (09/01): shown as a chip, never a per-unit price basis.
+  packQuantity?: number | null
+  baseUnit?: 'KG' | 'L' | 'PIECE' | null
+  sizeSource?: 'RECEIPT' | 'USER' | null
+}
+
+// Renders a base-unit pack size as a human chip ("2L", "500g", "3pc"); null when unknown.
+function sizeChipText(packQuantity: number | null | undefined, baseUnit: string | null | undefined): string | null {
+  if (packQuantity == null || packQuantity <= 0 || !baseUnit) return null
+  const n = (v: number) => (Number.isInteger(v) ? String(v) : String(Math.round(v * 1000) / 1000))
+  if (baseUnit === 'KG') return packQuantity < 1 ? `${Math.round(packQuantity * 1000)}g` : `${n(packQuantity)}kg`
+  if (baseUnit === 'L') return packQuantity < 1 ? `${Math.round(packQuantity * 1000)}ml` : `${n(packQuantity)}L`
+  return `${n(packQuantity)}pc`
 }
 
 interface InvoiceDetail {
@@ -204,6 +217,12 @@ export function InvoiceDrawer({ invoice, onClose, onRequestDelete, onShare, onSp
                 <span className="ri-name">
                   {it.rawText}
                   {it.categoryName && <span className="ri-cat">{it.categoryName}</span>}
+                  {sizeChipText(it.packQuantity, it.baseUnit) && (
+                    <span className="ri-cat">
+                      {sizeChipText(it.packQuantity, it.baseUnit)}
+                      {it.sizeSource === 'USER' ? ' · set by you' : ''}
+                    </span>
+                  )}
                 </span>
                 <span className="ri-qty">×{it.quantity}</span>
                 <span className="ri-amt">{fmtMoney(it.lineTotal, detail?.currency ?? invoice.currency)}</span>

@@ -6,7 +6,7 @@ import type {
   OwnRegionCurrencyInput,
 } from '@core/ports/data-intelligence/IOwnPurchaseHistoryQuery';
 
-import type { BaseUnit } from '@core/domain/unitSize';
+import { formatSizeText, type BaseUnit, type SizeSource } from '@core/domain/unitSize';
 import { currencyFilter } from './queryFilters';
 
 interface WeeklyRow {
@@ -18,7 +18,9 @@ interface WeeklyRow {
   last_purchased_on: string;
   last_price: string | null;
   previous_price: string | null;
-  unit: BaseUnit | null;
+  pack_quantity: string | null;
+  base_unit: BaseUnit | null;
+  size_source: SizeSource | null;
 }
 
 // The caller's OWN purchase history over the RLS-scoped invoice_line store — the db
@@ -47,8 +49,9 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
          SELECT l.product_id,
                 date_trunc('week', i.transaction_date)::date AS week_start,
                 (l.line_total / NULLIF(l.quantity, 0)) AS pack_price,
-                l.normalized_unit_price,
+                l.pack_quantity,
                 l.base_unit,
+                l.size_source,
                 l.is_discount,
                 i.transaction_date,
                 i.created_at AS invoice_created_at,
@@ -73,36 +76,37 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
            )
        ),
        totals AS (
+         -- Every median is the pack price paid (fix 09/01) — no per-unit price. Descriptive pack
+         -- size for the chip: strongest evidence (USER > RECEIPT > unknown), and a representative
+         -- (pack_quantity, base_unit) taken from ONE line — the most recent line that carries a size
+         -- — so the amount and unit always come from the same purchase (never a mismatched pair).
          SELECT product_id,
                 COUNT(*) AS purchase_count,
                 MAX(transaction_date) AS last_purchased_on,
-                -- per-unit only when every own line has a per-unit price and one base unit;
-                -- otherwise the product's own history is served as €/item (pack price).
-                (COUNT(*) FILTER (WHERE normalized_unit_price IS NULL) = 0
-                   AND COUNT(DISTINCT base_unit) = 1) AS unit_known,
-                MIN(base_unit) AS base_unit
+                (array_agg(pack_quantity ORDER BY (pack_quantity IS NOT NULL) DESC, transaction_date DESC))[1] AS pack_quantity,
+                (array_agg(base_unit ORDER BY (pack_quantity IS NOT NULL) DESC, transaction_date DESC))[1] AS base_unit,
+                CASE
+                  WHEN bool_or(size_source = 'USER') THEN 'USER'
+                  WHEN bool_or(pack_quantity IS NOT NULL) THEN 'RECEIPT'
+                  ELSE NULL
+                END AS size_source
          FROM lines
          GROUP BY product_id
        ),
        weekly AS (
          SELECT l.product_id, l.week_start,
-                percentile_cont(0.5) WITHIN GROUP (
-                  ORDER BY CASE WHEN t.unit_known THEN l.normalized_unit_price ELSE l.pack_price END)
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY l.pack_price)
                   FILTER (WHERE NOT l.is_discount) AS median,
-                percentile_cont(0.5) WITHIN GROUP (
-                  ORDER BY CASE WHEN t.unit_known THEN l.normalized_unit_price ELSE l.pack_price END)
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY l.pack_price)
                   FILTER (WHERE l.is_discount) AS discount_median
          FROM lines l
-         JOIN totals t ON t.product_id = l.product_id
          GROUP BY l.product_id, l.week_start
        ),
-       -- Per-line unit-consistent price (same €/unit-vs-€/item decision as the medians).
+       -- Per-line pack price paid (same signal as the medians).
        priced AS (
          SELECT l.product_id, l.transaction_date, l.invoice_created_at, l.invoice_id, l.line_id,
-                l.is_discount,
-                CASE WHEN t.unit_known THEN l.normalized_unit_price ELSE l.pack_price END AS unit_price
+                l.is_discount, l.pack_price AS unit_price
          FROM lines l
-         JOIN totals t ON t.product_id = l.product_id
        ),
        has_regular AS (
          SELECT product_id, bool_or(NOT is_discount) AS any_regular FROM priced GROUP BY product_id
@@ -134,7 +138,9 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
               t.last_purchased_on::text AS last_purchased_on,
               r.last_price::text AS last_price,
               r.previous_price::text AS previous_price,
-              CASE WHEN t.unit_known THEN t.base_unit ELSE NULL END AS unit
+              t.pack_quantity::text AS pack_quantity,
+              t.base_unit AS base_unit,
+              t.size_source AS size_source
        FROM weekly w
        JOIN totals t ON t.product_id = w.product_id
        LEFT JOIN recent r ON r.product_id = w.product_id
@@ -182,6 +188,8 @@ function groupIntoLines(rows: WeeklyRow[]): OwnPurchaseLine[] {
   for (const row of rows) {
     let line = lines.get(row.product_id);
     if (!line) {
+      const packQuantity = row.pack_quantity === null ? null : parseFloat(row.pack_quantity);
+      const sizeText = formatSizeText(packQuantity, row.base_unit);
       line = {
         productId: row.product_id,
         points: [],
@@ -189,7 +197,7 @@ function groupIntoLines(rows: WeeklyRow[]): OwnPurchaseLine[] {
         lastPurchasedOn: row.last_purchased_on,
         lastPrice: row.last_price === null ? null : parseFloat(row.last_price),
         previousPrice: row.previous_price === null ? null : parseFloat(row.previous_price),
-        unit: row.unit,
+        size: { sizeText, sizeSource: sizeText === null ? null : row.size_source },
       };
       lines.set(row.product_id, line);
     }

@@ -4,7 +4,8 @@ import type { IBedrockEmbedder } from '../../ports/data-intelligence/IBedrockEmb
 import type { BedrockConverseRequest, BedrockMessage, IBedrockConverse } from '../../ports/ai/IBedrockConverse';
 import type { ParsedLine } from '../../domain/ingestion';
 import { ConfidenceThresholds, RESTAURANT_BILL_HINT } from '../../domain/ingestion';
-import { computeNormalizedUnitPrice, parseUnitSize, type BaseUnit } from '../../domain/unitSize';
+import { parseUnitSize, type BaseUnit, type SizeSource } from '../../domain/unitSize';
+import { normalizeProductText } from '../../domain/textNormalize';
 import { callJsonWithRetry } from '../../domain/llmJson';
 import { parseProductExpansionJson, type ExpandedItem, type ProductExpansion } from '../../domain/productExpansionSchema';
 import { CATEGORY_TAXONOMY, macroCategoryId } from '../../domain/categoryTaxonomy';
@@ -75,7 +76,8 @@ export class ProductNormalizer implements IProductNormalizer {
     }
 
     const { embedding } = await this.embedder.embed(item.displayName);
-    const [match] = await this.catalog.searchByEmbedding(embedding, item.categoryId, countryCode, 1);
+    // Per-merchant identity (09/02): only this merchant's products are candidates.
+    const [match] = await this.catalog.searchByEmbedding(merchantId, embedding, item.categoryId, countryCode, 1);
 
     if (match && match.similarity >= ConfidenceThresholds.embeddingAccept) {
       return this.acceptMatch(merchantId, normalizedText, match, false);
@@ -97,6 +99,7 @@ export class ProductNormalizer implements IProductNormalizer {
       brand: item.brand,
       categoryId: item.categoryId,
       countryCode,
+      merchantId,
       baseUnit: item.baseUnit,
       packSizeBaseUnits: item.packSizeBaseUnits,
       embedding,
@@ -146,13 +149,13 @@ function fromExactMatch(match: ProductMatch): ResolvedProduct {
 
 function toNormalizedLine(line: ParsedLine, resolved: ResolvedProduct): NormalizedLine {
   const baseUnit = resolved.isDepositOrFee ? null : resolved.baseUnit;
-  const packQuantity = resolvePackQuantity(line, resolved, baseUnit);
+  const { packQuantity, sizeSource } = resolvePackQuantity(line, resolved, baseUnit);
   return {
     productId: resolved.productId,
     categoryId: resolved.categoryId,
     baseUnit,
     packQuantity,
-    normalizedUnitPrice: computeNormalizedUnitPrice(line.lineTotal, line.quantity, packQuantity),
+    sizeSource,
     isDepositOrFee: resolved.isDepositOrFee,
     productProvisional: resolved.provisional,
     confidence: resolved.confidence,
@@ -162,16 +165,20 @@ function toNormalizedLine(line: ParsedLine, resolved: ResolvedProduct): Normaliz
 
 // Prefer the unit size printed on this receipt line over the catalog/LLM pack size, but
 // only when its unit matches the canonical base unit, so a stray parse can't flip the
-// product's comparison unit (§6.3 — clean data beats large data).
-function resolvePackQuantity(line: ParsedLine, resolved: ResolvedProduct, baseUnit: BaseUnit | null): number | null {
-  if (resolved.isDepositOrFee || baseUnit === null) return null;
+// product's comparison unit (§6.3 — clean data beats large data). Size is descriptive
+// only (fix 09/01): no per-unit price is derived. A size taken from a printed line token
+// is tagged RECEIPT; a size inherited from the catalog carries no line-level evidence (null).
+function resolvePackQuantity(
+  line: ParsedLine,
+  resolved: ResolvedProduct,
+  baseUnit: BaseUnit | null,
+): { packQuantity: number | null; sizeSource: SizeSource | null } {
+  if (resolved.isDepositOrFee || baseUnit === null) return { packQuantity: null, sizeSource: null };
   const printed = parseUnitSize(line.unitSizeRaw);
-  if (printed && printed.baseUnit === baseUnit) return printed.packQuantity;
-  return resolved.packSizeBaseUnits;
-}
-
-function normalizeProductText(raw: string): string {
-  return raw.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+  if (printed && printed.baseUnit === baseUnit) {
+    return { packQuantity: printed.packQuantity, sizeSource: 'RECEIPT' };
+  }
+  return { packQuantity: resolved.packSizeBaseUnits, sizeSource: null };
 }
 
 function buildExpansionMessage(rawTexts: string[], merchant?: MerchantExpansionContext): string {

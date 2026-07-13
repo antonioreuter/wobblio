@@ -13,13 +13,12 @@ export class PriceObservationStoreAdapter implements IPriceObservationStore {
       await this.db.query(
         `INSERT INTO price_observation
            (product_id, merchant_id, country_code, region_code, observed_on, pack_price,
-            normalized_unit_price, base_unit, currency, was_discounted, quality,
-            quarantined, contributor_trust_at_write)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            currency, was_discounted, quality, quarantined, contributor_trust_at_write)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           row.productId, row.merchantId, row.countryCode, row.regionCode, row.observedOn,
-          row.packPrice, row.normalizedUnitPrice, row.baseUnit, row.currency,
-          row.wasDiscounted, row.quality, row.quarantined, row.contributorTrustAtWrite,
+          row.packPrice, row.currency, row.wasDiscounted, row.quality, row.quarantined,
+          row.contributorTrustAtWrite,
         ],
       );
     }

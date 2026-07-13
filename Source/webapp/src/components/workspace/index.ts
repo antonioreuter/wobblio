@@ -14,7 +14,8 @@ export {
   type TrendComparison,
   type TrendLine,
   type TrendPoint,
-  type TrendUnit,
+  type SeriesSize,
+  type SizeSource,
 } from './use-price-trends'
 export { ConfirmDialog } from './confirm-dialog'
 export { BudgetList } from './budget-list'
@@ -30,3 +31,5 @@ export * from './list-data'
 export { ShoppingLists } from './shopping-lists'
 export * from './invoice-data'
 export * from './trend-data'
+export * from './comparison-sets-data'
+export { ComparisonSetsPanel } from './comparison-sets-panel'

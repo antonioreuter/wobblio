@@ -28,9 +28,7 @@ export class RegionInflationSeriesQueryAdapter implements IRegionInflationSeries
       `WITH obs AS (
          SELECT to_char(observed_on, 'YYYY-MM') AS period,
                 product_id,
-                pack_price,
-                normalized_unit_price,
-                base_unit
+                pack_price
          FROM price_observation
          WHERE region_code = $1
            AND country_code = $4
@@ -40,21 +38,11 @@ export class RegionInflationSeriesQueryAdapter implements IRegionInflationSeries
            AND pack_price > 0
            AND observed_on >= (date_trunc('month', CURRENT_DATE)
                  - (($2::int - 1) * INTERVAL '1 month'))
-       ),
-       prod AS (
-         SELECT product_id,
-                (COUNT(*) FILTER (WHERE normalized_unit_price IS NULL) = 0
-                   AND COUNT(DISTINCT base_unit) = 1) AS unit_known
-         FROM obs
-         GROUP BY product_id
        )
        SELECT o.period,
               o.product_id,
-              percentile_cont(0.5) WITHIN GROUP (
-                ORDER BY CASE WHEN p.unit_known THEN o.normalized_unit_price ELSE o.pack_price END
-              )::text AS median
+              percentile_cont(0.5) WITHIN GROUP (ORDER BY o.pack_price)::text AS median
        FROM obs o
-       JOIN prod p ON p.product_id = o.product_id
        GROUP BY o.period, o.product_id
        HAVING COUNT(*) >= $3::int`,
       params,

@@ -18,7 +18,7 @@ const entity = (id: string, observationCount: number) => ({
   lastSeenOn: null,
 });
 
-const COMPATIBLE = { categoryMatch: true, unitMatch: true, similarity: 0.95 };
+const COMPATIBLE = { categoryMatch: true, unitMatch: true, merchantMatch: true, similarity: 0.95 };
 const PROVENANCE = { movedAliasIds: ['al-1'], movedObservationCount: 4 };
 
 const NL = { country: 'NL' };
@@ -170,7 +170,7 @@ describe('AdminCurationService', () => {
   });
 
   it('product merge is refused on category/unit/similarity mismatch (no move, no audit)', async () => {
-    repo.getMergeCompatibility.mockResolvedValue({ categoryMatch: false, unitMatch: true, similarity: 0.99 });
+    repo.getMergeCompatibility.mockResolvedValue({ categoryMatch: false, unitMatch: true, merchantMatch: true, similarity: 0.99 });
     await expect(sut.merge(ACTOR, 'product', 'p-1', 'p-2')).rejects.toBeInstanceOf(MergeNotAllowedError);
     expect(repo.mergeProduct).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import { resolveObservationRegion } from './region';
-import { roundTo, type BaseUnit } from './unitSize';
+import { roundTo } from './unitSize';
 
 // Stage 5: build de-identified price observations from enriched lines (§6.5). The
 // rows carry NO tenant/user/household/invoice reference and NO tags — only product,
@@ -20,8 +20,6 @@ export interface ContributorContext {
 export interface ObservationLine {
   productId: string | null;
   productProvisional: boolean;
-  baseUnit: BaseUnit | null;
-  normalizedUnitPrice: number | null;
   isDepositOrFee: boolean;
   quantity: number;
   lineTotal: number;
@@ -48,11 +46,9 @@ export interface PriceObservationInput {
   countryCode: string;
   regionCode: string;
   observedOn: string;
+  // pack_price = line_total ÷ quantity is the sole price signal — pure receipt arithmetic.
+  // No per-unit price is ever derived or stored (fix 09/01, §6.5).
   packPrice: number;
-  // Per-unit fields are optional enrichment: present only when a real pack size was
-  // resolved. pack_price is the always-available primary signal (§6.5).
-  normalizedUnitPrice: number | null;
-  baseUnit: BaseUnit | null;
   currency: string;
   wasDiscounted: boolean;
   quality: PriceObsQuality;
@@ -99,8 +95,6 @@ export function buildPriceObservations(input: ObservationBuildInput): PriceObser
       regionCode,
       observedOn: input.transactionDate,
       packPrice,
-      normalizedUnitPrice: line.normalizedUnitPrice,
-      baseUnit: line.baseUnit,
       currency,
       wasDiscounted: isDiscounted(line, packPrice),
       quality,

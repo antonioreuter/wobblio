@@ -128,6 +128,10 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
                 quantity: line.quantity,
                 unitPrice: line.unitPrice,
                 lineTotal: line.lineTotal,
+                // "Set size" (09/05): send the user-annotated size so the backend stamps it USER.
+                sizePackQuantity:
+                    line.sizeSource == 'USER' ? line.packQuantity : null,
+                sizeBaseUnit: line.sizeSource == 'USER' ? line.baseUnit : null,
               ),
         ],
       );

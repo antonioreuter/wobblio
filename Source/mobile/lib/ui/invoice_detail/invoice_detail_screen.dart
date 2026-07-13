@@ -373,6 +373,23 @@ class _LineItems extends StatelessWidget {
                               size: AppTypography.textXs,
                               color: AppColors.textMuted,),
                         ),
+                      // Descriptive pack size chip (09/01): context only, never a per-unit price.
+                      if (formatSizeChip(
+                            detail.lines[i].packQuantity,
+                            detail.lines[i].baseUnit,
+                          ) !=
+                          null)
+                        Text(
+                          detail.lines[i].sizeSource == 'USER'
+                              ? '${formatSizeChip(detail.lines[i].packQuantity, detail.lines[i].baseUnit)} · set by you'
+                              : formatSizeChip(
+                                  detail.lines[i].packQuantity,
+                                  detail.lines[i].baseUnit,
+                                )!,
+                          style: AppTypography.body(
+                              size: AppTypography.textXs,
+                              color: AppColors.textMuted,),
+                        ),
                     ],
                   ),
                 ),

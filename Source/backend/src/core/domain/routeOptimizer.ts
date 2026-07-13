@@ -53,6 +53,10 @@ export interface StoreLine {
   observationCount: number;
   lastObservedOn: string | null;
   confidence: Confidence;
+  // 09/05: why this item's comparison-set siblings were (or weren't) considered — set by
+  // OptimizerService after the pure algorithm runs, so the UI can explain instead of silently
+  // omitting. The pure optimizer never populates it.
+  reason?: 'comparable' | 'watch_only' | 'ambiguous' | 'no_link';
 }
 
 export interface StoreSubList {
@@ -63,6 +67,16 @@ export interface StoreSubList {
   lines: StoreLine[];
 }
 
+// 09/05 degradation ladder, bottom rung: with zero usable cross-store links, split-route can't
+// help, so we fall back to the tenant's own-history whole-basket total per merchant they shop at
+// ("your usual basket costs ~€52 at AH vs ~€49 at Jumbo"). Clearly own-history-based, never crowned.
+export interface OwnHistoryBasketTotal {
+  merchantId: string;
+  name: string;
+  total: number;
+  itemsPriced: number; // how many basket items this merchant's own history could price
+}
+
 export interface OptimizationResult {
   optimized: boolean;
   baseline: { merchantId: string; name: string; total: number } | null;
@@ -70,6 +84,8 @@ export interface OptimizationResult {
   stores: StoreSubList[];
   unresolvedItems: string[];
   reason: string | null;
+  // Populated by OptimizerService only in the zero-usable-links fallback (09/05); null otherwise.
+  ownHistoryBasket?: OwnHistoryBasketTotal[] | null;
 }
 
 interface Assignment {

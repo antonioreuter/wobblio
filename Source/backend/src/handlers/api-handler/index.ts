@@ -67,13 +67,14 @@ import type { PushPlatform } from '@core/ports/notifications/IDeviceTokenReposit
 import { DeviceTokenRepositoryAdapter } from '@infrastructure/adapters/notifications/DeviceTokenRepositoryAdapter';
 import { CATEGORY_TAXONOMY } from '@core/domain/categoryTaxonomy';
 import type { PoolClient } from 'pg';
-import { REGION, json, parseJsonBody, withTenantTx, uploadQuotaAdapter } from './shared';
+import { REGION, json, parseJsonBody, parseUserSize, withTenantTx, uploadQuotaAdapter } from './shared';
 import { handleHouseholdsRoute } from './householdRoutes';
 import { handleBudgetsRoute } from './budgetRoutes';
 import { handleNotificationsRoute } from './notificationRoutes';
 import { handleListsRoute } from './listRoutes';
 import { handleProductsRoute } from './productRoutes';
 import { handlePriceTrendsRoute } from './priceTrendRoutes';
+import { handleComparisonSetsRoute } from './comparisonSetRoutes';
 import { handleSpendReportRoute } from './spendReportRoutes';
 import { handleSplitsRoute } from './splitRoutes';
 import { handleAdminRoute } from './adminRoutes';
@@ -228,6 +229,7 @@ async function handleMeRoute(
   if (path === '/me/device-token' && method === 'POST') return handleRegisterDeviceToken(db, user, event, log);
   if (path === '/me/price-contribution-optout' && method === 'PUT') return handlePriceContributionOptout(db, user, event, log);
   if (path.startsWith('/me/export')) return handleGdprRoute(db, user, path, method, event);
+  if (path.startsWith('/me/comparison-sets')) return handleComparisonSetsRoute(db, user, path, method, event);
 
   if (path !== '/me/profile') {
     return json(404, { message: 'Not Found' });
@@ -572,6 +574,9 @@ function parseCorrectionLine(raw: unknown): CorrectInvoiceLine | null {
     quantity,
     unitPrice: unitPrice != null && Number.isFinite(unitPrice) ? unitPrice : null,
     lineTotal,
+    // "Set size" (09/05): null when absent/invalid → the adapter's COALESCE leaves the existing
+    // size untouched. Same validator as the split-variant path (shared.parseUserSize).
+    size: parseUserSize(line.size),
   };
 }
 

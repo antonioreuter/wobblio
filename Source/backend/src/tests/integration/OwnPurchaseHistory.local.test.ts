@@ -47,17 +47,19 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     return res.rows[0].id;
   };
 
+  // pack_price = line_total ÷ quantity is the sole own-history price signal (fix 09/01); quantity
+  // defaults to 1, so line_total carries the price directly.
   const insertLine = (
     invoiceId: string,
     productId: string | null,
-    normalizedUnitPrice: number | null,
+    price: number | null,
     over: { isDiscount?: boolean; isDepositOrFee?: boolean } = {},
   ): Promise<unknown> =>
     pool.query(
       `INSERT INTO invoice_line
-         (invoice_id, raw_text, product_id, normalized_unit_price, line_total, is_discount, is_deposit_or_fee)
-       VALUES ($1, 'line', $2, $3, $4, $5, $6)`,
-      [invoiceId, productId, normalizedUnitPrice, normalizedUnitPrice ?? 0, over.isDiscount ?? false, over.isDepositOrFee ?? false],
+         (invoice_id, raw_text, product_id, line_total, is_discount, is_deposit_or_fee)
+       VALUES ($1, 'line', $2, $3, $4, $5)`,
+      [invoiceId, productId, price ?? 0, over.isDiscount ?? false, over.isDepositOrFee ?? false],
     );
 
   beforeAll(async () => {
@@ -89,19 +91,19 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     const products = new ProductCatalogAdapter(pool);
     milkId = await products.createProvisionalProduct({
       displayName: `Own Milk ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
-      baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+      merchantId: null, baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
     nicheId = await products.createProvisionalProduct({
       displayName: `Own Niche ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
-      baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+      merchantId: null, baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
     pendingId = await products.createProvisionalProduct({
       displayName: `Own Pending ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
-      baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+      merchantId: null, baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
     promoOnlyId = await products.createProvisionalProduct({
       displayName: `Own Promo ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
-      baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+      merchantId: null, baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
 
     // tenantA, week W1 (today), region R: milk 1.00 + 1.40 (median 1.20), one promo at 0.80,

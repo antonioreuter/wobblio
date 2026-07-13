@@ -8,8 +8,10 @@ import {
   canOptimize,
   optimizeList,
   STALE_OBSERVATION_DAYS,
+  type ComparabilityReason,
   type Confidence,
   type OptimizationResult,
+  type OwnHistoryBasketTotal,
   type StoreLine,
   type StoreSubList,
 } from './list-data'
@@ -24,6 +26,13 @@ const CONFIDENCE: Record<Confidence, { label: string; tone: 'success' | 'primary
   high: { label: 'High confidence', tone: 'success' },
   medium: { label: 'Some history', tone: 'primary' },
   low: { label: 'Low confidence', tone: 'warning' },
+}
+
+// 09/05 per-line hint: only non-rankable states get a chip (comparable is the normal case, and a
+// single-store item with no link needs no explanation).
+const REASON_CHIP: Partial<Record<ComparabilityReason, { label: string; tone: 'warning' | 'danger' }>> = {
+  watch_only: { label: 'watch-only — confirm same size', tone: 'warning' },
+  ambiguous: { label: 'varies — may cover different products', tone: 'danger' },
 }
 
 const daysOld = (iso: string | null): number | null => {
@@ -164,6 +173,10 @@ function OptimizerResult({
         <StoreBlock key={store.merchantId} store={store} />
       ))}
 
+      {result.ownHistoryBasket && result.ownHistoryBasket.length > 0 && (
+        <OwnHistoryBasket totals={result.ownHistoryBasket} />
+      )}
+
       {result.unresolvedItems.length > 0 && (
         <div className="optimizer-unresolved" data-testid="optimizer-unresolved">
           <p className="optimizer-unresolved-title">Not priced (added to your main store)</p>
@@ -201,6 +214,7 @@ function StoreLineRow({ line }: { line: StoreLine }) {
   const conf = CONFIDENCE[line.confidence]
   const age = daysOld(line.lastObservedOn)
   const stale = age !== null && age > STALE_OBSERVATION_DAYS
+  const reasonChip = line.reason ? REASON_CHIP[line.reason] : undefined
   return (
     <div className={`store-line ${stale ? 'store-line--stale' : ''}`} data-testid="optimizer-line">
       <span className="store-line-name">
@@ -211,11 +225,32 @@ function StoreLineRow({ line }: { line: StoreLine }) {
       </span>
       <span className="store-line-meta">
         <Badge tone={conf.tone} className="store-line-conf">{conf.label}</Badge>
+        {reasonChip && <Badge tone={reasonChip.tone} className="store-line-conf" data-testid="optimizer-line-reason">{reasonChip.label}</Badge>}
         {age !== null && (
           <span className="store-line-age">{stale ? `${age}d old` : `${age}d`}</span>
         )}
       </span>
       <span className="store-line-price tabular"><Money amount={line.lineTotal} /></span>
+    </div>
+  )
+}
+
+// 09/05 zero-usable-links fallback: the tenant's own-history whole-basket total per merchant,
+// clearly labeled as own-history-based (never a crowned cross-store claim).
+function OwnHistoryBasket({ totals }: { totals: OwnHistoryBasketTotal[] }) {
+  return (
+    <div className="optimizer-unresolved" data-testid="optimizer-own-history">
+      <p className="optimizer-unresolved-title">Your usual basket, from your own history</p>
+      <div className="store-lines">
+        {totals.map((t) => (
+          <div className="store-line" key={t.merchantId}>
+            <span className="store-line-name">{t.name}</span>
+            <span className="store-line-meta"><Badge tone="primary" className="store-line-conf">{t.itemsPriced} priced</Badge></span>
+            <span className="store-line-price tabular"><Money amount={t.total} /></span>
+          </div>
+        ))}
+      </div>
+      <p className="optimizer-hint">Link items across stores (in Reports → Comparison sets) to unlock split suggestions.</p>
     </div>
   )
 }

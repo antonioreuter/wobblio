@@ -7,6 +7,10 @@ export interface ProductSearchResult {
   categoryId: string;
   baseUnit: BaseUnit;
   packSizeBaseUnits: number | null;
+  // Per-merchant identity (09/02): a product belongs to exactly one merchant, always shown so the
+  // user picks a concrete (product @ merchant). Null only for a legacy merchant-agnostic row.
+  merchantId: string | null;
+  merchantName: string | null;
   // Merchant signal per compare mode: name when exactly one store carries it, else a count.
   ownMerchantCount: number;
   ownMerchantName: string | null;

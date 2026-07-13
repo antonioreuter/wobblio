@@ -47,7 +47,7 @@ export class ExportDataSourceAdapter implements IExportDataSource {
   async listInvoiceLines(tenantId: string): Promise<Record<string, unknown>[]> {
     const result = await this.pool.query(
       `SELECT il.id, il.invoice_id, il.raw_text, p.display_name AS product, il.quantity,
-              il.pack_quantity, il.base_unit, il.unit_price, il.normalized_unit_price,
+              il.pack_quantity, il.base_unit, il.size_source, il.unit_price,
               il.line_total, il.is_discount, il.is_deposit_or_fee
        FROM invoice_line il
        JOIN invoice i ON i.id = il.invoice_id

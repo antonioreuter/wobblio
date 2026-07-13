@@ -55,6 +55,26 @@ String formatQuantity(double quantity) {
   return quantity.toString();
 }
 
+/// Renders a descriptive pack size ("2L", "500g", "3pc") from a base-unit pack quantity + unit
+/// (09/01). Sub-unit weights/volumes show in the smaller unit. Returns null when the size is
+/// unknown — the chip is then omitted. Pure display; size is never a per-unit price basis.
+String? formatSizeChip(double? packQuantity, String? baseUnit) {
+  if (packQuantity == null || packQuantity <= 0 || baseUnit == null) return null;
+  String n(double v) {
+    final r = (v * 1000).roundToDouble() / 1000;
+    return r == r.roundToDouble() ? r.toInt().toString() : r.toString();
+  }
+
+  switch (baseUnit) {
+    case 'KG':
+      return packQuantity < 1 ? '${(packQuantity * 1000).round()}g' : '${n(packQuantity)}kg';
+    case 'L':
+      return packQuantity < 1 ? '${(packQuantity * 1000).round()}ml' : '${n(packQuantity)}L';
+    default:
+      return '${n(packQuantity)}pc';
+  }
+}
+
 /// Formats an ISO timestamp as a short relative label for notification rows:
 /// `"Xm"`/`"Xh"` under a day old, `"1d"` for exactly one day, a weekday
 /// abbreviation (`"Mon"`) from two days up to a week old, and a short

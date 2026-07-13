@@ -26,8 +26,8 @@ const reEmission = (): InvoiceReEmission => ({
   currency: 'EUR',
   userCorrected: false,
   lines: [{
-    productId: 'p1', productProvisional: false, baseUnit: 'L',
-    normalizedUnitPrice: 2.0, isDepositOrFee: false, quantity: 1, lineTotal: 2.0, listUnitPrice: 2.0,
+    productId: 'p1', productProvisional: false,
+    isDepositOrFee: false, quantity: 1, lineTotal: 2.0, listUnitPrice: 2.0,
   }],
 });
 

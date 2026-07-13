@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from 'react'
 
-// null = pack size unknown, so the price is per item (€/pack) and not cross-comparable.
-export type TrendUnit = 'KG' | 'L' | 'PIECE' | null
+// Evidence state for a series' descriptive pack size (fix 09/01). Prices are always the pack
+// price paid — never per-unit; size is a chip, not a comparison basis.
+export type SizeSource = 'RECEIPT' | 'USER' | null
+
+export interface SeriesSize {
+  sizeText: string | null // e.g. "2L", "500g"; null when the size is unknown
+  sizeSource: SizeSource
+}
 
 export interface TrendPoint {
   weekStart: string // ISO date (Monday)
@@ -20,7 +26,10 @@ export interface TrendLine {
   lastObservedOn: string
   stale: boolean
   staleDays: number
-  unit: TrendUnit
+  size: SeriesSize
+  // 09/05: the (product, merchant) name may cover different SKUs (bimodal history). Drives the
+  // "prices ranged €X–€Y" banner; such a series is never crowned or fed to the optimizer.
+  ambiguous: boolean
 }
 
 // The caller's own purchase history for a product — RLS-scoped, no quorum gate, so it
@@ -34,7 +43,7 @@ export interface OwnPurchaseLine {
   // previous scan" legend copy. previousPrice is null when the product was bought only once.
   lastPrice: number | null
   previousPrice: number | null
-  unit: TrendUnit
+  size: SeriesSize
 }
 
 export interface TrendComparison {

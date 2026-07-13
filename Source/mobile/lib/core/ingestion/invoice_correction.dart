@@ -7,6 +7,8 @@ class CorrectionLine {
     required this.quantity,
     required this.unitPrice,
     required this.lineTotal,
+    this.sizePackQuantity,
+    this.sizeBaseUnit,
   });
 
   final String id;
@@ -14,6 +16,10 @@ class CorrectionLine {
   final double quantity;
   final double? unitPrice;
   final double lineTotal;
+  // "Set size" (09/05): a user-annotated pack size in base units + its unit (KG|L|PIECE). When both
+  // are set the backend stamps size_source = USER; size is identity metadata only, never a price.
+  final double? sizePackQuantity;
+  final String? sizeBaseUnit;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -21,6 +27,8 @@ class CorrectionLine {
         'quantity': quantity,
         'unitPrice': unitPrice,
         'lineTotal': lineTotal,
+        if (sizePackQuantity != null && sizeBaseUnit != null)
+          'size': {'packQuantity': sizePackQuantity, 'baseUnit': sizeBaseUnit},
       };
 }
 

@@ -8,7 +8,7 @@ const norm = (categoryId: string | null): NormalizedLine => ({
   categoryId,
   baseUnit: null,
   packQuantity: null,
-  normalizedUnitPrice: null,
+  sizeSource: null,
   isDepositOrFee: false,
   productProvisional: false,
   confidence: 1,

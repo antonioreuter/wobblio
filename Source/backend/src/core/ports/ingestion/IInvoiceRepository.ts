@@ -45,8 +45,10 @@ export interface PersistedLine {
   quantity: number;
   packQuantity: number | null;
   baseUnit: 'KG' | 'L' | 'PIECE' | null;
+  // Evidence state for packQuantity (fix 09/01): RECEIPT when transcribed off the line, USER when
+  // set via review-screen "Set size", null when unknown. No per-unit price is stored.
+  sizeSource: 'RECEIPT' | 'USER' | null;
   unitPrice: number | null;
-  normalizedUnitPrice: number | null;
   lineTotal: number;
   isDiscount: boolean;
   isDepositOrFee: boolean;
@@ -113,6 +115,10 @@ export interface CorrectInvoiceLine {
   quantity: number;
   unitPrice: number | null;
   lineTotal: number;
+  // "Set size" affordance (09/05): a user-annotated pack size in base units. When present it is
+  // written with size_source = USER (feeds SKU disambiguation + the comparability rule); it never
+  // affects any price. Omitted → the line's existing size (if any) is left untouched.
+  size?: { packQuantity: number; baseUnit: 'KG' | 'L' | 'PIECE' } | null;
 }
 
 // User corrections from the review screen: fixed header fields + per-line edits.
@@ -170,6 +176,11 @@ export interface InvoiceDetailLine {
   // form the proportionally-allocated fee pool rather than a splittable item.
   isDiscount: boolean;
   isDepositOrFee: boolean;
+  // Descriptive pack size (09/01): the review screen renders it as a chip and the "Set size"
+  // affordance (09/05) edits it. sizeSource = RECEIPT (printed) | USER (annotated) | null (unknown).
+  packQuantity: number | null;
+  baseUnit: 'KG' | 'L' | 'PIECE' | null;
+  sizeSource: 'RECEIPT' | 'USER' | null;
 }
 
 export interface InvoiceDetail extends InvoiceListItem {

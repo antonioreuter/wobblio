@@ -1,4 +1,5 @@
 import type { ParsedLine } from '@core/domain/ingestion';
+import type { SizeSource } from '@core/domain/unitSize';
 
 // Enrichment overlay for one parsed line; returned parallel to the input lines.
 export interface NormalizedLine {
@@ -6,7 +7,9 @@ export interface NormalizedLine {
   categoryId: string | null;
   baseUnit: 'KG' | 'L' | 'PIECE' | null;
   packQuantity: number | null;
-  normalizedUnitPrice: number | null;
+  // Evidence state for packQuantity (fix 09/01): RECEIPT when a size token was printed on the
+  // line, else null. USER only ever arrives via the review-screen "Set size" path, not here.
+  sizeSource: SizeSource | null;
   isDepositOrFee: boolean;
   productProvisional: boolean; // true when a PROVISIONAL product was auto-created
   confidence: number; // 0..1

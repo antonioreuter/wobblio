@@ -167,8 +167,6 @@ function toObservationLine(line: ParsedLine, norm: NormalizedLine): ObservationL
   return {
     productId: norm.productId,
     productProvisional: norm.productProvisional,
-    baseUnit: norm.baseUnit,
-    normalizedUnitPrice: norm.normalizedUnitPrice,
     isDepositOrFee: norm.isDepositOrFee,
     quantity: line.quantity,
     lineTotal: line.lineTotal,
@@ -187,8 +185,8 @@ function toPersistedLine(line: ParsedLine, norm: NormalizedLine, index: number):
     quantity: line.quantity,
     packQuantity: norm.packQuantity,
     baseUnit: norm.baseUnit,
+    sizeSource: norm.sizeSource,
     unitPrice: line.unitPrice ?? null,
-    normalizedUnitPrice: norm.normalizedUnitPrice,
     lineTotal: line.lineTotal,
     isDiscount,
     isDepositOrFee: norm.isDepositOrFee,

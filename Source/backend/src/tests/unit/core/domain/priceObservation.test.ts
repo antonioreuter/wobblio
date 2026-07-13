@@ -17,8 +17,6 @@ const context = (overrides: Partial<ContributorContext> = {}): ContributorContex
 const line = (overrides: Partial<ObservationLine> = {}): ObservationLine => ({
   productId: 'prod-1',
   productProvisional: false,
-  baseUnit: 'KG',
-  normalizedUnitPrice: 3,
   isDepositOrFee: false,
   quantity: 2,
   lineTotal: 3,
@@ -46,8 +44,6 @@ describe('buildPriceObservations', () => {
       regionCode: 'NL-NB',
       observedOn: '2026-06-10',
       packPrice: 1.5,
-      normalizedUnitPrice: 3,
-      baseUnit: 'KG',
       currency: 'EUR',
       wasDiscounted: false,
       quality: 'AUTO',
@@ -116,11 +112,13 @@ describe('buildPriceObservations', () => {
     expect(result).toEqual([]);
   });
 
-  it('emits on pack price when the pack size is unknown, with null per-unit fields', () => {
+  it('emits on pack price alone (the sole price signal, no per-unit fields)', () => {
     const result = buildPriceObservations(
-      input({ lines: [line({ baseUnit: null, normalizedUnitPrice: null, quantity: 2, lineTotal: 3 })] }),
+      input({ lines: [line({ quantity: 2, lineTotal: 3 })] }),
     );
     expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ packPrice: 1.5, normalizedUnitPrice: null, baseUnit: null });
+    expect(result[0]).toMatchObject({ packPrice: 1.5 });
+    expect(result[0]).not.toHaveProperty('normalizedUnitPrice');
+    expect(result[0]).not.toHaveProperty('baseUnit');
   });
 });

@@ -29,11 +29,11 @@ describe('PriceTrendQueryAdapter — §6.5.1 comparison over Postgres', () => {
   const obs = (
     merchantId: string,
     observedOn: string,
-    normalizedUnitPrice: number,
+    packPrice: number,
     over: Partial<PriceObservationInput> = {},
   ): PriceObservationInput => ({
     productId, merchantId, countryCode: 'NL', regionCode: region, observedOn,
-    packPrice: normalizedUnitPrice, normalizedUnitPrice, baseUnit: 'L', currency: 'EUR',
+    packPrice, currency: 'EUR',
     wasDiscounted: false, quality: 'AUTO', quarantined: false, contributorTrustAtWrite: 50, ...over,
   });
 
@@ -46,7 +46,7 @@ describe('PriceTrendQueryAdapter — §6.5.1 comparison over Postgres', () => {
     staleMerchantId = await merchants.createProvisionalMerchant('Trend Stale Shop', 'NL', 'cat-groceries');
     productId = await new ProductCatalogAdapter(pool).createProvisionalProduct({
       displayName: `Trend Milk ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
-      baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+      merchantId: freshMerchantId, baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
 
     await emit([

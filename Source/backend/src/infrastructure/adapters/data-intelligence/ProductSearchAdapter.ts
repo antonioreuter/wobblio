@@ -9,6 +9,8 @@ interface ProductRow {
   category_id: string;
   base_unit: BaseUnit;
   pack_size_base_units: string | null;
+  merchant_id: string | null;
+  merchant_name: string | null;
   own_merchant_count: string;
   own_merchant_name: string | null;
   market_merchant_count: string;
@@ -31,11 +33,15 @@ export class ProductSearchAdapter implements IProductSearch {
     const result = await this.client.query<ProductRow>(
       `SELECT p.id, p.display_name, p.brand, p.category_id, p.base_unit,
               p.pack_size_base_units::text AS pack_size_base_units,
+              p.merchant_id AS merchant_id,
+              pm.brand_name AS merchant_name,
               own.merchant_count AS own_merchant_count,
               CASE WHEN own.merchant_count = 1 THEN own.brand_name END AS own_merchant_name,
               mkt.merchant_count AS market_merchant_count,
               CASE WHEN mkt.merchant_count = 1 THEN mkt.brand_name END AS market_merchant_name
        FROM product p
+       -- Per-merchant identity (09/02): the product's own merchant, always available for the label.
+       LEFT JOIN merchant pm ON pm.id = p.merchant_id
        -- Own: RLS-scoped to the caller via invoice_line/invoice (tenant context already set).
        LEFT JOIN LATERAL (
          SELECT count(DISTINCT i.merchant_id) AS merchant_count,
@@ -82,6 +88,8 @@ export class ProductSearchAdapter implements IProductSearch {
       categoryId: row.category_id,
       baseUnit: row.base_unit,
       packSizeBaseUnits: row.pack_size_base_units === null ? null : parseFloat(row.pack_size_base_units),
+      merchantId: row.merchant_id,
+      merchantName: row.merchant_name,
       ownMerchantCount: parseInt(row.own_merchant_count, 10) || 0,
       ownMerchantName: row.own_merchant_name,
       marketMerchantCount: parseInt(row.market_merchant_count, 10) || 0,

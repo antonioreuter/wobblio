@@ -14,6 +14,7 @@ class StoreLine extends Equatable {
     required this.observationCount,
     required this.lastObservedOn,
     required this.confidence,
+    this.reason,
   });
 
   final String productId;
@@ -24,6 +25,9 @@ class StoreLine extends Equatable {
   final int observationCount;
   final String? lastObservedOn; // ISO date
   final String confidence; // 'high' | 'medium' | 'low'
+  // 09/05: why this item's comparison-set siblings were considered:
+  // 'comparable' | 'watch_only' | 'ambiguous' | 'no_link'. Drives the per-line hint.
+  final String? reason;
 
   @override
   List<Object?> get props => [
@@ -35,7 +39,26 @@ class StoreLine extends Equatable {
         observationCount,
         lastObservedOn,
         confidence,
+        reason,
       ];
+}
+
+/// 09/05 zero-usable-links fallback: own-history whole-basket total per merchant, never crowned.
+class OwnHistoryBasketTotal extends Equatable {
+  const OwnHistoryBasketTotal({
+    required this.merchantId,
+    required this.name,
+    required this.total,
+    required this.itemsPriced,
+  });
+
+  final String merchantId;
+  final String name;
+  final double total;
+  final int itemsPriced;
+
+  @override
+  List<Object?> get props => [merchantId, name, total, itemsPriced];
 }
 
 /// One store's recommended sub-basket.
@@ -81,6 +104,7 @@ class OptimizationResult extends Equatable {
     required this.stores,
     required this.unresolvedItems,
     required this.reason,
+    this.ownHistoryBasket = const [],
   });
 
   final bool optimized;
@@ -93,6 +117,9 @@ class OptimizationResult extends Equatable {
   final List<String> unresolvedItems;
   final String? reason;
 
+  /// 09/05 zero-usable-links fallback: own-history per-merchant basket totals (empty otherwise).
+  final List<OwnHistoryBasketTotal> ownHistoryBasket;
+
   @override
   List<Object?> get props => [
         optimized,
@@ -101,5 +128,6 @@ class OptimizationResult extends Equatable {
         stores,
         unresolvedItems,
         reason,
+        ownHistoryBasket,
       ];
 }

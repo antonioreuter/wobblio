@@ -135,9 +135,10 @@ export class CatalogCurationAdapter implements ICatalogCurationRepository {
   // pgvector cosine distance (<=>) → similarity = 1 - distance; 0 when an embedding is
   // missing (treated as unverified so the guard refuses). null when either id is missing.
   async getMergeCompatibility(sourceId: string, targetId: string): Promise<MergeCompatibility | null> {
-    const result = await this.db.query<{ category_match: boolean; unit_match: boolean; similarity: number | null }>(
+    const result = await this.db.query<{ category_match: boolean; unit_match: boolean; merchant_match: boolean; similarity: number | null }>(
       `SELECT (s.category_id IS NOT DISTINCT FROM t.category_id) AS category_match,
               (s.base_unit = t.base_unit) AS unit_match,
+              (s.merchant_id IS NOT DISTINCT FROM t.merchant_id) AS merchant_match,
               CASE WHEN s.embedding IS NULL OR t.embedding IS NULL THEN NULL
                    ELSE 1 - (s.embedding <=> t.embedding) END AS similarity
        FROM product s, product t
@@ -146,7 +147,7 @@ export class CatalogCurationAdapter implements ICatalogCurationRepository {
     );
     const row = result.rows[0];
     if (!row) return null;
-    return { categoryMatch: row.category_match, unitMatch: row.unit_match, similarity: Number(row.similarity ?? 0) };
+    return { categoryMatch: row.category_match, unitMatch: row.unit_match, merchantMatch: row.merchant_match, similarity: Number(row.similarity ?? 0) };
   }
 
   async listProductAliases(productId: string): Promise<ProductAliasInfo[]> {

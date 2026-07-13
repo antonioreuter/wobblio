@@ -36,6 +36,19 @@ export function parseJsonBody(body: string | null): Record<string, unknown> {
   }
 }
 
+// A user-annotated pack size {packQuantity, baseUnit} (09/05 "Set size" + split-variant). One
+// validator for both paths so they never diverge on what counts as a valid size. null when absent
+// or invalid — callers treat that as "leave the existing size untouched".
+export function parseUserSize(raw: unknown): { packQuantity: number; baseUnit: 'KG' | 'L' | 'PIECE' } | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const size = raw as Record<string, unknown>;
+  const packQuantity = Number(size.packQuantity);
+  const baseUnit = size.baseUnit;
+  if (!Number.isFinite(packQuantity) || packQuantity <= 0) return null;
+  if (baseUnit !== 'KG' && baseUnit !== 'L' && baseUnit !== 'PIECE') return null;
+  return { packQuantity, baseUnit };
+}
+
 // Runs fn inside a transaction with the RLS tenant context set first, so every
 // query in fn shares one connection and one tenant scope (invariant #1).
 export async function withTenantTx<T>(db: PoolClient, tenantId: string, fn: () => Promise<T>): Promise<T> {

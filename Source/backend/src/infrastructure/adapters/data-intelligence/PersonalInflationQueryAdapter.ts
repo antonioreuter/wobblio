@@ -14,8 +14,8 @@ interface BasketRow {
 
 // Matched-basket median prices for the caller's own purchases, current period vs the one before it.
 // The db MUST already carry the tenant context (invoice/invoice_line are RLS-scoped). Price basis
-// mirrors OwnPurchaseHistoryQueryAdapter: €/unit when every own line for a product has a per-unit
-// price and a single base unit, else €/item (pack price). Deposit/fee and discount lines excluded
+// is the pack price paid (line_total ÷ quantity) — the sole price signal (fix 09/01), never
+// per-unit. Deposit/fee and discount lines excluded
 // so the two periods compare like-for-like regular shelf price. Only products with a median in BOTH
 // periods are returned — that's what makes it matched-basket (measuring price change, not basket
 // change). Not integration-tested yet — verify against a seeded tenant before relying on the number.
@@ -29,8 +29,6 @@ export class PersonalInflationQueryAdapter implements IPersonalInflationQuery {
       `WITH lines AS (
          SELECT l.product_id,
                 (l.line_total / NULLIF(l.quantity, 0)) AS pack_price,
-                l.normalized_unit_price,
-                l.base_unit,
                 CASE
                   WHEN i.transaction_date >= CURRENT_DATE - $1::int THEN 'current'
                   WHEN i.transaction_date >= CURRENT_DATE - (2 * $1::int) THEN 'prior'
@@ -47,22 +45,11 @@ export class PersonalInflationQueryAdapter implements IPersonalInflationQuery {
            AND l.product_id IS NOT NULL
            ${currencyClause}
        ),
-       prod AS (
-         -- per-unit only when every line for the product has a per-unit price and one base unit;
-         -- otherwise both periods' medians use the pack price (€/item).
-         SELECT product_id,
-                (COUNT(*) FILTER (WHERE normalized_unit_price IS NULL) = 0
-                   AND COUNT(DISTINCT base_unit) = 1) AS unit_known
-         FROM lines
-         GROUP BY product_id
-       ),
        medians AS (
+         -- Both periods' medians are the pack price paid (fix 09/01) — no per-unit price.
          SELECT l.product_id, l.bucket,
-                percentile_cont(0.5) WITHIN GROUP (
-                  ORDER BY CASE WHEN p.unit_known THEN l.normalized_unit_price ELSE l.pack_price END
-                ) AS med
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY l.pack_price) AS med
          FROM lines l
-         JOIN prod p ON p.product_id = l.product_id
          WHERE l.bucket IS NOT NULL
          GROUP BY l.product_id, l.bucket
        )

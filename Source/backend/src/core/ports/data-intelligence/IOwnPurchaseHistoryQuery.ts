@@ -1,5 +1,4 @@
-import type { WeeklyMedianPoint } from './IPriceTrendQuery';
-import type { BaseUnit } from '../../domain/unitSize';
+import type { WeeklyMedianPoint, SeriesSize } from './IPriceTrendQuery';
 
 // The caller's OWN purchase history for the comparison chart — read from the RLS-scoped
 // invoice_line store, NOT the de-identified price_observation store. No quorum gate: a
@@ -27,14 +26,14 @@ export interface OwnPurchaseLine {
   points: WeeklyMedianPoint[];
   purchaseCount: number; // total own purchase lines in the window
   lastPurchasedOn: string; // ISO date of the most recent own purchase
-  // The two most recent *regular-price* purchase events (§6.5.5 "% change vs last scan"), unit-
-  // consistent with the medians (€/unit when size known, else €/item). `lastPrice` is the most
-  // recent; `previousPrice` the one before it, null when the product was bought only once.
+  // The two most recent *regular-price* purchase events (§6.5.5 "% change vs last scan"). Both
+  // are pack prices paid (line_total ÷ quantity) — never per-unit (fix 09/01). `lastPrice` is the
+  // most recent; `previousPrice` the one before it, null when the product was bought only once.
   lastPrice: number | null;
   previousPrice: number | null;
-  // Comparable unit when every own line for this product shares a known pack size (median is
-  // €/unit); null when size is unknown (median is €/item).
-  unit: BaseUnit | null;
+  // Descriptive pack size for the caller's own history of this product — a chip, not a price
+  // basis. sizeSource reflects the strongest evidence across the user's lines (USER > RECEIPT).
+  size: SeriesSize;
 }
 
 // Region scope for resolving the modal currency of the caller's own receipts (no currency filter).

@@ -3,7 +3,8 @@ import type { IRoutingConfig } from '../../ports/optimizer/IRoutingConfig';
 import type { IShoppingListRepository } from '../../ports/lists/IShoppingListRepository';
 import type { IContributorContextRepository } from '../../ports/data-intelligence/IContributorContextRepository';
 import type { UserRole } from '../../ports/identity/IAppUserRepository';
-import { optimizeRoute, type OptimizationResult } from '../../domain/routeOptimizer';
+import { optimizeRoute, type OptimizationResult, type PriceMatrix } from '../../domain/routeOptimizer';
+import type { ComparabilityReason } from '../../domain/comparability';
 import { hasPremiumAccess } from '../../domain/access';
 import { PremiumRequiredError, ListNotFoundError } from '../../domain/errors';
 
@@ -38,7 +39,8 @@ export class OptimizerService {
     const context = await this.contributorContext.getContext(userId);
     const region = detail.regionCode ?? detail.countryCode ?? context.regionCode ?? context.countryCode;
     const country = detail.countryCode ?? context.countryCode;
-    const matrix = await this.priceMatrix.build(items.map(item => item.productId), region, country, context.homeCurrency ?? 'EUR');
+    const currency = context.homeCurrency ?? 'EUR';
+    const { matrix, reasons } = await this.priceMatrix.build(items.map(item => item.productId), region, country, currency);
     const config = await this.routing.get();
 
     // §10c store removal: excluded merchants are dropped from the candidate set
@@ -51,6 +53,43 @@ export class OptimizerService {
       cells: matrix.cells.filter(c => !excluded.has(c.merchantId)),
     };
 
-    return optimizeRoute({ items, unresolved, matrix: filteredMatrix, config, today: new Date().toISOString().slice(0, 10) });
+    const result = optimizeRoute({ items, unresolved, matrix: filteredMatrix, config, today: new Date().toISOString().slice(0, 10) });
+    annotateReasons(result, reasons);
+
+    // 09/05 degradation ladder, bottom rung: when no item is priceable at ≥2 merchants (no usable
+    // cross-store links), split-route can't help — fall back to own-history whole-basket totals per
+    // merchant, clearly own-history-based, so the user still sees something actionable.
+    if (!hasCrossStoreOption(filteredMatrix)) {
+      const basket = await this.priceMatrix.ownHistoryBasket(items.map(item => item.productId), currency);
+      result.ownHistoryBasket = basket.length > 0 ? basket : null;
+      if (basket.length > 0) {
+        result.reason = 'own-history basket totals — link items across stores to unlock split suggestions';
+      }
+    } else {
+      result.ownHistoryBasket = null;
+    }
+    return result;
   }
+}
+
+// Stamp each served line with why its comparison-set siblings were considered (09/05), so the UI
+// can explain instead of silently omitting. Pure post-processing; the optimizer stays unchanged.
+function annotateReasons(result: OptimizationResult, reasons: Record<string, ComparabilityReason>): void {
+  for (const store of result.stores) {
+    for (const line of store.lines) {
+      line.reason = reasons[line.productId] ?? 'no_link';
+    }
+  }
+}
+
+// A basket has a real split-route option only when some product is priceable at ≥2 merchants.
+function hasCrossStoreOption(matrix: PriceMatrix): boolean {
+  const merchantsByProduct = new Map<string, Set<string>>();
+  for (const cell of matrix.cells) {
+    const set = merchantsByProduct.get(cell.productId) ?? new Set<string>();
+    set.add(cell.merchantId);
+    merchantsByProduct.set(cell.productId, set);
+  }
+  for (const set of merchantsByProduct.values()) if (set.size >= 2) return true;
+  return false;
 }

@@ -341,6 +341,36 @@ export class ListItemNotFoundError extends Error {
   }
 }
 
+// Comparison sets (09/04) — user-asserted cross-merchant comparability, tenant-scoped.
+export class InvalidComparisonSetError extends Error {
+  constructor(readonly reason: string) {
+    super(`Invalid comparison set: ${reason}`);
+    this.name = 'InvalidComparisonSetError';
+  }
+}
+
+export class ComparisonSetLimitError extends Error {
+  constructor(readonly limit: number) {
+    super(`Comparison set member limit reached (max ${limit})`);
+    this.name = 'ComparisonSetLimitError';
+  }
+}
+
+export class ComparisonSetNotFoundError extends Error {
+  constructor(readonly setId: string) {
+    super(`Comparison set not found: ${setId}`);
+    this.name = 'ComparisonSetNotFoundError';
+  }
+}
+
+// Product-split resolution (09/05) — the user resolves a price-ambiguous product by splitting it.
+export class ProductNotSplittableError extends Error {
+  constructor(readonly reason: string) {
+    super(`Product cannot be split: ${reason}`);
+    this.name = 'ProductNotSplittableError';
+  }
+}
+
 // Admin console — invalid operator input (e.g. a release count or SSM value that
 // fails validation). Carries a human-readable reason surfaced as a 400/422.
 export class InvalidAdminInputError extends Error {
