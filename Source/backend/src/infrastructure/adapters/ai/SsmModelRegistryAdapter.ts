@@ -13,37 +13,54 @@ import { stageScopeConfig } from '@infrastructure/config/stageConfig';
 
 const paramFor = (role: ModelRole): string => stageScopeConfig(`/wobblio/config/models/${role}`);
 
-// Reads cache per warm container (model IDs change rarely; a swap is picked up on
-// the next cold start, matching the existing worker behaviour). Writes update the
+// Model ids change rarely but must not require a cold start to take effect: the admin model-swap
+// matrix writes SSM and expects the fleet to follow. So reads are cached with a short TTL rather
+// than forever — a swap lands within CACHE_TTL_MS on every warm container. Writes update the
 // local cache so a read-after-write in the same invocation is consistent.
+const CACHE_TTL_MS = 5 * 60_000;
+
+interface CachedModelId {
+  value: string;
+  expiresAt: number;
+}
+
 export class SsmModelRegistryAdapter implements IModelRegistry {
   private readonly client: SSMClient;
-  private readonly cache = new Map<ModelRole, string>();
+  private readonly cache = new Map<ModelRole, CachedModelId>();
 
   constructor(region: string) {
     this.client = new SSMClient({ region });
   }
 
-  async getModelId(role: ModelRole): Promise<string> {
+  private fresh(role: ModelRole): string | null {
     const cached = this.cache.get(role);
+    return cached && cached.expiresAt > Date.now() ? cached.value : null;
+  }
+
+  private remember(role: ModelRole, value: string): void {
+    this.cache.set(role, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  }
+
+  async getModelId(role: ModelRole): Promise<string> {
+    const cached = this.fresh(role);
     if (cached) return cached;
     const response = await this.client.send(new GetParameterCommand({ Name: paramFor(role) }));
     const value = response.Parameter?.Value;
     if (!value) throw new Error(`SSM parameter ${paramFor(role)} is missing`);
-    this.cache.set(role, value);
+    this.remember(role, value);
     return value;
   }
 
   // Fail-open: a missing/empty param yields null instead of throwing, so an optional role
   // (vision_fallback) stays feature-off on stages that never provisioned it.
   async getModelIdOptional(role: ModelRole): Promise<string | null> {
-    const cached = this.cache.get(role);
+    const cached = this.fresh(role);
     if (cached) return cached;
     try {
       const response = await this.client.send(new GetParameterCommand({ Name: paramFor(role) }));
       const value = response.Parameter?.Value;
       if (!value) return null;
-      this.cache.set(role, value);
+      this.remember(role, value);
       return value;
     } catch (err) {
       if (err instanceof Error && err.name === 'ParameterNotFound') return null;
@@ -68,6 +85,6 @@ export class SsmModelRegistryAdapter implements IModelRegistry {
     await this.client.send(
       new PutParameterCommand({ Name: paramFor(role), Value: id, Type: 'String', Overwrite: true }),
     );
-    this.cache.set(role, id);
+    this.remember(role, id);
   }
 }

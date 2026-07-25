@@ -51,6 +51,12 @@ const fixedVisionPrompt = () => ({ template: VISION_PARSE_PROMPT, version: `${VI
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 
+// Module scope so the registry's TTL'd cache actually survives an invocation — a per-invocation
+// instance made the cache dead code and paid six SSM round-trips on every single message. The TTL
+// (not "forever") is what keeps the admin model-swap matrix effective without a cold start.
+const modelRegistry = new SsmModelRegistryAdapter(REGION);
+const escalationConfig = new SsmEscalationConfigAdapter(REGION);
+
 // The ingestion worker (Non-Functional 01 §3). runIngestionRecord owns the transaction shell,
 // charging, telemetry, and failure handling; this handler wires the service — a tool-based
 // coordinator (deterministic forced order) over the domain services, between the shared
@@ -61,16 +67,27 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   // need a second, or they would deadlock against it (see ProcessingProgressAdapter).
   const pool = await buildPool(process.env.DB_SECRET_ARN!, process.env.DB_HOST!, process.env.DB_PORT!, 5000, 2);
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
-  const modelRegistry = new SsmModelRegistryAdapter(REGION);
-  const visionModelId = await modelRegistry.getModelId('vision_parser');
-  const pdfModelId = await modelRegistry.getModelId('pdf_parser');
-  const auxiliaryModelId = await modelRegistry.getModelId('auxiliary');
-  const embedderModelId = await modelRegistry.getModelId('embedder');
+  // Independent reads, so they resolve together rather than in series. On a warm container every
+  // one of these is a cache hit; on a cold one it is a single round-trip's latency, not six.
   // Optional escalation tiers: a low-quality primary parse re-runs on the mid (Sonnet) or deep
   // (Opus) model. Fail-open — an unprovisioned id leaves that tier off (deep→mid→primary).
-  const visionFallbackModelId = await modelRegistry.getModelIdOptional('vision_fallback');
-  const visionFallbackDeepModelId = await modelRegistry.getModelIdOptional('vision_fallback_deep');
-  const escalationThresholds = await new SsmEscalationConfigAdapter(REGION).getThresholds();
+  const [
+    visionModelId,
+    pdfModelId,
+    auxiliaryModelId,
+    embedderModelId,
+    visionFallbackModelId,
+    visionFallbackDeepModelId,
+    escalationThresholds,
+  ] = await Promise.all([
+    modelRegistry.getModelId('vision_parser'),
+    modelRegistry.getModelId('pdf_parser'),
+    modelRegistry.getModelId('auxiliary'),
+    modelRegistry.getModelId('embedder'),
+    modelRegistry.getModelIdOptional('vision_fallback'),
+    modelRegistry.getModelIdOptional('vision_fallback_deep'),
+    escalationConfig.getThresholds(),
+  ]);
   const converse = new BedrockConverseAdapter(REGION);
   const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
   const uploadLimits = new SsmUploadQuotaAdapter(REGION);

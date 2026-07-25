@@ -46,4 +46,27 @@ describe('MeteringBedrockEmbedder', () => {
     expect(out).toBe(result);
     expect(meter.total).toBe(40);
   });
+
+  // ProductNormalizer embeds concurrently (fix 07/04 §1), so the charge the worker bills off this
+  // meter depends on interleaved calls not losing updates. TokenMeter.record is synchronous, so
+  // no two updates can interleave — this pins that, because a future `await` inside record()
+  // would silently start under-charging.
+  it('loses no tokens when many embeddings resolve concurrently and out of order', async () => {
+    const inner: IBedrockEmbedder = {
+      embed: vi.fn().mockImplementation(async (text: string) => {
+        const n = Number(text);
+        await new Promise((r) => setTimeout(r, (20 - n) % 7));
+        return { embedding: [n], inputTokens: 10 };
+      }),
+    };
+    const meter = new TokenMeter();
+    const sut = new MeteringBedrockEmbedder(inner, meter);
+
+    await Promise.all(Array.from({ length: 20 }, (_, i) => sut.embed(String(i))));
+
+    expect(meter.total).toBe(200);
+    expect(meter.inputTotal).toBe(200);
+    expect(meter.outputTotal).toBe(0);
+    expect(meter.stageBreakdown()).toEqual([{ stage: 'EMBEDDING', inputTokens: 200, outputTokens: 0 }]);
+  });
 });

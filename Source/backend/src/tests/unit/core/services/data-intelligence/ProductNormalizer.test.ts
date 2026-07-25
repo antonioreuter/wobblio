@@ -229,4 +229,95 @@ describe('ProductNormalizer', () => {
 
     expect(result.lines[0].packQuantity).toBe(1); // falls back to the LLM/catalog pack size
   });
+
+  // ── 07/04 §1–2: concurrency must not disturb positional alignment ────────────────────────────
+  describe('concurrent embedding + expansion (fix 07/04)', () => {
+    it('keeps each embedding with its own line when they resolve out of order', async () => {
+      const names = ['Milk 1L', 'Bread', 'Cheese'];
+      converse.mockResolvedValue(expansion(names.map((n) => item({ display_name: n }))));
+      // Resolve in reverse order, so arrival order is the opposite of input order.
+      embedder.embed.mockImplementation(async (text: string) => {
+        const index = names.indexOf(text);
+        await new Promise((r) => setTimeout(r, (names.length - index) * 5));
+        return { embedding: [index], inputTokens: 4 };
+      });
+      catalog.searchByEmbedding.mockResolvedValue([]);
+
+      await sut.normalize('m1', names.map((n) => line(n)), COUNTRY);
+
+      // Each provisional product must carry the embedding of ITS OWN display name.
+      const created = catalog.createProvisionalProduct.mock.calls.map((c) => c[0]);
+      expect(created.map((p) => p.displayName)).toEqual(names);
+      expect(created.map((p) => p.embedding)).toEqual([[0], [1], [2]]);
+    });
+
+    it('runs embeddings concurrently rather than one after another', async () => {
+      const names = ['a', 'b', 'c', 'd'];
+      converse.mockResolvedValue(expansion(names.map((n) => item({ display_name: n }))));
+      let inFlight = 0;
+      let peak = 0;
+      embedder.embed.mockImplementation(async () => {
+        peak = Math.max(peak, ++inFlight);
+        await new Promise((r) => setTimeout(r, 10));
+        inFlight--;
+        return { embedding: [0.1], inputTokens: 4 };
+      });
+
+      await sut.normalize('m1', names.map((n) => line(n)), COUNTRY);
+
+      expect(peak).toBeGreaterThan(1);
+    });
+
+    it('never embeds a deposit/fee line, and still aligns the lines around it', async () => {
+      converse.mockResolvedValue(expansion([
+        item({ display_name: 'Cola' }),
+        item({ display_name: 'Statiegeld', is_deposit_or_fee: true, category_id: 'cat-other' }),
+        item({ display_name: 'Chips' }),
+      ]));
+      catalog.searchByEmbedding.mockResolvedValue([]);
+
+      const result = await sut.normalize('m1', [line('COLA'), line('STATIEGELD'), line('CHIPS')], COUNTRY);
+
+      expect(embedder.embed.mock.calls.map((c) => c[0])).toEqual(['Cola', 'Chips']);
+      expect(result.lines[1]).toMatchObject({ isDepositOrFee: true, productId: null, categoryId: 'cat-other' });
+      expect(result.lines[0].isDepositOrFee).toBe(false);
+      expect(result.lines[2].isDepositOrFee).toBe(false);
+    });
+
+    it('preserves chunk order when a later expansion chunk resolves before an earlier one', async () => {
+      // 25 lines → two chunks (20 + 5). The second chunk answers first.
+      const first = Array.from({ length: 20 }, (_, i) => item({ display_name: `first-${i}` }));
+      const second = Array.from({ length: 5 }, (_, i) => item({ display_name: `second-${i}` }));
+      converse
+        .mockImplementationOnce(async () => {
+          await new Promise((r) => setTimeout(r, 30));
+          return expansion(first, ['tag-a']);
+        })
+        .mockImplementationOnce(async () => expansion(second, ['tag-b']));
+      catalog.searchByEmbedding.mockResolvedValue([]);
+
+      const lines = Array.from({ length: 25 }, (_, i) => line(`RAW-${i}`));
+      await sut.normalize('m1', lines, COUNTRY);
+
+      const embedded = embedder.embed.mock.calls.map((c) => c[0]);
+      expect(embedded[0]).toBe('first-0');
+      expect(embedded[19]).toBe('first-19');
+      expect(embedded[20]).toBe('second-0');
+      expect(embedded).toHaveLength(25);
+    });
+
+    it('unions suggested tags across chunks regardless of which resolves first', async () => {
+      converse
+        .mockImplementationOnce(async () => {
+          await new Promise((r) => setTimeout(r, 20));
+          return expansion(Array.from({ length: 20 }, () => item()), ['dairy', 'shared']);
+        })
+        .mockImplementationOnce(async () => expansion([item()], ['snacks', 'shared']));
+      catalog.searchByEmbedding.mockResolvedValue([]);
+
+      const result = await sut.normalize('m1', Array.from({ length: 21 }, (_, i) => line(`R${i}`)), COUNTRY);
+
+      expect([...result.suggestedTags].sort()).toEqual(['dairy', 'shared', 'snacks']);
+    });
+  });
 });

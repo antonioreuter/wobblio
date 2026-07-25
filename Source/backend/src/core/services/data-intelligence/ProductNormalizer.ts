@@ -21,6 +21,11 @@ const PROVISIONAL_CONFIDENCE = 0.5;
 // chunks in order.
 const EXPANSION_BATCH = 20;
 
+// Embedding calls are independent network round-trips (~124ms each), so they run concurrently —
+// but bounded, so a 60-line receipt doesn't fire 60 simultaneous Bedrock calls at the account's
+// throughput quota. Only the pg work that consumes them has to stay serial.
+const EMBED_CONCURRENCY = 8;
+
 interface ResolvedProduct {
   productId: string | null;
   categoryId: string | null;
@@ -59,9 +64,20 @@ export class ProductNormalizer implements IProductNormalizer {
     exact.forEach((match, index) => {
       if (match) resolved[index] = fromExactMatch(match);
     });
+
+    // Phase A — Bedrock only, concurrent. The "sequential" constraint below protects the shared
+    // pg connection; it never applied to the embedder, which is a separate network call.
+    const embeddings = await this.embedUnmatched(expansion.items);
+
+    // Phase B — pg only, still serial: every stage shares one connection, which cannot run
+    // queries concurrently. A null embedding means (and only means) a deposit/fee line, which
+    // never reaches the catalog at all.
     for (let k = 0; k < unmatched.length; k++) {
       const index = unmatched[k];
-      resolved[index] = await this.resolveProduct(merchantId, normalizedTexts[index], countryCode, expansion.items[k]);
+      const embedding = embeddings[k];
+      resolved[index] = embedding === null
+        ? depositOrFeeResolved(expansion.items[k])
+        : await this.resolveProduct(merchantId, normalizedTexts[index], countryCode, expansion.items[k], embedding);
     }
 
     return {
@@ -70,12 +86,21 @@ export class ProductNormalizer implements IProductNormalizer {
     };
   }
 
-  private async resolveProduct(merchantId: string | null, normalizedText: string, countryCode: string, item: ExpandedItem): Promise<ResolvedProduct> {
-    if (item.isDepositOrFee) {
-      return { productId: null, categoryId: item.categoryId, baseUnit: null, packSizeBaseUnits: null, isDepositOrFee: true, provisional: false, confidence: 1, lowConfidence: false };
+  // One embedding per unmatched line, in input order; null for a deposit/fee line, which is
+  // resolved without ever touching the catalog. Concurrency is bounded per window rather than
+  // per call, which keeps the ordering guarantee the positional alignment depends on.
+  private async embedUnmatched(items: ExpandedItem[]): Promise<(number[] | null)[]> {
+    const embeddings: (number[] | null)[] = [];
+    for (let start = 0; start < items.length; start += EMBED_CONCURRENCY) {
+      const window = items.slice(start, start + EMBED_CONCURRENCY);
+      embeddings.push(...await Promise.all(window.map(item =>
+        item.isDepositOrFee ? null : this.embedder.embed(item.displayName).then(r => r.embedding),
+      )));
     }
+    return embeddings;
+  }
 
-    const { embedding } = await this.embedder.embed(item.displayName);
+  private async resolveProduct(merchantId: string | null, normalizedText: string, countryCode: string, item: ExpandedItem, embedding: number[]): Promise<ResolvedProduct> {
     // Per-merchant identity (09/02): only this merchant's products are candidates.
     const [match] = await this.catalog.searchByEmbedding(merchantId, embedding, item.categoryId, countryCode, 1);
 
@@ -110,16 +135,23 @@ export class ProductNormalizer implements IProductNormalizer {
 
   // Chunk so each expansion call's JSON output stays under the model's token cap; items
   // concatenate in order (positional), tags union across batches.
+  //
+  // Chunks run concurrently: each is an independent Bedrock call that shares no pg state, and
+  // retry-with-errors stays per-chunk. Positional alignment comes from the ORDER OF THE CHUNKS,
+  // not the order they resolve in — Promise.all preserves that, so a fast second chunk can never
+  // transpose itself ahead of the first. A receipt under 20 unmatched lines is one chunk and is
+  // unaffected; a long one stops paying ~3.8s per extra chunk.
   private async expandBatched(rawTexts: string[], merchant?: MerchantExpansionContext): Promise<ProductExpansion> {
     if (rawTexts.length === 0) return { items: [], suggestedTags: [] };
-    const items: ExpandedItem[] = [];
-    const tags = new Set<string>();
+    const chunks: string[][] = [];
     for (let start = 0; start < rawTexts.length; start += EXPANSION_BATCH) {
-      const batch = await this.expand(rawTexts.slice(start, start + EXPANSION_BATCH), merchant);
-      items.push(...batch.items);
-      batch.suggestedTags.forEach(tag => tags.add(tag));
+      chunks.push(rawTexts.slice(start, start + EXPANSION_BATCH));
     }
-    return { items, suggestedTags: [...tags] };
+    const batches = await Promise.all(chunks.map(chunk => this.expand(chunk, merchant)));
+    return {
+      items: batches.flatMap(batch => batch.items),
+      suggestedTags: [...new Set(batches.flatMap(batch => batch.suggestedTags))],
+    };
   }
 
   private async expand(rawTexts: string[], merchant?: MerchantExpansionContext): Promise<ProductExpansion> {
@@ -141,6 +173,12 @@ export class ProductNormalizer implements IProductNormalizer {
       temperature: 0,
     };
   }
+}
+
+// A deposit/fee line (statiegeld, bag charge) is not a product: it keeps its category but never
+// gets an embedding, a catalog match, or an alias.
+function depositOrFeeResolved(item: ExpandedItem): ResolvedProduct {
+  return { productId: null, categoryId: item.categoryId, baseUnit: null, packSizeBaseUnits: null, isDepositOrFee: true, provisional: false, confidence: 1, lowConfidence: false };
 }
 
 function fromExactMatch(match: ProductMatch): ResolvedProduct {
