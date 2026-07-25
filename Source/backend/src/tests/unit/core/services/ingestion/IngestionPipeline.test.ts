@@ -23,6 +23,7 @@ import type { IPriceObservationStore } from '@core/ports/data-intelligence/IPric
 import type { IContributorContextRepository } from '@core/ports/data-intelligence/IContributorContextRepository';
 import type { IRegionReference } from '@core/ports/data-intelligence/IRegionReference';
 import type { IUploadLimitsProvider } from '@core/ports/quota/IUploadLimitsProvider';
+import type { IProcessingProgress } from '@core/ports/ingestion/IProcessingProgress';
 import type { ParsedReceipt } from '@core/domain/ingestion';
 import { OversizeUploadError, TooManyPagesError, UnsupportedUploadTypeError } from '@core/domain/errors';
 import { DEFAULT_ESCALATION_THRESHOLDS } from '@core/domain/visionEscalation';
@@ -70,6 +71,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
   let contributorContext: MockedObject<IContributorContextRepository>;
   let regionReference: MockedObject<IRegionReference>;
   let uploadLimits: MockedObject<IUploadLimitsProvider>;
+  let progress: MockedObject<IProcessingProgress>;
   let sut: AgenticIngestionService;
   let buildSut: (escalationEnabled: boolean) => AgenticIngestionService;
 
@@ -100,6 +102,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
       updateStatus: vi.fn(),
       softDelete: vi.fn(),
       listForTenant: vi.fn(),
+      listStatuses: vi.fn(),
       getDetail: vi.fn(),
     };
     priceObservationStore = { emit: vi.fn() };
@@ -119,11 +122,13 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
       getMaxPdfPages: vi.fn().mockResolvedValue(10),
     };
     const fxRates = { upsertDaily: vi.fn(), latestOnOrBefore: vi.fn().mockResolvedValue(1) };
+    progress = { recordStage: vi.fn(async () => undefined) };
     // escalationEnabled defaults true; the Qwen-only case rebuilds with false to prove the Layer C
     // retake gate is inert without a fallback tier.
     buildSut = (escalationEnabled: boolean) => {
       const preparer = new ExtractionPreparer(
         tenantContext, ledger, storage, invoiceRepo, contributorContext, regionReference, uploadLimits,
+        progress,
         new OcrParserTool(visionParser as unknown as IReceiptParser, documentParser as unknown as IReceiptParser),
         DEFAULT_ESCALATION_THRESHOLDS,
         escalationEnabled,
@@ -134,6 +139,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
         new InvoiceClassifierTool(classifier),
         new SearchTagGeneratorTool(tagGenerator),
         { recordStageOutcome: vi.fn() },
+        progress,
       );
       const finalizer = new InvoiceFinalizer(
         invoiceRepo, priceObservationStore, ledger, new CurrencyHarmonizationService(fxRates),
@@ -167,6 +173,43 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
     expect(outcome).toEqual({ handled: false });
     expect(tenantContext.setTenantId).toHaveBeenCalledWith('tenant-1');
     expect(storage.getObjectBytes).not.toHaveBeenCalled();
+  });
+
+  it('flips progress to READING before the model call, then walks MATCHING → FINALIZING (fix 07/01)', async () => {
+    arrangeHappyPath();
+    let stageAtParse: string | undefined;
+    visionParser.parse.mockImplementation(async () => {
+      stageAtParse = (progress.recordStage as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[2];
+      return receipt(0.9);
+    });
+
+    await sut.process(MESSAGE);
+
+    // The ~10s vision call is the wait the label has to be honest about, so READING must already
+    // be committed when the parse starts — not written after it returns.
+    expect(stageAtParse).toBe('READING');
+    expect((progress.recordStage as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[2])).toEqual([
+      'READING', 'MATCHING', 'FINALIZING',
+    ]);
+    expect(progress.recordStage).toHaveBeenCalledWith('inv-1', 'tenant-1', 'READING');
+  });
+
+  it('writes no progress for a duplicate delivery — the run that owns the invoice keeps its stage', async () => {
+    ledger.claim.mockResolvedValue(false);
+
+    await sut.process(MESSAGE);
+
+    expect(progress.recordStage).not.toHaveBeenCalled();
+  });
+
+  it('parses and persists normally when every progress write fails', async () => {
+    arrangeHappyPath();
+    progress.recordStage.mockRejectedValue(new Error('progress connection refused'));
+
+    const outcome = await sut.process(MESSAGE);
+
+    expect(outcome).toEqual(expect.objectContaining({ handled: true, status: 'PARSED' }));
+    expect(invoiceRepo.persistParsed).toHaveBeenCalled();
   });
 
   it('fails an unreadable verdict as user-fault FAILED_PROCESSING and skips the pipeline', async () => {

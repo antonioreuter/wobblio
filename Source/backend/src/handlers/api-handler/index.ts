@@ -66,6 +66,7 @@ import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import type { PushPlatform } from '@core/ports/notifications/IDeviceTokenRepository';
 import { DeviceTokenRepositoryAdapter } from '@infrastructure/adapters/notifications/DeviceTokenRepositoryAdapter';
 import { CATEGORY_TAXONOMY } from '@core/domain/categoryTaxonomy';
+import { isUuid } from '@core/domain/uuid';
 import type { PoolClient } from 'pg';
 import { REGION, json, parseJsonBody, parseUserSize, withTenantTx, uploadQuotaAdapter } from './shared';
 import { handleHouseholdsRoute } from './householdRoutes';
@@ -439,6 +440,7 @@ async function handleInvoicesRoute(
   log: LambdaLogger,
 ): Promise<APIGatewayProxyResult> {
   if (method === 'GET' && path === '/invoices') return handleListInvoices(db, user);
+  if (method === 'GET' && path === '/invoices/status') return handleInvoiceStatuses(db, user, event);
 
   const confirmMatch = path.match(/^\/invoices\/([^/]+)\/confirm$/);
   if (method === 'POST' && confirmMatch) return handleConfirm(db, user, confirmMatch[1], log);
@@ -469,6 +471,31 @@ async function handleListInvoices(db: PoolClient, user: AppUser): Promise<APIGat
     new InvoiceRepositoryAdapter(db).listForTenant(100),
   );
   return json(200, { invoices });
+}
+
+// Bounds the poll: a client watching more than this many in-flight receipts at once should be
+// refetching the list anyway, and an unbounded id list would turn a cheap poll into a scan.
+const MAX_STATUS_IDS = 10;
+
+// The poll target for an in-flight receipt (fix 07/01). Ids the tenant cannot see are absent
+// from the response rather than rejected — RLS drops them, so this leaks no existence signal.
+async function handleInvoiceStatuses(
+  db: PoolClient,
+  user: AppUser,
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
+  const ids = (event.queryStringParameters?.ids ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (ids.length === 0) return json(400, { message: 'ids is required' });
+  if (ids.length > MAX_STATUS_IDS) return json(400, { message: `ids accepts at most ${MAX_STATUS_IDS} invoice ids` });
+  if (!ids.every(isUuid)) return json(400, { message: 'ids must be invoice UUIDs' });
+
+  const statuses = await withTenantTx(db, user.id, () =>
+    new InvoiceRepositoryAdapter(db).listStatuses(ids),
+  );
+  return json(200, { statuses });
 }
 
 async function handleInvoiceDetail(

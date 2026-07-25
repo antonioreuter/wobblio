@@ -38,11 +38,17 @@ export async function assertRuntimeRoleCannotBypassRls(runtimePool: Pick<Pool, '
   if (r.owner_bypass) throw new RlsBypassError(r.role, 'role owns RLS tables that are not FORCE ROW LEVEL SECURITY');
 }
 
+// `maxConnections` stays 1 for every handler that does all its work on one transaction. Only the
+// ingestion worker raises it (to 2): its progress writes (fix 07/01) need a second connection
+// while the pipeline's long transaction still holds the first. Raising this widens the
+// per-container share of the db.t3.micro budget documented in backend CLAUDE.md — check the
+// arithmetic there before touching it.
 export async function buildPool(
   secretArn: string,
   host: string,
   port: string,
   statementTimeoutMs = 5000,
+  maxConnections = 1,
 ): Promise<Pool> {
   if (pool) return pool;
 
@@ -81,7 +87,7 @@ export async function buildPool(
     database: secret.dbname ?? 'wobblio',
     user: secret.username,
     password: secret.password,
-    max: 1,
+    max: maxConnections,
     idleTimeoutMillis: 0,
     connectionTimeoutMillis: 5000,
     options: `--statement_timeout=${statementTimeoutMs}`,

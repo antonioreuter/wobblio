@@ -58,8 +58,9 @@ Migrations: use the `database-migrations` skill. Never edit a migration that has
 
 ## Connection management (db.t3.micro budget)
 
-- Reserved concurrency: `api-handlers ≤ 25`, `ingestion-worker ≤ 5` (SQS `maxConcurrency`), `crons ≤ 2`. Worst case ~32 connections, safe under t3.micro's ~85 ceiling.
-- One pg connection per warm Lambda container, created lazily.
+- Reserved concurrency: `api-handlers ≤ 25`, `ingestion-worker ≤ 5` (SQS `maxConcurrency`), `crons ≤ 2`. Worst case ~37 connections, safe under t3.micro's ~85 ceiling.
+- One pg connection per warm Lambda container, created lazily — except the ingestion worker, which runs `max:2`: stage-progress writes (fix 07/01) need a second connection while the pipeline's long transaction holds the first. That is the +5 in the number above.
+- Post-COMMIT side effects in `ingestionWorkerShell` still reuse the now-idle pipeline client rather than borrowing the second connection — that one is reserved for progress writes racing the open transaction.
 - IAM auth tokens regenerated when older than 10 minutes (they expire at 15).
 - Statement timeout: 5s on API, 30s on workers.
 - Scaling ladder is pre-decided in §7.3.1 — do not raise concurrency caps before adding RDS Proxy.

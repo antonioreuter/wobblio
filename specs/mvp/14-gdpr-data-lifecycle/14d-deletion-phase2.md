@@ -36,9 +36,12 @@ convention (handoff decision #3).
 - Explicit child-to-parent `DELETE` order across all personal-data tables (§ Key Boundaries in the
   parent spec): `bill_split_line` → `bill_split` → `invoice_feedback` → `invoice_line` → `invoice` →
   `shopping_list_item` → `shopping_list` → `budget` → `quota_counter` → `ingestion_ledger` →
-  `data_request` → `device_token`/`invoice_telemetry` (already CASCADE, but harmless to include
-  explicitly for clarity) → `household`/`household_member` (should already be empty via 14c's
-  detach/disband, but don't assume — verify and delete defensively) → `app_user`.
+  `data_request` → `device_token`/`invoice_telemetry`/`invoice_processing_progress` (already
+  CASCADE, but harmless to include explicitly for clarity) → `household`/`household_member`
+  (should already be empty via 14c's detach/disband, but don't assume — verify and delete
+  defensively) → `app_user`.
+  `invoice_processing_progress` (fix 07/01) cascades twice over — from `invoice(id)` and from
+  `app_user(id)` — so it cannot outlive either parent even if this ordered list drifts.
 - `price_observation` and `payment_transaction`: **never touched** by this function.
 
 ### `deletion-purge` cron Lambda

@@ -5,6 +5,7 @@ import type { IInvoiceRepository } from '../../ports/ingestion/IInvoiceRepositor
 import type { IContributorContextRepository } from '../../ports/data-intelligence/IContributorContextRepository';
 import type { IRegionReference } from '../../ports/data-intelligence/IRegionReference';
 import type { IUploadLimitsProvider } from '../../ports/quota/IUploadLimitsProvider';
+import type { IProcessingProgress } from '../../ports/ingestion/IProcessingProgress';
 import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
 import type { OcrParserTool } from './agentic/tools/OcrParserTool';
 import type { IngestionOutcome } from './InvoiceFinalizer';
@@ -35,6 +36,7 @@ export class ExtractionPreparer {
     private readonly contributorContext: IContributorContextRepository,
     private readonly regionReference: IRegionReference,
     private readonly uploadLimits: IUploadLimitsProvider,
+    private readonly progress: IProcessingProgress,
     private readonly ocr: OcrParserTool,
     private readonly escalationThresholds: EscalationThresholds,
     // Whether any escalation tier is provisioned. The Layer C retake gate only runs when it is:
@@ -55,6 +57,13 @@ export class ExtractionPreparer {
     const bytes = await this.fileStorage.getObjectBytes(message.s3Key);
     const format = attachmentFormatFromKey(message.s3Key);
     await this.assertUploadWithinLimits(message.invoiceId, format, bytes);
+
+    // The stage the user waits longest in (~10s of the ~18s): flip it before the model call, not
+    // after, so the label is honest while the wait is happening. Past the ledger claim, so a
+    // duplicate delivery never rewrites the progress of the run that actually owns the invoice.
+    // `.catch`: the port promises never to throw, but nothing outside this call site enforces it
+    // and a lost label must never cost an ingestion.
+    await this.progress.recordStage(message.invoiceId, message.tenantId, 'READING').catch(() => undefined);
 
     const parsed = await this.ocr.parse(format, bytes, { countryCode: context.countryCode, processedDate });
 

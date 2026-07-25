@@ -34,6 +34,7 @@ import { InvoiceClassifierTool } from '@core/services/ingestion/agentic/tools/In
 import { SearchTagGeneratorTool } from '@core/services/ingestion/agentic/tools/SearchTagGeneratorTool';
 import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
 import { SsmEscalationConfigAdapter } from '@infrastructure/adapters/ingestion/SsmEscalationConfigAdapter';
+import { ProcessingProgressAdapter } from '@infrastructure/adapters/ingestion/ProcessingProgressAdapter';
 import { MeteringBedrockConverse } from '@core/services/ai/MeteringBedrockConverse';
 import { MeteringBedrockEmbedder } from '@core/services/ai/MeteringBedrockEmbedder';
 import type { TokenMeter } from '@core/domain/tokenMeter';
@@ -56,7 +57,9 @@ const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 // ExtractionPreparer and InvoiceFinalizer.
 export const handler = async (event: SQSEvent, context: Context): Promise<SQSBatchResponse> => {
   const log = createLambdaLogger('agentic-worker', context.awsRequestId);
-  const pool = await buildPool(process.env.DB_SECRET_ARN!, process.env.DB_HOST!, process.env.DB_PORT!);
+  // max:2 — the pipeline's long transaction holds one connection; stage-progress writes (07/01)
+  // need a second, or they would deadlock against it (see ProcessingProgressAdapter).
+  const pool = await buildPool(process.env.DB_SECRET_ARN!, process.env.DB_HOST!, process.env.DB_PORT!, 5000, 2);
   const uploadsBucket = process.env.UPLOADS_BUCKET!;
   const modelRegistry = new SsmModelRegistryAdapter(REGION);
   const visionModelId = await modelRegistry.getModelId('vision_parser');
@@ -72,6 +75,9 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
   const uploadLimits = new SsmUploadQuotaAdapter(REGION);
   const stageInstrumentation = new StructuredLogAgenticStageInstrumentation();
+  // Bound to the pool, not the per-record client: progress must be visible DURING the run, so it
+  // cannot ride the transaction that only commits once the run is already over.
+  const progress = new ProcessingProgressAdapter(pool);
 
   const buildService = (client: PoolClient, meter: TokenMeter): AgenticIngestionService => {
     const meteredConverse = new MeteringBedrockConverse(converse, meter);
@@ -113,6 +119,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       new ContributorContextRepositoryAdapter(client),
       new RegionReferenceAdapter(client),
       uploadLimits,
+      progress,
       ocr,
       escalationThresholds,
       escalationEnabled,
@@ -123,6 +130,7 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       new InvoiceClassifierTool(new InvoiceClassifier(meteredConverse, auxiliaryModelId)),
       new SearchTagGeneratorTool(new TagGenerator()),
       stageInstrumentation,
+      progress,
     );
     const finalizer = new InvoiceFinalizer(
       new InvoiceRepositoryAdapter(client),

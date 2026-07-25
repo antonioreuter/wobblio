@@ -2,6 +2,7 @@ import type { InvoiceStatus, InvoiceVerdict } from '@core/domain/ingestion';
 import type { FailureReasonCode, UnreadableReason } from '@core/domain/failureReasons';
 import type { InvoiceLocationStatus, LocationSource } from '@core/domain/region';
 import type { ObservationLine } from '@core/domain/priceObservation';
+import type { ProcessingStage } from '@core/domain/processingStage';
 
 export interface CreatePendingInvoice {
   tenantId: string;
@@ -137,7 +138,21 @@ export interface FuzzyFingerprint {
   lineCount: number;
 }
 
-export interface InvoiceListItem {
+// Which coarse stage an in-flight invoice has reached. Non-null only while status is PROCESSING
+// — a terminal invoice has no stage to render, and clients stop showing one the moment status
+// leaves PROCESSING.
+export interface ProcessingStageView {
+  processingStage: ProcessingStage | null;
+}
+
+export interface InvoiceStatusItem extends ProcessingStageView {
+  id: string;
+  status: InvoiceStatus;
+  // When the stage last advanced; null for an invoice the worker has not touched yet.
+  updatedAt: string | null;
+}
+
+export interface InvoiceListItem extends ProcessingStageView {
   id: string;
   status: InvoiceStatus;
   merchantName: string | null;
@@ -260,6 +275,10 @@ export interface IInvoiceRepository {
   // Hides the invoice from the tenant's list by flipping its status to DISCARDED.
   softDelete(invoiceId: string): Promise<void>;
   listForTenant(limit: number): Promise<InvoiceListItem[]>;
+  // The cheap poll target (fix 07/01): status + stage for a handful of in-flight invoices, with
+  // no lines, joins or DTO bloat. Ids the tenant cannot see are simply absent from the result —
+  // RLS filters them, so there is no "exists but forbidden" oracle to distinguish.
+  listStatuses(invoiceIds: string[]): Promise<InvoiceStatusItem[]>;
   getDetail(invoiceId: string): Promise<InvoiceDetail | null>;
   // Top merchants by summed spend for the current month; returns up to limit results.
   getTopMerchantsThisMonth(limit: number): Promise<TopMerchant[]>;

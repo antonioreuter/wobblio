@@ -27,7 +27,7 @@ export class AgenticIngestionService {
     if (prepared.kind === 'duplicate') return { kind: 'duplicate' };
     if (prepared.kind === 'unreadable') return { kind: 'unreadable', outcome: prepared.outcome };
     if (prepared.kind === 'retake') return { kind: 'retake', outcome: prepared.outcome };
-    const extraction = await this.coordinator.extract(prepared.receipt, prepared.location, message.invoiceId);
+    const extraction = await this.coordinator.extract(prepared.receipt, prepared.location, message.invoiceId, message.tenantId);
     return { kind: 'ready', extraction, context: prepared.context };
   }
 }

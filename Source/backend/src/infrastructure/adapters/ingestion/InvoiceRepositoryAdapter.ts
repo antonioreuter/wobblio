@@ -9,6 +9,7 @@ import type {
   ConfirmLocationInput,
   InvoiceReEmission,
   InvoiceListItem,
+  InvoiceStatusItem,
   InvoiceDetail,
   InvoiceDetailLine,
   CorrectInvoiceInput,
@@ -17,6 +18,7 @@ import type {
 import type { InvoiceStatus, InvoiceVerdict } from '@core/domain/ingestion';
 import type { FailureReasonCode, UnreadableReason } from '@core/domain/failureReasons';
 import type { InvoiceLocationStatus } from '@core/domain/region';
+import type { ProcessingStage } from '@core/domain/processingStage';
 import { categoryNameFor } from '@core/domain/categoryTaxonomy';
 import { InvalidCorrectionError } from '@core/domain/errors';
 import { tagLabelFor } from '@core/domain/tagVocabulary';
@@ -36,6 +38,7 @@ interface InvoiceListRow {
   location_status: InvoiceLocationStatus;
   location_country_code: string | null;
   location_region_code: string | null;
+  processing_stage: ProcessingStage | null;
 }
 
 const num = (v: string | null): number | null => (v === null ? null : parseFloat(v));
@@ -57,14 +60,25 @@ const toListItem = (row: InvoiceListRow): InvoiceListItem => ({
   locationStatus: row.location_status,
   locationCountryCode: row.location_country_code,
   locationRegionCode: row.location_region_code,
+  processingStage: row.processing_stage,
 });
+
+// An enqueued invoice the worker has not reached yet has no progress row, so RECEIVED is
+// substituted at read time rather than written at confirm — that keeps an extra INSERT (and an
+// extra failure mode) off the presign/confirm path for a value that is always the same.
+// A terminal invoice yields NULL: there is no stage left to render (the implicit CASE ELSE).
+const PROCESSING_STAGE_COLUMN = `
+  CASE WHEN i.status = 'PROCESSING' THEN COALESCE(p.stage, 'RECEIVED') END AS processing_stage`;
+
+const PROGRESS_JOIN = `LEFT JOIN invoice_processing_progress p ON p.invoice_id = i.id`;
 
 const LIST_COLUMNS = `
   i.id, i.status, m.brand_name AS merchant_name, i.category_id,
   i.transaction_date::text AS transaction_date, i.total::text AS total,
   i.currency, i.total_home_currency::text AS total_home_currency,
   i.search_tags, i.search_city, i.created_at::text AS created_at,
-  i.location_status, i.location_country_code, i.location_region_code`;
+  i.location_status, i.location_country_code, i.location_region_code,
+  ${PROCESSING_STAGE_COLUMN}`;
 
 interface InvoiceRow {
   id: string;
@@ -381,13 +395,39 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
   async listForTenant(limit: number): Promise<InvoiceListItem[]> {
     const result = await this.client.query<InvoiceListRow>(
       `SELECT ${LIST_COLUMNS}
-       FROM invoice i LEFT JOIN merchant m ON m.id = i.merchant_id
+       FROM invoice i
+       LEFT JOIN merchant m ON m.id = i.merchant_id
+       ${PROGRESS_JOIN}
        WHERE i.status <> 'DISCARDED'
        ORDER BY i.created_at DESC
        LIMIT $1`,
       [limit],
     );
     return result.rows.map(toListItem);
+  }
+
+  // No merchant join, no lines, no DTO derivation: this is polled every couple of seconds while a
+  // receipt is in flight, so it stays a single PK-indexed lookup over a handful of ids.
+  async listStatuses(invoiceIds: string[]): Promise<InvoiceStatusItem[]> {
+    if (invoiceIds.length === 0) return [];
+    const result = await this.client.query<{
+      id: string;
+      status: InvoiceStatus;
+      processing_stage: ProcessingStage | null;
+      updated_at: string | null;
+    }>(
+      `SELECT i.id, i.status, ${PROCESSING_STAGE_COLUMN}, p.updated_at::text AS updated_at
+       FROM invoice i
+       ${PROGRESS_JOIN}
+       WHERE i.id = ANY($1::uuid[])`,
+      [invoiceIds],
+    );
+    return result.rows.map(row => ({
+      id: row.id,
+      status: row.status,
+      processingStage: row.processing_stage,
+      updatedAt: row.updated_at,
+    }));
   }
 
   async getTopMerchantsThisMonth(limit: number): Promise<TopMerchant[]> {
