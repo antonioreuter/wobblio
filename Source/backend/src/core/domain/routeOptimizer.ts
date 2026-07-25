@@ -53,7 +53,7 @@ export interface StoreLine {
   observationCount: number;
   lastObservedOn: string | null;
   confidence: Confidence;
-  // 09/05: why this item's comparison-set siblings were (or weren't) considered — set by
+  // 09/05: why this item's linked siblings were (or weren't) considered — set by
   // OptimizerService after the pure algorithm runs, so the UI can explain instead of silently
   // omitting. The pure optimizer never populates it.
   reason?: 'comparable' | 'watch_only' | 'ambiguous' | 'no_link';

@@ -36,5 +36,13 @@ export function buildIngestionPush(status: InvoiceStatus, invoiceId: string): In
       data: { type: 'INVOICE_FAILED', path, invoiceId },
     };
   }
+  // Fix 11 Layer C: a legible-enough photo we still couldn't parse — ask for a retake (no charge).
+  if (status === 'RETAKE_SUGGESTED') {
+    return {
+      title: 'Please retake this receipt',
+      body: "We couldn't get a reliable read — tap to see how to retake it. No scan was deducted.",
+      data: { type: 'INVOICE_FAILED', path, invoiceId },
+    };
+  }
   return null;
 }

@@ -22,6 +22,13 @@ describe('buildIngestionPush', () => {
     expect(push!.data).toEqual({ type: 'INVOICE_FAILED', path: '/invoices/inv-3', invoiceId: 'inv-3' });
   });
 
+  it('builds a retake push for RETAKE_SUGGESTED (Layer C)', () => {
+    const push = buildIngestionPush('RETAKE_SUGGESTED', 'inv-7');
+    expect(push!.title).toBe('Please retake this receipt');
+    expect(push!.body).toContain('No scan was deducted');
+    expect(push!.data).toEqual({ type: 'INVOICE_FAILED', path: '/invoices/inv-7', invoiceId: 'inv-7' });
+  });
+
   it('is silent (null) for non-actionable statuses', () => {
     expect(buildIngestionPush('PROCESSING', 'inv-4')).toBeNull();
     expect(buildIngestionPush('SUSPECTED_DUPLICATE', 'inv-5')).toBeNull();

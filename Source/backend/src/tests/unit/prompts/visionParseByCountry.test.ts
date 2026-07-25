@@ -25,10 +25,10 @@ describe('resolvePack', () => {
 
 describe('composeCountryVisionPrompt', () => {
   it('encodes the resolved pack code in the version string', () => {
-    expect(composeCountryVisionPrompt('NL').version).toBe('vision-parse/v9c+nl');
-    expect(composeCountryVisionPrompt('BR').version).toBe('vision-parse/v9c+br');
-    expect(composeCountryVisionPrompt('JP').version).toBe('vision-parse/v9c+default');
-    expect(composeCountryVisionPrompt(undefined).version).toBe('vision-parse/v9c+default');
+    expect(composeCountryVisionPrompt('NL').version).toBe('vision-parse/v10c+nl');
+    expect(composeCountryVisionPrompt('BR').version).toBe('vision-parse/v10c+br');
+    expect(composeCountryVisionPrompt('JP').version).toBe('vision-parse/v10c+default');
+    expect(composeCountryVisionPrompt(undefined).version).toBe('vision-parse/v10c+default');
   });
 
   it('injects every slot — no placeholder survives', () => {

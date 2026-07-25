@@ -44,6 +44,9 @@ export const STATUS_MAP: Record<string, Status> = {
   // an unfinishable task and erode trust. It collapses into the PARSED row.
   NEEDS_REVIEW: ['success', 'Ready'],
   FAILED_PROCESSING: ['danger', "Couldn't read"],
+  // Fix 11 Layer C: a legible-enough photo we still couldn't parse reliably. Actionable
+  // (retake) and not charged — amber, not red, because the user has a clear next step.
+  RETAKE_SUGGESTED: ['warning', 'Retake needed'],
   SUSPECTED_DUPLICATE: ['warning', 'Possible duplicate'],
   DISCARDED: ['danger', 'Removed'],
 }
@@ -65,6 +68,7 @@ const STATUS_DESCRIPTIONS: Record<string, string> = {
   PROCESSING: "We're reading it now — this usually takes about 20 seconds.",
   SUSPECTED_DUPLICATE: 'Looks like a receipt you already added. Open it to confirm or remove it.',
   FAILED_PROCESSING: "We couldn't read this image. Try uploading a clearer, well-lit photo.",
+  RETAKE_SUGGESTED: "We couldn't get a reliable read. Retake it laid flat and fully in frame — for a long receipt, capture it in sections. No scan was deducted.",
   DISCARDED: 'You removed this receipt. It no longer counts toward your data.',
 }
 
@@ -74,6 +78,7 @@ const STATUS_LEGEND_ORDER = [
   'PARSED',
   'PROCESSING',
   'SUSPECTED_DUPLICATE',
+  'RETAKE_SUGGESTED',
   'FAILED_PROCESSING',
   'DISCARDED',
 ] as const

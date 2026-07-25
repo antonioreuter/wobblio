@@ -8,7 +8,8 @@ export type FailureReasonCode =
   | 'UNSUPPORTED_FORMAT'
   | 'TOO_LARGE'
   | 'SYSTEM_FAULT'
-  | 'UNPROCESSABLE';
+  | 'UNPROCESSABLE'
+  | 'RETAKE_LOW_QUALITY';
 
 // The vision model's `unreadable` verdict (a user-fault, charged, deletable) — a strict
 // subset of the failure codes a user can act on by re-uploading a better photo.
@@ -21,6 +22,7 @@ const MESSAGES: Record<FailureReasonCode, string> = {
   TOO_LARGE: 'That file is too large. Try a smaller photo or a lighter PDF.',
   SYSTEM_FAULT: "Something went wrong on our side processing this receipt. Our team has been notified and will reprocess it for you — no scan was deducted.",
   UNPROCESSABLE: "We couldn't process this receipt after review. It's been closed — you can delete it and try a clearer photo. No scan was deducted.",
+  RETAKE_LOW_QUALITY: "We couldn't get a reliable read of this receipt. Retake it laid flat and fully in frame — for a long receipt, capture it in sections. No scan was deducted.",
 };
 
 export function friendlyFailureMessage(code: FailureReasonCode): string {

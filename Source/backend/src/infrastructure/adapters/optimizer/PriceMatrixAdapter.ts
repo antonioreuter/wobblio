@@ -9,6 +9,9 @@ import { buildComparisonMatrix, type ComparisonLink, type RawCell } from '@core/
 // §6.5 serving quorum + trailing window (mirrors the trend/serving gates).
 const MIN_OBSERVATIONS = 3;
 const WINDOW_WEEKS = 26;
+// Ceiling on accepted sibling links folded into the matrix per request — bounds the priced-product
+// fan-out (replaces the old comparison-set 5-member cap, which no longer exists).
+const MAX_LINK_EXPANSION = 24;
 
 interface CellRow {
   product_id: string;
@@ -19,8 +22,8 @@ interface CellRow {
 }
 
 interface LinkRow {
-  self_id: string;
-  other_id: string;
+  product_a_id: string;
+  product_b_id: string;
   size_equivalent: boolean;
 }
 
@@ -35,11 +38,11 @@ interface AvgRow {
   avg_price: string;
 }
 
-// 09/05 optimizer matrix. price_observation is the global, RLS-exempt store; the comparison-set
+// 09/05 optimizer matrix. price_observation is the global, RLS-exempt store; the product_link
 // links and userAverages come from the caller's RLS-scoped tables, so tenant context MUST be set
 // (withTenantTx). Per requested item the matrix carries its own cell plus ONLY comparable AND
-// unambiguous comparison-set sibling cells, relabeled to the item's productId. The pure route
-// optimizer (routeOptimizer.ts) is unchanged — only its input changes.
+// unambiguous sibling cells (from accepted product links, fix 10), relabeled to the item's
+// productId. The pure route optimizer (routeOptimizer.ts) is unchanged — only its input changes.
 export class PriceMatrixAdapter implements IPriceMatrix {
   constructor(
     private readonly client: PoolClient,
@@ -54,18 +57,30 @@ export class PriceMatrixAdapter implements IPriceMatrix {
   ): Promise<PriceMatrixResult> {
     if (productIds.length === 0) return { matrix: { merchants: [], cells: [], userAverages: {} }, reasons: {} };
 
-    // Tenant comparison-set links from a requested item (self) to its sibling products (other).
+    // Tenant product links touching a requested item, expanded to directional links from the
+    // requested item (self) to its sibling (other). One canonical row (a < b) serves both
+    // directions; when both endpoints are requested, both directions are emitted. Bounded to the
+    // most-recent MAX_LINK_EXPANSION links so a user who accepted many suggestions can't fan the
+    // priced-product set (and the per-cell/size/avg queries below) out without limit on t3.micro.
     const linkRows = await this.client.query<LinkRow>(
-      `SELECT ms.product_id AS self_id, mo.product_id AS other_id, mo.size_equivalent
-       FROM product_comparison_set_member ms
-       JOIN product_comparison_set_member mo
-         ON mo.set_id = ms.set_id AND mo.product_id <> ms.product_id
-       WHERE ms.product_id = ANY($1::uuid[])`,
+      `SELECT product_a_id, product_b_id, size_equivalent
+       FROM product_link
+       WHERE status = 'ACCEPTED'
+         AND (product_a_id = ANY($1::uuid[]) OR product_b_id = ANY($1::uuid[]))
+       ORDER BY updated_at DESC
+       LIMIT ${MAX_LINK_EXPANSION}`,
       [productIds],
     );
-    const links: ComparisonLink[] = linkRows.rows.map((r) => ({
-      selfId: r.self_id, otherId: r.other_id, sizeEquivalent: r.size_equivalent,
-    }));
+    const requested = new Set(productIds);
+    const links: ComparisonLink[] = [];
+    for (const r of linkRows.rows) {
+      if (requested.has(r.product_a_id)) {
+        links.push({ selfId: r.product_a_id, otherId: r.product_b_id, sizeEquivalent: r.size_equivalent });
+      }
+      if (requested.has(r.product_b_id)) {
+        links.push({ selfId: r.product_b_id, otherId: r.product_a_id, sizeEquivalent: r.size_equivalent });
+      }
+    }
 
     // Everything that could be priced: the requested items plus their linked siblings.
     const allProductIds = [...new Set([...productIds, ...links.map((l) => l.otherId)])];

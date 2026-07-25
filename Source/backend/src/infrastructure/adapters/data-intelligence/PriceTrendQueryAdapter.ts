@@ -3,6 +3,7 @@ import type {
   IPriceTrendQuery,
   PriceTrendLine,
   PriceTrendQueryInput,
+  ProductObservationStats,
   RegionCurrencyQueryInput,
 } from '@core/ports/data-intelligence/IPriceTrendQuery';
 
@@ -139,6 +140,55 @@ export class PriceTrendQueryAdapter implements IPriceTrendQuery {
       params,
     );
     return result.rows[0]?.max_merchants ? parseInt(result.rows[0].max_merchants, 10) : 0;
+  }
+
+  // Per-product region stats for the fix-10 empty-chart diagnostics. One grouped scan splits each
+  // (product, merchant) cell's counts by window+currency, then rolls up per product: the in-window
+  // view-currency total, the in-window OTHER-currency total, the largest single-merchant cell (how
+  // close to k≥3), and how many merchants have any in-window+currency row. Only products with at
+  // least one non-quarantined region row appear — an absent product has no region data at all.
+  async productDiagnostics(input: PriceTrendQueryInput): Promise<ProductObservationStats[]> {
+    const params: unknown[] = [input.productIds, input.countryCode, input.regionCode, input.weeks, input.currency];
+    const result = await this.db.query<{
+      product_id: string;
+      in_window_currency_count: string;
+      other_currency_in_window_count: string;
+      max_cell_count: string;
+      merchant_count: string;
+    }>(
+      `WITH per_cell AS (
+         SELECT po.product_id, po.merchant_id,
+                COUNT(*) FILTER (
+                  WHERE po.observed_on >= CURRENT_DATE - ($4::int * 7)
+                    AND ($5::text IS NULL OR po.currency = $5)
+                ) AS in_window_currency_cnt,
+                COUNT(*) FILTER (
+                  WHERE po.observed_on >= CURRENT_DATE - ($4::int * 7)
+                    AND $5::text IS NOT NULL AND po.currency <> $5
+                ) AS other_currency_in_window_cnt
+         FROM price_observation po
+         WHERE po.product_id = ANY($1::uuid[])
+           AND po.country_code = $2
+           AND po.region_code = $3
+           AND po.quarantined = false
+         GROUP BY po.product_id, po.merchant_id
+       )
+       SELECT product_id,
+              COALESCE(SUM(in_window_currency_cnt), 0)::text AS in_window_currency_count,
+              COALESCE(SUM(other_currency_in_window_cnt), 0)::text AS other_currency_in_window_count,
+              COALESCE(MAX(in_window_currency_cnt), 0)::text AS max_cell_count,
+              COUNT(*) FILTER (WHERE in_window_currency_cnt > 0)::text AS merchant_count
+       FROM per_cell
+       GROUP BY product_id`,
+      params,
+    );
+    return result.rows.map((row) => ({
+      productId: row.product_id,
+      inWindowCurrencyCount: parseInt(row.in_window_currency_count, 10),
+      otherCurrencyInWindowCount: parseInt(row.other_currency_in_window_count, 10),
+      maxCellCount: parseInt(row.max_cell_count, 10),
+      merchantCount: parseInt(row.merchant_count, 10),
+    }));
   }
 
   // Most frequent observation currency in the region for the selected products — the fallback

@@ -4,7 +4,9 @@ import type { AppUser } from '@core/ports/identity/IAppUserRepository';
 import { PriceTrendQueryAdapter } from '@infrastructure/adapters/data-intelligence/PriceTrendQueryAdapter';
 import { OwnPurchaseHistoryQueryAdapter } from '@infrastructure/adapters/data-intelligence/OwnPurchaseHistoryQueryAdapter';
 import { SsmAmbiguityConfigAdapter } from '@infrastructure/adapters/data-intelligence/SsmAmbiguityConfigAdapter';
+import { CounterpartCandidateQueryAdapter } from '@infrastructure/adapters/comparison/CounterpartCandidateQueryAdapter';
 import { PriceTrendService } from '@core/services/data-intelligence/PriceTrendService';
+import { CounterpartSuggestionService } from '@core/services/comparison/CounterpartSuggestionService';
 import { InvalidTrendQueryError } from '@core/domain/errors';
 import { json, REGION, withTenantTx } from './shared';
 
@@ -28,6 +30,7 @@ export async function handlePriceTrendsRoute(
   method: string,
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> {
+  if (method === 'GET' && path === '/price-trends/suggestions') return suggestions(db, user, event);
   if (method !== 'GET' || path !== '/price-trends/comparison') return json(404, { message: 'Not Found' });
 
   const query = event.queryStringParameters ?? {};
@@ -42,6 +45,32 @@ export async function handlePriceTrendsRoute(
       service.comparison(productIds, countryCode, regionCode, includeMarketTrend),
     );
     return json(200, comparison);
+  } catch (err) {
+    if (err instanceof InvalidTrendQueryError) return json(400, { message: err.message });
+    throw err;
+  }
+}
+
+// GET /price-trends/suggestions?productId=<uuid>&country=NL&region=NL-NB
+// Counterpart products at OTHER merchants in the region for the just-selected product (fix 10). The
+// webapp renders these as one-tap chips. product_link is RLS-scoped, hence withTenantTx. Served to
+// all roles — chips only prefill the picker; the market overlay stays Premium-gated in /comparison.
+async function suggestions(
+  db: PoolClient,
+  user: AppUser,
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
+  const query = event.queryStringParameters ?? {};
+  const productId = (query.productId ?? '').trim();
+  const countryCode = (query.country ?? '').toUpperCase();
+  const regionCode = query.region ?? '';
+
+  const service = new CounterpartSuggestionService(new CounterpartCandidateQueryAdapter(db));
+  try {
+    const results = await withTenantTx(db, user.id, () =>
+      service.suggest(productId, countryCode, regionCode),
+    );
+    return json(200, { suggestions: results });
   } catch (err) {
     if (err instanceof InvalidTrendQueryError) return json(400, { message: err.message });
     throw err;

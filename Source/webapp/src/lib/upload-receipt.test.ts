@@ -83,3 +83,42 @@ describe('uploadReceipt geolocation', () => {
     expect(presignBody(fetchMock).lat).toBeUndefined()
   })
 })
+
+describe('uploadReceipt capture-quality gate', () => {
+  beforeEach(() => {
+    mockUploadFetch()
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined })
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  // Stub the canvas so getImageData returns a flat (edge-free → blurry) 100×100 frame.
+  function stubFlatCapture() {
+    stubImagePipeline()
+    const flat = new Uint8ClampedArray(100 * 100 * 4)
+    for (let i = 0; i < flat.length; i += 4) {
+      flat[i] = flat[i + 1] = flat[i + 2] = 128
+      flat[i + 3] = 255
+    }
+    HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
+      drawImage: vi.fn(),
+      getImageData: vi.fn().mockReturnValue({ data: flat, width: 100, height: 100 }),
+    }) as never
+  }
+
+  it('rejects a blurry capture with the low_quality code', async () => {
+    stubFlatCapture()
+    await expect(uploadReceipt(new File(['x'], 'receipt.jpg', { type: 'image/jpeg' }))).rejects.toMatchObject({ code: 'low_quality' })
+  })
+
+  it('uploads a blurry capture when force is set (the "upload anyway" override)', async () => {
+    stubFlatCapture()
+    const result = await uploadReceipt(new File(['x'], 'receipt.jpg', { type: 'image/jpeg' }), { force: true })
+    expect(result).toEqual({ invoiceId: 'inv-1' })
+  })
+
+  it('never gates a PDF (no canvas re-encode)', async () => {
+    stubFlatCapture()
+    const result = await uploadReceipt(new File(['x'], 'receipt.pdf', { type: 'application/pdf' }))
+    expect(result).toEqual({ invoiceId: 'inv-1' })
+  })
+})

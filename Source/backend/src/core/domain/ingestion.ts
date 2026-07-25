@@ -7,7 +7,11 @@ export type InvoiceStatus =
   | 'PARSED'
   | 'FAILED_PROCESSING'
   | 'SUSPECTED_DUPLICATE'
-  | 'DISCARDED';
+  | 'DISCARDED'
+  // Fix 11 Layer C: a photo receipt whose parse is still objectively broken (reconciliation /
+  // coverage) after escalation. Distinct from FAILED_PROCESSING — the user is asked to retake
+  // (flat / in sections), and the run is NOT charged (our parse failed, not their photo).
+  | 'RETAKE_SUGGESTED';
 
 // The vision model's escape hatch (§ 03.2): instead of fabricating a receipt from a
 // blurry/non-receipt image it returns this verdict. It is a model OUTPUT, never an
@@ -106,6 +110,9 @@ export interface ParsedReceipt {
   location?: ParsedLocation;
   lines: ParsedLine[];
   parseConfidence: number; // 0..1
+  // Printed item count ("QTD TOTAL DE ITENS" / "aantal artikelen"), when the receipt states
+  // it — drives the escalation coverage signal (fix 11). Populated by prompt v10 (sub-spec 01).
+  statedItemCount?: number;
 }
 
 // Thresholds from spec 07 "Confidence Thresholds" + 08 §6.2/§6.3.

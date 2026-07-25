@@ -72,7 +72,7 @@ export class OptimizerService {
   }
 }
 
-// Stamp each served line with why its comparison-set siblings were considered (09/05), so the UI
+// Stamp each served line with why its linked siblings were considered (09/05), so the UI
 // can explain instead of silently omitting. Pure post-processing; the optimizer stays unchanged.
 function annotateReasons(result: OptimizationResult, reasons: Record<string, ComparabilityReason>): void {
   for (const store of result.stores) {

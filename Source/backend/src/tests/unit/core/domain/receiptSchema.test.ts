@@ -70,6 +70,13 @@ describe('parseReceiptJson — success', () => {
     }
   });
 
+  it('parses the optional stated_item_count (v10) and treats null/absent as undefined', () => {
+    const withCount = parseReceiptJson(JSON.stringify({ ...validObject(), stated_item_count: 12 }));
+    expect(withCount.ok && withCount.value && 'statedItemCount' in withCount.value && withCount.value.statedItemCount).toBe(12);
+    const nulled = parseReceiptJson(JSON.stringify({ ...validObject(), stated_item_count: null }));
+    expect(nulled.ok && (nulled.value as { statedItemCount?: number }).statedItemCount).toBeUndefined();
+  });
+
   it('extracts JSON wrapped in a ```json fence', () => {
     const result = parseReceiptJson('```json\n' + JSON.stringify(validObject()) + '\n```');
     expect(result.ok).toBe(true);
@@ -95,6 +102,8 @@ describe('parseReceiptJson — top-level failures', () => {
   it('rejects parse_confidence above 1', () => expectIssue(JSON.stringify({ ...validObject(), parse_confidence: 1.5 }), 'parse_confidence'));
   it('rejects parse_confidence below 0', () => expectIssue(JSON.stringify({ ...validObject(), parse_confidence: -0.1 }), 'parse_confidence'));
   it('rejects a non-string document_kind_hint', () => expectIssue(JSON.stringify({ ...validObject(), document_kind_hint: 5 }), 'document_kind_hint'));
+  it('rejects a non-integer stated_item_count', () => expectIssue(JSON.stringify({ ...validObject(), stated_item_count: 3.5 }), 'stated_item_count'));
+  it('rejects a negative stated_item_count', () => expectIssue(JSON.stringify({ ...validObject(), stated_item_count: -1 }), 'stated_item_count'));
   it('rejects a non-array lines field', () => expectIssue(JSON.stringify({ ...validObject(), lines: 'x' }), 'lines'));
   it('rejects an empty lines array', () => expectIssue(JSON.stringify({ ...validObject(), lines: [] }), 'lines'));
 });

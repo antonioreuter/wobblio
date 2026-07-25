@@ -74,7 +74,7 @@ import { handleNotificationsRoute } from './notificationRoutes';
 import { handleListsRoute } from './listRoutes';
 import { handleProductsRoute } from './productRoutes';
 import { handlePriceTrendsRoute } from './priceTrendRoutes';
-import { handleComparisonSetsRoute } from './comparisonSetRoutes';
+import { handleProductLinksRoute } from './productLinkRoutes';
 import { handleSpendReportRoute } from './spendReportRoutes';
 import { handleSplitsRoute } from './splitRoutes';
 import { handleAdminRoute } from './adminRoutes';
@@ -229,7 +229,7 @@ async function handleMeRoute(
   if (path === '/me/device-token' && method === 'POST') return handleRegisterDeviceToken(db, user, event, log);
   if (path === '/me/price-contribution-optout' && method === 'PUT') return handlePriceContributionOptout(db, user, event, log);
   if (path.startsWith('/me/export')) return handleGdprRoute(db, user, path, method, event);
-  if (path.startsWith('/me/comparison-sets')) return handleComparisonSetsRoute(db, user, path, method, event);
+  if (path === '/me/product-links') return handleProductLinksRoute(db, user, method, event);
 
   if (path !== '/me/profile') {
     return json(404, { message: 'Not Found' });

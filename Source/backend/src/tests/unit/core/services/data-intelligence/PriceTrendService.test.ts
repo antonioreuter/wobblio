@@ -45,6 +45,7 @@ describe('PriceTrendService', () => {
       comparison: vi.fn().mockResolvedValue([line()]),
       modalCurrency: vi.fn().mockResolvedValue(null),
       regionMerchantCount: vi.fn().mockResolvedValue(2),
+      productDiagnostics: vi.fn().mockResolvedValue([]),
     };
     ownHistory = {
       history: vi.fn().mockResolvedValue([ownLine()]),
@@ -169,5 +170,57 @@ describe('PriceTrendService', () => {
     const { lines } = await service.comparison(['milk'], 'NL', 'NL-NB', true);
     expect(lines[0].staleDays).toBe(0);
     expect(lines[0].stale).toBe(false);
+  });
+
+  describe('diagnostics (fix 10)', () => {
+    const stat = (over: Partial<{ productId: string; inWindowCurrencyCount: number; otherCurrencyInWindowCount: number; maxCellCount: number; merchantCount: number }> = {}) => ({
+      productId: 'milk', inWindowCurrencyCount: 0, otherCurrencyInWindowCount: 0, maxCellCount: 0, merchantCount: 0, ...over,
+    });
+
+    it('marks a served product SERVED in both modes without a stats query', async () => {
+      const { diagnostics } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+      expect(diagnostics).toEqual([{ productId: 'milk', market: 'SERVED', own: 'SERVED' }]);
+      expect(trends.productDiagnostics).not.toHaveBeenCalled();
+    });
+
+    it('marks the market side PREMIUM_REQUIRED for a STANDARD caller (no stats query)', async () => {
+      const { diagnostics } = await sut.comparison(['milk'], 'NL', 'NL-NB', false);
+      expect(diagnostics[0].market).toBe('PREMIUM_REQUIRED');
+      expect(trends.productDiagnostics).not.toHaveBeenCalled();
+    });
+
+    it('reports NO_OBSERVATIONS_IN_REGION when an unserved product has no region stats', async () => {
+      trends.comparison.mockResolvedValue([]);
+      trends.productDiagnostics.mockResolvedValue([]);
+      const { diagnostics } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+      expect(diagnostics[0].market).toBe('NO_OBSERVATIONS_IN_REGION');
+    });
+
+    it('reports OUT_OF_WINDOW when region rows exist but none in the window', async () => {
+      trends.comparison.mockResolvedValue([]);
+      trends.productDiagnostics.mockResolvedValue([stat({ inWindowCurrencyCount: 0, otherCurrencyInWindowCount: 0 })]);
+      const { diagnostics } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+      expect(diagnostics[0].market).toBe('OUT_OF_WINDOW');
+    });
+
+    it('reports CURRENCY_MISMATCH when in-window rows exist only in another currency', async () => {
+      trends.comparison.mockResolvedValue([]);
+      trends.productDiagnostics.mockResolvedValue([stat({ inWindowCurrencyCount: 0, otherCurrencyInWindowCount: 4 })]);
+      const { diagnostics } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+      expect(diagnostics[0].market).toBe('CURRENCY_MISMATCH');
+    });
+
+    it('reports BELOW_QUORUM with how close it is when in-window rows exist but no cell cleared k', async () => {
+      trends.comparison.mockResolvedValue([]);
+      trends.productDiagnostics.mockResolvedValue([stat({ inWindowCurrencyCount: 2, maxCellCount: 2, merchantCount: 1 })]);
+      const { diagnostics } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+      expect(diagnostics[0].market).toEqual({ kind: 'BELOW_QUORUM', merchantCount: 1, maxObservations: 2 });
+    });
+
+    it('reports NO_PURCHASES_IN_REGION on the own side when the product is absent from own history', async () => {
+      ownHistory.history.mockResolvedValue([]);
+      const { diagnostics } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+      expect(diagnostics[0].own).toBe('NO_PURCHASES_IN_REGION');
+    });
   });
 });

@@ -33,6 +33,7 @@ import { ProductNormalizerTool } from '@core/services/ingestion/agentic/tools/Pr
 import { InvoiceClassifierTool } from '@core/services/ingestion/agentic/tools/InvoiceClassifierTool';
 import { SearchTagGeneratorTool } from '@core/services/ingestion/agentic/tools/SearchTagGeneratorTool';
 import { SsmUploadQuotaAdapter } from '@infrastructure/adapters/quota/SsmUploadQuotaAdapter';
+import { SsmEscalationConfigAdapter } from '@infrastructure/adapters/ingestion/SsmEscalationConfigAdapter';
 import { MeteringBedrockConverse } from '@core/services/ai/MeteringBedrockConverse';
 import { MeteringBedrockEmbedder } from '@core/services/ai/MeteringBedrockEmbedder';
 import type { TokenMeter } from '@core/domain/tokenMeter';
@@ -62,8 +63,11 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
   const pdfModelId = await modelRegistry.getModelId('pdf_parser');
   const auxiliaryModelId = await modelRegistry.getModelId('auxiliary');
   const embedderModelId = await modelRegistry.getModelId('embedder');
-  // Optional: hard image receipts escalate to this powerful model. Fail-open — unset means off.
+  // Optional escalation tiers: a low-quality primary parse re-runs on the mid (Sonnet) or deep
+  // (Opus) model. Fail-open — an unprovisioned id leaves that tier off (deep→mid→primary).
   const visionFallbackModelId = await modelRegistry.getModelIdOptional('vision_fallback');
+  const visionFallbackDeepModelId = await modelRegistry.getModelIdOptional('vision_fallback_deep');
+  const escalationThresholds = await new SsmEscalationConfigAdapter(REGION).getThresholds();
   const converse = new BedrockConverseAdapter(REGION);
   const embedder = new BedrockTitanEmbedderAdapter(REGION, embedderModelId);
   const uploadLimits = new SsmUploadQuotaAdapter(REGION);
@@ -76,15 +80,25 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
     const productCatalog = new ProductCatalogAdapter(client);
 
     const primaryVision = new VisionParseService(meteredConverse, visionModelId, selectCountryPrompt);
-    // Wrap the primary parser so hard image receipts re-parse on the powerful fallback model;
-    // if no fallback is provisioned, use the primary directly (identical to today's behaviour).
-    // The fallback shares the country selector so both arms report the same v9c+<country>.
-    const visionParser = visionFallbackModelId
+    // Wrap the primary so a low-quality parse re-runs on a stronger model — the mid or deep tier
+    // chosen by the blended-quality band (fix 11). Unprovisioned tiers fall through to the primary,
+    // identical to today's behaviour. Escalating parsers share the country selector so every arm
+    // reports the same v9c+<country>. `event: vision_escalation` logs frequency/tier/reason/score.
+    const escalationTargets = {
+      FALLBACK: visionFallbackModelId
+        ? new VisionParseService(meteredConverse, visionFallbackModelId, selectCountryPrompt, 'VISION_PARSE_FALLBACK')
+        : undefined,
+      FALLBACK_DEEP: visionFallbackDeepModelId
+        ? new VisionParseService(meteredConverse, visionFallbackDeepModelId, selectCountryPrompt, 'VISION_PARSE_FALLBACK_DEEP')
+        : undefined,
+    };
+    const escalationEnabled = Boolean(escalationTargets.FALLBACK || escalationTargets.FALLBACK_DEEP);
+    const visionParser = escalationEnabled
       ? new EscalatingReceiptParser(
           primaryVision,
-          new VisionParseService(meteredConverse, visionFallbackModelId, selectCountryPrompt, 'VISION_PARSE_FALLBACK'),
-          undefined,
-          (outcome) => log.info('vision parse escalated to fallback', { event: 'vision_escalation', ...outcome }),
+          escalationTargets,
+          escalationThresholds,
+          (outcome) => log.info('vision parse escalated', { event: 'vision_escalation', ...outcome }),
         )
       : primaryVision;
     const ocr = new OcrParserTool(
@@ -100,6 +114,8 @@ export const handler = async (event: SQSEvent, context: Context): Promise<SQSBat
       new RegionReferenceAdapter(client),
       uploadLimits,
       ocr,
+      escalationThresholds,
+      escalationEnabled,
     );
     const coordinator = new InvoiceCoordinator(
       new MerchantResolverTool(new MerchantResolver(merchantCatalog, meteredConverse, auxiliaryModelId)),

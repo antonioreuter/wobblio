@@ -81,11 +81,11 @@ function trimNum(value: number): string {
   return `${roundTo(value, 3)}`;
 }
 
-// Descriptive size for a market/catalog series or comparison-set member (fix 09/01): a chip like
+// Descriptive size for a market/catalog series or linked product (fix 09/01): a chip like
 // "2L". A catalog size has no per-line evidence, so a known size is labeled RECEIPT (catalog sizes
 // are receipt-transcribed under prompt v5) and an absent size carries none. Own-history derives its
 // own USER-vs-RECEIPT source from the tenant's lines and does NOT use this. One place for the rule
-// so the trend chip and the comparison-set chip never disagree.
+// so the trend chip and the linked-product chip never disagree.
 export function catalogSize(
   packQuantity: number | null,
   baseUnit: BaseUnit | null,

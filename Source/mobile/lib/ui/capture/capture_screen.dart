@@ -30,10 +30,16 @@ class _CaptureView extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocConsumer<CaptureBloc, CaptureState>(
       listenWhen: (_, current) =>
-          current is CaptureSuccess || current is CaptureFailure,
+          current is CaptureSuccess ||
+          current is CaptureFailure ||
+          current is CaptureLowQuality,
       listener: (context, state) {
         if (state is CaptureSuccess) {
           Navigator.of(context).pop(state.invoiceId);
+          return;
+        }
+        if (state is CaptureLowQuality) {
+          _showLowQualitySheet(context, state);
           return;
         }
         if (state is CaptureFailure) {
@@ -66,6 +72,66 @@ class _CaptureView extends StatelessWidget {
       },
     );
   }
+}
+
+/// Soft stop for the capture-quality gate (fix 11 · sub-spec 05): explain the issue and let the
+/// user retake or upload the held bytes anyway. Never a hard block — a false positive can't stop
+/// a real receipt. Retake returns to idle; "upload anyway" re-runs the pipeline with force.
+Future<void> _showLowQualitySheet(BuildContext context, CaptureLowQuality state) async {
+  final bloc = context.read<CaptureBloc>();
+  await showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: const Color(0xFF11131C),
+    showDragHandle: true,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: Padding(
+          key: const Key('capture-low-quality-sheet'),
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'This photo may be hard to read',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                state.message,
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 14, height: 1.4),
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                key: const Key('capture-retake-button'),
+                onPressed: () {
+                  Navigator.of(sheetContext).pop();
+                  bloc.add(const CaptureReset());
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.brand,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text('Retake photo'),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                key: const Key('capture-upload-anyway-button'),
+                onPressed: () {
+                  Navigator.of(sheetContext).pop();
+                  bloc.add(CaptureUploadAnyway(state.raw));
+                },
+                child: Text(
+                  'Upload anyway',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.75)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 /// The `radial-gradient(120% 60% at 50% 40%, #11131c, #04050a)` scene wash.

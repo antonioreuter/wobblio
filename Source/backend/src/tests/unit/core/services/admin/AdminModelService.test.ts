@@ -22,13 +22,14 @@ describe('AdminModelService', () => {
     registry.getAll.mockResolvedValue({
       vision_parser: 'v1',
       vision_fallback: 'vf1',
+      vision_fallback_deep: 'vfd1',
       pdf_parser: 'p1',
       auxiliary: 'a1',
       insight: null,
       embedder: 'e1',
     });
     const list = await sut.list();
-    expect(list).toHaveLength(6);
+    expect(list).toHaveLength(7);
     const insight = list.find((e) => e.role === 'insight');
     expect(insight?.modelId).toBeNull();
     // each role carries curated options for the dropdown

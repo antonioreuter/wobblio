@@ -5,12 +5,14 @@ import { buildPool } from '@infrastructure/config/db';
 import { CloudWatchLogsTimingSourceAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsTimingSourceAdapter';
 import { CloudWatchLogsAiUsageAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsAiUsageAdapter';
 import { CloudWatchLogsReprocessAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsReprocessAdapter';
+import { CloudWatchLogsVisionEscalationAdapter } from '@infrastructure/adapters/observability/CloudWatchLogsVisionEscalationAdapter';
 import { BusinessKpiDbAdapter } from '@infrastructure/adapters/observability/BusinessKpiDbAdapter';
 import { KpiDailyRepositoryAdapter } from '@infrastructure/adapters/observability/KpiDailyRepositoryAdapter';
 import { IngestionMetricsRollupService } from '@core/services/observability/IngestionMetricsRollupService';
 import { BusinessKpiRollupService } from '@core/services/observability/BusinessKpiRollupService';
 import { AiSpendRollupService } from '@core/services/observability/AiSpendRollupService';
 import { ReprocessCrossWeekRollupService } from '@core/services/observability/ReprocessCrossWeekRollupService';
+import { VisionEscalationRollupService } from '@core/services/observability/VisionEscalationRollupService';
 
 const REGION = process.env.AWS_REGION ?? 'eu-west-1';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -53,6 +55,9 @@ async function runForDate(pool: Pool, metricDate: string, log: LambdaLogger): Pr
     ).run(metricDate)],
     ['reprocess_cross_week', new ReprocessCrossWeekRollupService(
       new CloudWatchLogsReprocessAdapter(REGION, ingestionLogGroup), kpiWriter,
+    ).run(metricDate)],
+    ['vision_escalation', new VisionEscalationRollupService(
+      new CloudWatchLogsVisionEscalationAdapter(REGION, ingestionLogGroup), kpiWriter,
     ).run(metricDate)],
   ];
 

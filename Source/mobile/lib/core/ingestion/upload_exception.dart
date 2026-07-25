@@ -3,8 +3,11 @@
 /// - [duplicate] — 409, this receipt (same SHA-256) was already scanned.
 /// - [quota] — 429, the weekly usage-credit limit is reached.
 /// - [premiumRequired] — 403, PDF uploads need a Premium plan.
+/// - [lowQuality] — the client-side capture gate (fix 11 · sub-spec 05) judged the photo
+///   too blurry/glary/dark to read; the user can retake or upload it anyway. Never leaves
+///   the device — no presign, no credit spent — until they override.
 /// - [failed] — anything else (bad request, S3 PUT failure, network, …).
-enum UploadErrorCode { duplicate, quota, premiumRequired, failed }
+enum UploadErrorCode { duplicate, quota, premiumRequired, lowQuality, failed }
 
 /// Domain error thrown by [IIngestionRepository]/[IS3Uploader] so the
 /// [CaptureBloc] never sees HTTP status codes or SDK error types.

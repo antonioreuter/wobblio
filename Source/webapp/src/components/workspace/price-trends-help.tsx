@@ -38,6 +38,10 @@ const TREND_HELP_POINTS: { title: string; body: string }[] = [
     body: 'Solid lines compare local stores. A store appears only once at least 3 confirmed scans of the item exist nearby, so prices stay reliable and anonymous.',
   },
   {
+    title: 'Compare across stores',
+    body: 'Pick one product and we suggest the same item at nearby stores as “Also sold nearby” chips — tap one to add its line, or dismiss it. No lists to manage.',
+  },
+  {
     title: 'Filtered by region',
     body: 'The local-store comparison is limited to the region in the picker. Switch regions to see prices somewhere else.',
   },

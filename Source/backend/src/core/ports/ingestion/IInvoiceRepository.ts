@@ -240,6 +240,9 @@ export interface IInvoiceRepository {
   // unsupported format): FAILED_PROCESSING + reason code, no system_fault_reason — stays
   // deletable, never quarantined. Sibling of markUnreadable for non-model rejects.
   markFailed(invoiceId: string, reasonCode: FailureReasonCode): Promise<void>;
+  // Fix 11 Layer C: a photo parse still objectively broken after escalation. RETAKE_SUGGESTED +
+  // RETAKE_LOW_QUALITY reason, no system_fault_reason — deletable, and the run is not charged.
+  markRetake(invoiceId: string): Promise<void>;
   // Quarantine an invoice after an our-stack crash (§03.5/§03.6): FAILED_PROCESSING +
   // SYSTEM_FAULT code + the internal root cause + blocked_at. Idempotent across SQS
   // redeliveries — returns true only on the transition into quarantine (0 rows → false),

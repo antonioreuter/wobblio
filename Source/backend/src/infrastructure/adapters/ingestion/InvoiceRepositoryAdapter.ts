@@ -303,6 +303,18 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
     );
   }
 
+  // Fix 11 Layer C — a photo parse still objectively broken after escalation. Deletable (no
+  // system_fault_reason), and the worker skips the charge for this run.
+  async markRetake(invoiceId: string): Promise<void> {
+    await this.client.query(
+      `UPDATE invoice
+         SET status = 'RETAKE_SUGGESTED', failure_reason_code = 'RETAKE_LOW_QUALITY',
+             system_fault_reason = NULL, blocked_at = NULL
+       WHERE id = $1`,
+      [invoiceId],
+    );
+  }
+
   async quarantine(invoiceId: string, systemFaultReason: string): Promise<boolean> {
     const result = await this.client.query(
       `UPDATE invoice

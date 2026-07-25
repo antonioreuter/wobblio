@@ -29,7 +29,7 @@ export class MockPriceMatrixAdapter implements IPriceMatrix {
           lastObservedOn: today,
         });
       });
-      // Local stand-in has every product priced at all three merchants (no comparison-set gating).
+      // Local stand-in has every product priced at all three merchants (no product-link gating).
       reasons[productId] = 'comparable';
     });
 

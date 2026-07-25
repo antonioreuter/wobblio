@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 
-import 'package:wobblio/core/ingestion/prepared_upload.dart';
 import 'package:wobblio/core/ingestion/upload_exception.dart';
 import 'package:wobblio/core/ports/camera_capture.dart';
 import 'package:wobblio/core/ports/document_picker.dart';
@@ -38,6 +37,7 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
     on<CaptureFromCameraRequested>(_onCamera);
     on<CaptureFromGalleryRequested>(_onGallery);
     on<CaptureDocumentRequested>(_onDocument);
+    on<CaptureUploadAnyway>(_onUploadAnyway);
     on<CaptureReset>((_, emit) => emit(const CaptureIdle()));
   }
 
@@ -52,33 +52,59 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
     CaptureFromCameraRequested event,
     Emitter<CaptureState> emit,
   ) =>
-      _run(emit, _camera.capture, _preparer.prepareImage);
+      _pickThenUpload(emit, _camera.capture, isImage: true);
 
   Future<void> _onGallery(
     CaptureFromGalleryRequested event,
     Emitter<CaptureState> emit,
   ) =>
-      _run(emit, _gallery.pickImage, _preparer.prepareImage);
+      _pickThenUpload(emit, _gallery.pickImage, isImage: true);
 
   Future<void> _onDocument(
     CaptureDocumentRequested event,
     Emitter<CaptureState> emit,
   ) =>
-      _run(emit, _documents.pickPdf, _preparer.preparePdf);
+      _pickThenUpload(emit, _documents.pickPdf, isImage: false);
 
-  Future<void> _run(
+  // "Upload anyway" after the quality gate: the bytes are already in hand, so skip the pick and
+  // force the gate off (fix 11 · sub-spec 05).
+  Future<void> _onUploadAnyway(
+    CaptureUploadAnyway event,
     Emitter<CaptureState> emit,
-    Future<Uint8List?> Function() pick,
-    Future<PreparedUpload> Function(Uint8List) prepare,
-  ) async {
+  ) =>
+      _upload(emit, event.raw, isImage: true, force: true);
+
+  Future<void> _pickThenUpload(
+    Emitter<CaptureState> emit,
+    Future<Uint8List?> Function() pick, {
+    required bool isImage,
+  }) async {
+    final Uint8List? raw;
     try {
-      final raw = await pick();
-      if (raw == null) {
-        emit(const CaptureIdle()); // cancelled — never reaches presign
-        return;
-      }
+      raw = await pick();
+    } catch (_) {
+      // Picker/native failures (denied permission, decode error) surface as a retryable failure.
+      emit(const CaptureFailure(UploadErrorCode.failed, 'Something went wrong. Please try again.'));
+      return;
+    }
+    if (raw == null) {
+      emit(const CaptureIdle()); // cancelled — never reaches presign
+      return;
+    }
+    await _upload(emit, raw, isImage: isImage, force: false);
+  }
+
+  Future<void> _upload(
+    Emitter<CaptureState> emit,
+    Uint8List raw, {
+    required bool isImage,
+    required bool force,
+  }) async {
+    try {
       emit(const CaptureInProgress(CapturePhase.preparing));
-      final prepared = await prepare(raw);
+      final prepared = isImage
+          ? await _preparer.prepareImage(raw, force: force)
+          : await _preparer.preparePdf(raw);
       emit(const CaptureInProgress(CapturePhase.presigning));
       final ticket = await _ingestion.presign(prepared);
       emit(const CaptureInProgress(CapturePhase.uploading));
@@ -87,16 +113,15 @@ class CaptureBloc extends Bloc<CaptureEvent, CaptureState> {
       await _ingestion.confirm(ticket.invoiceId);
       emit(CaptureSuccess(ticket.invoiceId));
     } on UploadException catch (error) {
-      emit(CaptureFailure(error.code, error.message));
+      // The quality gate is a soft stop — offer retake / upload-anyway, holding the bytes so no
+      // re-capture is needed. Every other upload error is a hard failure.
+      if (error.code == UploadErrorCode.lowQuality) {
+        emit(CaptureLowQuality(error.message, raw));
+      } else {
+        emit(CaptureFailure(error.code, error.message));
+      }
     } catch (_) {
-      // Picker/native failures (denied permission, decode error) never reach the
-      // user as a crash — surface a retryable generic failure.
-      emit(
-        const CaptureFailure(
-          UploadErrorCode.failed,
-          'Something went wrong. Please try again.',
-        ),
-      );
+      emit(const CaptureFailure(UploadErrorCode.failed, 'Something went wrong. Please try again.'));
     }
   }
 }

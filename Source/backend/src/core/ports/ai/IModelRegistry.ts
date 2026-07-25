@@ -4,8 +4,9 @@
 // 03) takes effect fleet-wide on the next cold start / cache expiry.
 // `pdf_parser` parses PDF invoices (the vision model rejects document blocks); it is
 // its own swappable role so PDF routing is independent of the `insight` model.
-// `vision_fallback` is the powerful model hard image receipts escalate to (§ agentic fallback).
-export const MODEL_ROLES = ['vision_parser', 'vision_fallback', 'pdf_parser', 'auxiliary', 'insight', 'embedder'] as const;
+// `vision_fallback` is the mid-tier model a low-quality primary parse escalates to; `vision_fallback_deep`
+// is the deepest tier for the lowest-quality parses (fix 11 adaptive escalation ladder). Both swappable via SSM.
+export const MODEL_ROLES = ['vision_parser', 'vision_fallback', 'vision_fallback_deep', 'pdf_parser', 'auxiliary', 'insight', 'embedder'] as const;
 export type ModelRole = (typeof MODEL_ROLES)[number];
 
 export function isModelRole(value: string): value is ModelRole {

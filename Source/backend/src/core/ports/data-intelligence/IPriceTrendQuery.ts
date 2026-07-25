@@ -55,8 +55,22 @@ export interface PriceTrendLine {
   ambiguous: boolean;
 }
 
+// Per-product observation stats over the region, for diagnosing WHY a selected product produced no
+// served market line (fix 10). Only products with at least one non-quarantined region row (any time,
+// any currency) appear; a requested product absent from the result has no region observations at all.
+export interface ProductObservationStats {
+  productId: string;
+  inWindowCurrencyCount: number; // rows in the window AND view currency (what the k≥3 cell gate sees)
+  otherCurrencyInWindowCount: number; // rows in the window but a DIFFERENT currency than the view
+  maxCellCount: number; // largest single-merchant count in window+currency (how close to k≥3)
+  merchantCount: number; // distinct merchants with ≥1 in-window+currency observation
+}
+
 export interface IPriceTrendQuery {
   comparison(input: PriceTrendQueryInput): Promise<PriceTrendLine[]>;
+  // Region observation stats for the requested products (fix 10 diagnostics). Called only when some
+  // requested product has no served line, so the UI can say WHY instead of showing a blank chart.
+  productDiagnostics(input: PriceTrendQueryInput): Promise<ProductObservationStats[]>;
   // Most frequent observation currency in the region for the selected products, or null when the
   // region has no observations. Used as the fallback view currency when the country isn't mapped.
   modalCurrency(input: RegionCurrencyQueryInput): Promise<string | null>;

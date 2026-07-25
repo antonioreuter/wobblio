@@ -157,6 +157,32 @@ describe('PriceTrendQueryAdapter — §6.5.1 comparison over Postgres', () => {
     }
   });
 
+  it('reports per-product region stats for the empty-chart diagnostics (fix 10)', async () => {
+    // Isolated region: one merchant with 2 EUR rows (below k≥3) and 2 GBP rows in the window.
+    const diagRegion = `R-${randomUUID().slice(0, 8)}`;
+    const shop = await new MerchantCatalogAdapter(pool).createProvisionalMerchant('Diag Shop', 'NL', 'cat-groceries');
+    await emit([
+      obs(shop, isoDay(0), 1.0, { regionCode: diagRegion }),
+      obs(shop, isoDay(1), 1.1, { regionCode: diagRegion }),
+      obs(shop, isoDay(0), 9.99, { regionCode: diagRegion, currency: 'GBP' }),
+      obs(shop, isoDay(1), 9.99, { regionCode: diagRegion, currency: 'GBP' }),
+      // Outside the window — must not count toward in-window totals.
+      obs(shop, isoDay(300), 1.0, { regionCode: diagRegion }),
+    ]);
+    try {
+      const stats = await new PriceTrendQueryAdapter(pool).productDiagnostics({
+        productIds: [productId], countryCode: 'NL', regionCode: diagRegion, weeks: 26, kMin: 3, currency: 'EUR',
+      });
+      const stat = stats.find((s) => s.productId === productId)!;
+      expect(stat.inWindowCurrencyCount).toBe(2); // the 2 in-window EUR rows
+      expect(stat.otherCurrencyInWindowCount).toBe(2); // the 2 in-window GBP rows
+      expect(stat.maxCellCount).toBe(2); // best single merchant cell — one short of k≥3
+      expect(stat.merchantCount).toBe(1);
+    } finally {
+      await pool.query('DELETE FROM price_observation WHERE region_code = $1', [diagRegion]);
+    }
+  });
+
   it('falls back to the region modal currency for an unmapped country', async () => {
     // CA is a seeded country but intentionally absent from the countryCurrency map, so the
     // service must resolve the view currency by modal lookup rather than the country map.

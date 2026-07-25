@@ -63,7 +63,7 @@ describe('VisionParseService', () => {
     converse.mockResolvedValue(converseResult(VALID_JSON));
     const selectPrompt = vi.fn((country: string | undefined) => ({
       template: `PROMPT-${country}`,
-      version: `vision-parse/v9c+${(country ?? 'default').toLowerCase()}`,
+      version: `vision-parse/v10c+${(country ?? 'default').toLowerCase()}`,
     }));
     const service = new VisionParseService({ converse } as unknown as IBedrockConverse, 'mock-model', selectPrompt);
 
@@ -72,7 +72,7 @@ describe('VisionParseService', () => {
     expect(selectPrompt).toHaveBeenCalledWith('BR');
     const request = converse.mock.calls[0][0];
     expect(request.systemPrompt).toBe('PROMPT-BR');
-    expect(request.promptVersion).toBe('vision-parse/v9c+br');
+    expect(request.promptVersion).toBe('vision-parse/v10c+br');
   });
 
   it('forwards a PDF as a document attachment', async () => {

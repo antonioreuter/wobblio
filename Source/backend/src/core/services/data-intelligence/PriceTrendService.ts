@@ -1,4 +1,4 @@
-import type { IPriceTrendQuery, PriceTrendLine } from '../../ports/data-intelligence/IPriceTrendQuery';
+import type { IPriceTrendQuery, PriceTrendLine, PriceTrendQueryInput, ProductObservationStats } from '../../ports/data-intelligence/IPriceTrendQuery';
 import type { IOwnPurchaseHistoryQuery, OwnPurchaseLine } from '../../ports/data-intelligence/IOwnPurchaseHistoryQuery';
 import { InvalidTrendQueryError } from '../../domain/errors';
 import { countryCurrency } from '../../domain/currencyByCountry';
@@ -14,6 +14,31 @@ export interface ServedPriceTrendLine extends PriceTrendLine {
   staleDays: number; // age of the most recent observation, in days
 }
 
+// Fix 10 — why a selected product produced no MARKET line, so the webapp shows a specific note on
+// the product chip instead of a silently empty chart.
+//   SERVED                    — a line rendered; nothing to explain
+//   PREMIUM_REQUIRED          — market overlay is Premium-only; the caller isn't
+//   NO_OBSERVATIONS_IN_REGION — no one has scanned this product in the region yet
+//   OUT_OF_WINDOW             — region rows exist, but all older than the 26-week window
+//   CURRENCY_MISMATCH         — in-window rows exist, but in a currency other than the view currency
+//   BELOW_QUORUM              — in-window rows exist but no merchant cleared k≥3 (carries how close)
+export type MarketDiagnostic =
+  | 'SERVED'
+  | 'PREMIUM_REQUIRED'
+  | 'NO_OBSERVATIONS_IN_REGION'
+  | 'OUT_OF_WINDOW'
+  | 'CURRENCY_MISMATCH'
+  | { kind: 'BELOW_QUORUM'; merchantCount: number; maxObservations: number };
+
+// Why a selected product produced no OWN-history line. Derived from ownHistory (no extra query).
+export type OwnDiagnostic = 'SERVED' | 'NO_PURCHASES_IN_REGION';
+
+export interface ProductDiagnostic {
+  productId: string;
+  market: MarketDiagnostic;
+  own: OwnDiagnostic;
+}
+
 export interface PriceTrendComparison {
   countryCode: string;
   regionCode: string;
@@ -27,6 +52,9 @@ export interface PriceTrendComparison {
   regionMerchantCount: number;
   lines: ServedPriceTrendLine[]; // public market trend — Premium only; [] otherwise
   ownHistory: OwnPurchaseLine[]; // the caller's own purchases — always served, no quorum gate
+  // Per requested product: why it did (or didn't) plot in each mode (fix 10). Lets the webapp show a
+  // specific note per product and auto-fall-back between modes instead of a blank chart.
+  diagnostics: ProductDiagnostic[];
 }
 
 // Serves the comparison chart for the caller's region. Two series: the de-identified public
@@ -66,18 +94,17 @@ export class PriceTrendService {
       kMin: TREND_K_MIN,
       currency,
     };
-    const lines = includeMarketTrend ? await this.trends.comparison(marketInput) : [];
+    // The market trend and the caller's own history are independent, so fetch them in parallel —
+    // one DB round-trip of latency instead of two on every request.
+    const [lines, ownHistory] = await Promise.all([
+      includeMarketTrend ? this.trends.comparison(marketInput) : Promise.resolve<PriceTrendLine[]>([]),
+      this.ownHistory.history({ productIds: products, countryCode, regionCode, weeks: TREND_WINDOW_WEEKS, currency }),
+    ]);
     // Cold-start motivator count — only meaningful for the market view when NO cell cleared the
     // gate (the webapp shows it only then). Skip the extra query whenever the chart already renders.
     const regionMerchantCount =
       includeMarketTrend && lines.length === 0 ? await this.trends.regionMerchantCount(marketInput) : 0;
-    const ownHistory = await this.ownHistory.history({
-      productIds: products,
-      countryCode,
-      regionCode,
-      weeks: TREND_WINDOW_WEEKS,
-      currency,
-    });
+    const diagnostics = await this.diagnose(products, marketInput, lines, ownHistory, includeMarketTrend);
     return {
       countryCode,
       regionCode,
@@ -86,7 +113,48 @@ export class PriceTrendService {
       regionMerchantCount,
       lines: lines.map((l) => this.decorate(l)),
       ownHistory,
+      diagnostics,
     };
+  }
+
+  // Per requested product, explain each mode's outcome. The market stats query runs only when the
+  // market view is on AND some product has no served line (mirrors the regionMerchantCount guard) —
+  // when everything plots there is nothing to diagnose and no query is issued.
+  private async diagnose(
+    products: string[],
+    marketInput: PriceTrendQueryInput,
+    lines: PriceTrendLine[],
+    ownHistory: OwnPurchaseLine[],
+    includeMarketTrend: boolean,
+  ): Promise<ProductDiagnostic[]> {
+    const servedMarket = new Set(lines.map((l) => l.productId));
+    const servedOwn = new Set(ownHistory.map((o) => o.productId));
+    const needStats = includeMarketTrend && products.some((id) => !servedMarket.has(id));
+    const stats = needStats
+      ? new Map((await this.trends.productDiagnostics(marketInput)).map((s) => [s.productId, s]))
+      : new Map<string, ProductObservationStats>();
+
+    return products.map((productId) => ({
+      productId,
+      market: this.marketDiagnostic(productId, includeMarketTrend, servedMarket, stats),
+      own: servedOwn.has(productId) ? 'SERVED' : 'NO_PURCHASES_IN_REGION',
+    }));
+  }
+
+  private marketDiagnostic(
+    productId: string,
+    includeMarketTrend: boolean,
+    servedMarket: Set<string>,
+    stats: Map<string, ProductObservationStats>,
+  ): MarketDiagnostic {
+    if (!includeMarketTrend) return 'PREMIUM_REQUIRED';
+    if (servedMarket.has(productId)) return 'SERVED';
+    const stat = stats.get(productId);
+    if (!stat) return 'NO_OBSERVATIONS_IN_REGION';
+    if (stat.inWindowCurrencyCount === 0) {
+      return stat.otherCurrencyInWindowCount > 0 ? 'CURRENCY_MISMATCH' : 'OUT_OF_WINDOW';
+    }
+    return { kind: 'BELOW_QUORUM', merchantCount: stat.merchantCount, maxObservations: stat.maxCellCount };
   }
 
   // View currency for a single-currency view. Country-derived when the country is mapped. For an

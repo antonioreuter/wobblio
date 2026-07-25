@@ -2,6 +2,7 @@
 // observation store via use-price-trends; this module only holds presentation tokens.
 
 import type { Preset } from './invoice-data'
+import type { TrendComparison, TrendPoint } from './use-price-trends'
 
 export const SERIES_COLORS = [
   '#6366f1', '#0d9488', '#f59e0b', '#f43f5e',
@@ -69,4 +70,42 @@ export function inRange(
   if (preset === 'custom' && !rangeInvalid && from && to)
     return d >= new Date(from) && d <= new Date(to)
   return d >= daysBack(90)
+}
+
+// Fix 10 auto-fallbacks — be opinionated so a selection never lands on a blank chart when data
+// exists in the other mode or a wider range. Both are pure so the page can call them in an effect
+// and unit-test the decision without a DOM.
+
+type CompareMode = 'own' | 'market'
+
+// If the active mode has no source lines but the other mode does, return the mode to switch to.
+// null when the active mode already has data or neither mode does (nothing to gain by switching).
+export function resolveAutoMode(comparison: TrendComparison | null, mode: CompareMode): CompareMode | null {
+  if (!comparison) return null
+  const active = mode === 'market' ? comparison.lines : comparison.ownHistory
+  const other = mode === 'market' ? comparison.ownHistory : comparison.lines
+  if (active.length > 0 || other.length === 0) return null
+  return mode === 'market' ? 'own' : 'market'
+}
+
+// If the active preset hides every point but the 26-week window does hold points, return '6m' to
+// widen to the full window. null when the preset already shows points or there are none at all.
+export function widenRangeIfHidden(
+  pointsSets: TrendPoint[][],
+  preset: TrendPreset,
+  from: string,
+  to: string,
+  rangeInvalid: boolean,
+): TrendPreset | null {
+  if (preset === '6m' || preset === 'custom') return null
+  let anyInWindow = false
+  let anyInPreset = false
+  for (const points of pointsSets) {
+    for (const pt of points) {
+      if (pt.median === null && pt.discountMedian === null) continue
+      anyInWindow = true
+      if (inRange(new Date(`${pt.weekStart}T00:00:00Z`), preset, from, to, rangeInvalid)) anyInPreset = true
+    }
+  }
+  return anyInWindow && !anyInPreset ? '6m' : null
 }

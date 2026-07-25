@@ -47,6 +47,7 @@ export interface FinalizeInput extends ExtractionResult {
 export type ExtractOutcome =
   | { kind: 'duplicate' }
   | { kind: 'unreadable'; outcome: IngestionOutcome }
+  | { kind: 'retake'; outcome: IngestionOutcome }
   | { kind: 'ready'; extraction: ExtractionResult; context: ContributorContext };
 
 // Stage 6 of §6: duplicate/integrity gates, status decision, tenant persistence, de-identified

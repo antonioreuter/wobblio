@@ -9,6 +9,8 @@ import type { IngestionMessage } from '../../ports/ingestion/IIngestionQueue';
 import type { OcrParserTool } from './agentic/tools/OcrParserTool';
 import type { IngestionOutcome } from './InvoiceFinalizer';
 import { isUnreadableVerdict, type ParsedReceipt } from '../../domain/ingestion';
+import { isRetakeSuggested } from '../../domain/receiptEscalation';
+import type { EscalationThresholds } from '../../domain/visionEscalation';
 import { resolveIngestionLocation, type LocationCandidate, type ResolvedIngestionLocation } from '../../domain/region';
 import { attachmentFormatFromKey, type UploadFormat } from '../../domain/uploadFormat';
 import { countPdfPages } from '../../domain/pdf';
@@ -21,6 +23,7 @@ import type { ContributorContext } from '../../domain/priceObservation';
 export type PrepareResult =
   | { kind: 'duplicate' } // duplicate SQS delivery (ledger already claimed)
   | { kind: 'unreadable'; outcome: IngestionOutcome } // model judged the image unreadable
+  | { kind: 'retake'; outcome: IngestionOutcome } // photo parse still objectively broken after escalation
   | { kind: 'ready'; receipt: ParsedReceipt; location: ResolvedIngestionLocation; context: ContributorContext };
 
 export class ExtractionPreparer {
@@ -33,6 +36,11 @@ export class ExtractionPreparer {
     private readonly regionReference: IRegionReference,
     private readonly uploadLimits: IUploadLimitsProvider,
     private readonly ocr: OcrParserTool,
+    private readonly escalationThresholds: EscalationThresholds,
+    // Whether any escalation tier is provisioned. The Layer C retake gate only runs when it is:
+    // a photo is asked to be re-taken only after our STRONGEST available model has also failed —
+    // so a primary-only (Qwen-only) deployment behaves exactly as before (→ NEEDS_REVIEW, no retake).
+    private readonly escalationEnabled: boolean,
   ) {}
 
   async prepare(message: IngestionMessage): Promise<PrepareResult> {
@@ -56,6 +64,17 @@ export class ExtractionPreparer {
       await this.invoiceRepo.markUnreadable(message.invoiceId, parsed.reason);
       await this.ledger.setStatus(message.s3Key, 'DONE');
       return { kind: 'unreadable', outcome: { handled: true, status: 'FAILED_PROCESSING', failureReasonCode: parsed.reason } };
+    }
+
+    // Fix 11 Layer C: a photo whose parse is GROSSLY broken even after our strongest model ran.
+    // Ask for a retake instead of canonicalizing garbage into review — and short-circuit before the
+    // aux-model stages, saving their tokens. Gated to escalation-enabled deployments so a Qwen-only
+    // config is unchanged, and to photos ("retake flat / in sections" is meaningless for a PDF). The
+    // run is still charged when a fallback model ran (worker; the no-charge case is primary-only).
+    if (this.escalationEnabled && format !== 'pdf' && isRetakeSuggested(parsed, this.escalationThresholds)) {
+      await this.invoiceRepo.markRetake(message.invoiceId);
+      await this.ledger.setStatus(message.s3Key, 'DONE');
+      return { kind: 'retake', outcome: { handled: true, status: 'RETAKE_SUGGESTED', failureReasonCode: 'RETAKE_LOW_QUALITY' } };
     }
 
     const location = await this.resolveLocation(message.invoiceId, parsed, context);

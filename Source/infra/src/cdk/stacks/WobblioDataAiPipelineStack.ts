@@ -143,10 +143,12 @@ export class WobblioDataAiPipelineStack extends Stack {
       resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/shared/db/*`],
     }));
 
-    // SSM: swappable model IDs, tag vocabulary, pipeline feature flags, and upload quotas
-    // the agent reads at runtime — scoped to the four config sub-trees per spec §3
-    // (stage-scoped). quotas/* was missing: assertUploadWithinLimits reads
+    // SSM: swappable model IDs, tag vocabulary, pipeline feature flags, upload quotas, and the
+    // vision-escalation thresholds the agent reads at runtime — scoped to the config sub-trees per
+    // spec §3 (stage-scoped). quotas/* was missing: assertUploadWithinLimits reads
     // quotas/household_uploads_per_week, which AccessDenied'd every agentic-routed message.
+    // ingestion/* was missing: SsmEscalationConfigAdapter reads ingestion/vision_escalation, which
+    // AccessDenied'd (swallowed) → the ladder silently ran on hard-coded defaults (fix 11 review ⑥).
     agenticWorkerFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameter', 'ssm:GetParameters'],
       resources: [
@@ -154,6 +156,7 @@ export class WobblioDataAiPipelineStack extends Stack {
         configParamArn('tags/*'),
         configParamArn('features/*'),
         configParamArn('quotas/*'),
+        configParamArn('ingestion/*'),
       ],
     }));
 

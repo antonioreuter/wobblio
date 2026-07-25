@@ -11,7 +11,7 @@ import { resolvePack, type CountryPromptPack } from './pack';
 // code (e.g. 'vision-parse/v9c+nl', 'vision-parse/v9c+default') so swap-comparison
 // telemetry (invoice_feedback.model_ids_snapshot) can distinguish packs and catch a
 // per-country regression the aggregate would hide.
-export const VISION_PARSE_BASE_VERSION = 'vision-parse/v9c';
+export const VISION_PARSE_BASE_VERSION = 'vision-parse/v10c';
 
 // Slots the composer fills: {{EXCLUSION_LIST}}, {{CURRENCY_DATE_HINT}}, {{EXAMPLES}}.
 const VISION_PARSE_BASE = `You are a receipt OCR extraction engine. You receive a single receipt photo and return structured JSON faithful to what is printed.
@@ -55,8 +55,12 @@ const VISION_PARSE_BASE = `You are a receipt OCR extraction engine. You receive 
 - Self-reconciliation (ALWAYS before responding): add up every line_total (deposits add, discounts subtract) and compare to total. If they differ, re-examine: you most likely emitted a summary/tax/total row that belongs in <exclusion_list>, duplicated a line, or misread a price — fix it so the sum matches total.
 - Quantity verification (ALWAYS before responding): for every line where you set quantity > 1, confirm the receipt literally prints a "quantity X unit_price" breakdown for THAT product and that quantity × unit_price = line_total. If no such breakdown is printed for the product, set quantity back to 1 and drop unit_price — never reach quantity > 1 by dividing a line_total (a unit_price like 0.625 that appears nowhere on the receipt is the tell-tale of this mistake).
 - If you still cannot make the sum match total, keep your best transcription and LOWER parse_confidence accordingly.
-- parse_confidence is your own 0..1 confidence that the whole extraction is faithful.
+- parse_confidence is your 0..1 self-estimate of how faithful the WHOLE extraction is. Calibrate it honestly — do NOT default to a high value. Start at 1.0 and lower it: substantially if the photo is folded, torn, cropped, or faded so any region is hard to read; for every line whose text or price you had to guess; if your Σ line_totals does not reconcile with total; and if stated_item_count is printed and does not match the item lines you extracted. Bands: 0.9–1.0 only when every line is crisp AND Σ reconciles AND the item count matches; 0.6–0.85 when several lines are uncertain or the count is off by a few; below 0.5 when large portions are illegible or many lines are guesses. Reporting high confidence on a shaky extraction is a serious error.
 </accuracy>
+
+<item_count>
+- Many receipts print a total article/item count near the totals (e.g. "AANTAL ARTIKELEN 12", "QTD TOTAL DE ITENS 69", "ITEMS 5", "N. ITENS 8"). Transcribe that integer into the top-level stated_item_count field. It is NOT a purchased line — keep it out of "lines" (it stays in the exclusion list). Omit stated_item_count when no such count is printed. Use it as a checksum: if it does not match the number of units you extracted, re-scan for a missed, merged, or duplicated line before you finalize.
+</item_count>
 
 <date_and_currency>
 - The user message gives <user_country> and <processed_date>. Use the country to disambiguate ambiguous dates (e.g. DD/MM vs MM/DD) and to infer currency when no symbol is printed.
@@ -101,6 +105,7 @@ Use reason "NOT_A_RECEIPT" when the image is not a receipt at all, "BLURRY" when
     "postal_code": "optional string"
   },
   "parse_confidence": 0.0,
+  "stated_item_count": 12,
   "lines": [
     {
       "raw_text": "string (verbatim line)",
@@ -112,6 +117,7 @@ Use reason "NOT_A_RECEIPT" when the image is not a receipt at all, "BLURRY" when
   ]
 }
 </schema>
+stated_item_count is optional — include it only when a total item count is printed (see <item_count>).
 
 {{EXAMPLES}}
 `;

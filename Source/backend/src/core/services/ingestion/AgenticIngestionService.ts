@@ -16,7 +16,7 @@ export class AgenticIngestionService {
   async process(message: IngestionMessage): Promise<IngestionOutcome> {
     const result = await this.extract(message);
     if (result.kind === 'duplicate') return { handled: false };
-    if (result.kind === 'unreadable') return result.outcome;
+    if (result.kind === 'unreadable' || result.kind === 'retake') return result.outcome;
     return this.finalizer.finalize({ message, context: result.context, ...result.extraction });
   }
 
@@ -26,6 +26,7 @@ export class AgenticIngestionService {
     const prepared = await this.preparer.prepare(message);
     if (prepared.kind === 'duplicate') return { kind: 'duplicate' };
     if (prepared.kind === 'unreadable') return { kind: 'unreadable', outcome: prepared.outcome };
+    if (prepared.kind === 'retake') return { kind: 'retake', outcome: prepared.outcome };
     const extraction = await this.coordinator.extract(prepared.receipt, prepared.location, message.invoiceId);
     return { kind: 'ready', extraction, context: prepared.context };
   }

@@ -17,4 +17,16 @@ describe('shouldChargeIngestion', () => {
   it('requires both a handled run and a positive token total', () => {
     expect(shouldChargeIngestion(false, 0)).toBe(false);
   });
+
+  it('charges other model-ran statuses that pass a status through (e.g. FAILED_PROCESSING unreadable)', () => {
+    expect(shouldChargeIngestion(true, 5_000, 'FAILED_PROCESSING')).toBe(true);
+  });
+
+  it('does NOT charge a primary-only RETAKE_SUGGESTED run (we own the base-model failure)', () => {
+    expect(shouldChargeIngestion(true, 5_000, 'RETAKE_SUGGESTED', false)).toBe(false);
+  });
+
+  it('DOES charge a RETAKE_SUGGESTED run that escalated to a premium model (no free Opus farming)', () => {
+    expect(shouldChargeIngestion(true, 5_000, 'RETAKE_SUGGESTED', true)).toBe(true);
+  });
 });

@@ -65,7 +65,7 @@ export interface StoreLine {
   observationCount: number
   lastObservedOn: string | null
   confidence: Confidence
-  // 09/05: why this item's comparison-set siblings were (or weren't) considered — drives the
+  // 09/05: why this item's linked siblings were (or weren't) considered — drives the
   // "linked/watch-only/ambiguous/no link" hint so the UI explains instead of silently omitting.
   reason?: ComparabilityReason
 }

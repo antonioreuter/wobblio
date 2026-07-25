@@ -93,6 +93,10 @@ export function parseReceiptJson(content: string): ReceiptParseResult {
   if (!isNum(r.total)) issues.push('total must be a number');
   if (!isNum(r.parse_confidence) || (r.parse_confidence as number) < 0 || (r.parse_confidence as number) > 1) issues.push('parse_confidence must be a number in [0,1]');
   if (r.document_kind_hint !== undefined && typeof r.document_kind_hint !== 'string') issues.push('document_kind_hint must be a string');
+  // Optional printed item count (v10) — a non-negative integer; the model emits null when absent.
+  if (r.stated_item_count != null && (!isNum(r.stated_item_count) || !Number.isInteger(r.stated_item_count) || (r.stated_item_count as number) < 0)) {
+    issues.push('stated_item_count must be a non-negative integer');
+  }
   if (!Array.isArray(r.lines) || r.lines.length === 0) issues.push('lines must be a non-empty array');
 
   if (issues.length > 0) return { ok: false, issues: issues.join('; ') };
@@ -116,6 +120,7 @@ export function parseReceiptJson(content: string): ReceiptParseResult {
       location,
       lines,
       parseConfidence: r.parse_confidence as number,
+      statedItemCount: (r.stated_item_count ?? undefined) as number | undefined,
     },
   };
 }

@@ -1,14 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Calendar, Clock, Crown, LineChart as LineChartIcon, Lock, Table2, Trash2, TrendingUp } from 'lucide-react'
+import { Calendar, Check, Clock, Crown, LineChart as LineChartIcon, Lock, Ruler, Table2, Trash2, TrendingUp, X } from 'lucide-react'
 import { Card } from '@/components/ds'
 import { formatDelta, formatViewMoney } from '@/lib/currency'
 import {
-  ComparisonSetsPanel,
-  fetchComparisonSets,
-  type ComparisonSet,
+  fetchProductLinks,
   FilterSelect,
   fmtDate,
   inRange,
@@ -19,10 +17,17 @@ import {
   PriceTrendsHelpButton,
   ProductSearch,
   RegionPicker,
+  resolveAutoMode,
   SERIES_COLORS,
+  setLinkSizeEquivalent,
   TREND_PRESETS,
+  TrendSuggestions,
   TrendTable,
   usePriceTrends,
+  widenRangeIfHidden,
+  type LinkedPair,
+  type MarketDiagnostic,
+  type ProductDiagnostic,
   type TrendComparison,
   type TrendPreset,
   type TrendProduct,
@@ -31,6 +36,7 @@ import {
 
 interface ChartSeries {
   id: string
+  productId: string
   name: string
   product: string
   merchant: string
@@ -97,15 +103,40 @@ export default function ReportsPage() {
   // public market trend to Premium (returns empty `lines` otherwise).
   const { comparison, loading } = usePriceTrends(ids, country, region, true)
 
-  // 09/04 comparison sets offered as one-tap presets that prefill the picker. Sets with >3 members
-  // are truncated to the first 3 (TREND_MAX_PRODUCTS); the user can then adjust.
-  const [presets, setPresets] = useState<ComparisonSet[]>([])
-  useEffect(() => { void fetchComparisonSets().then(setPresets) }, [])
-  const applyPreset = (set: ComparisonSet) => {
-    setSelected(
-      set.members.slice(0, MAX_PRODUCTS).map((m) => ({ id: m.productId, name: m.displayName, brand: m.brand })),
-    )
+  // Fix 10 auto-fallbacks: be opinionated so a selection never lands on a blank chart. The view is
+  // "pinned" once the user picks a mode/range themselves (so we stop second-guessing them); the pin
+  // resets when the selection changes so the next product gets a fresh best-fit view.
+  const [viewPinned, setViewPinned] = useState(false)
+  const [autoNotice, setAutoNotice] = useState<string | null>(null)
+  const idsKey = ids.join(',')
+  const pinView = () => setViewPinned(true)
+  useEffect(() => {
+    setViewPinned(false)
+    setAutoNotice(null)
+  }, [idsKey])
+
+  // Fix 10 size-confirm: the caller's accepted links among the selected products. A plotted linked
+  // pair whose sizes differ or aren't stated is watch-only until confirmed same-size here — the sole
+  // override that makes it crown/optimizer eligible (09/05 comparability rule).
+  const [links, setLinks] = useState<LinkedPair[]>([])
+  const [sizeDismissed, setSizeDismissed] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (selected.length < 2) {
+      setLinks([])
+      return
+    }
+    const controller = new AbortController()
+    fetchProductLinks(ids, controller.signal).then(setLinks).catch(() => undefined)
+    return () => controller.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey])
+
+  const confirmSameSize = async (aId: string, bId: string) => {
+    await setLinkSizeEquivalent(aId, bId, true)
+    setLinks(await fetchProductLinks(ids))
   }
+  const dismissSizePrompt = (aId: string, bId: string) =>
+    setSizeDismissed((s) => new Set(s).add(pairKey(aId, bId)))
 
   const atMax = selected.length >= MAX_PRODUCTS
   const add = (p: TrendProduct) => {
@@ -122,6 +153,30 @@ export default function ReportsPage() {
   const rangeDays =
     from && to ? Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) : 0
   const rangeInvalid = preset === 'custom' && from !== '' && to !== '' && (rangeDays < 0 || rangeDays > 183)
+
+  // One opinionated pass per data load (until the user pins the view): if the active mode is empty
+  // but the other has data, switch to it; otherwise if the chosen range hides every point that does
+  // exist in the 26-week window, widen to 6 months. setMode/setPreset re-run this until it settles.
+  useEffect(() => {
+    if (viewPinned || !comparison) return
+    const target = resolveAutoMode(comparison, mode)
+    if (target && target !== mode && (target !== 'market' || isPremium)) {
+      setMode(target)
+      setAutoNotice(
+        target === 'own'
+          ? 'Showing the prices you’ve paid — no local-market data here yet.'
+          : 'Showing local-market prices.',
+      )
+      return
+    }
+    const sourceLines = mode === 'market' ? comparison.lines : comparison.ownHistory
+    const widened = widenRangeIfHidden(sourceLines.map((l) => l.points), preset, from, to, rangeInvalid)
+    if (widened && widened !== preset) {
+      setPreset(widened)
+      setAutoNotice('Widened to 6 months to show the available data.')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comparison, viewPinned, mode, preset, from, to, rangeInvalid, isPremium])
 
   const { series, labels, sizeWarning } = useMemo(
     () => buildChart(comparison, selected, mode, preset, from, to, rangeInvalid),
@@ -177,7 +232,7 @@ export default function ReportsPage() {
             label="Date range"
             icon={<Calendar size={15} />}
             value={preset}
-            onChange={(e) => setPreset(e.target.value as TrendPreset)}
+            onChange={(e) => { pinView(); setPreset(e.target.value as TrendPreset) }}
           >
             {TREND_PRESETS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </FilterSelect>
@@ -194,7 +249,7 @@ export default function ReportsPage() {
                   className="filter-select"
                   value={from}
                   max={to || undefined}
-                  onChange={(e) => setFrom(e.target.value)}
+                  onChange={(e) => { pinView(); setFrom(e.target.value) }}
                 />
               </div>
             </div>
@@ -207,7 +262,7 @@ export default function ReportsPage() {
                   className="filter-select"
                   value={to}
                   min={from || undefined}
-                  onChange={(e) => setTo(e.target.value)}
+                  onChange={(e) => { pinView(); setTo(e.target.value) }}
                 />
               </div>
             </div>
@@ -224,37 +279,35 @@ export default function ReportsPage() {
             {selected.length === 0 && (
               <span className="trend-empty-hint">Search above to add up to {MAX_PRODUCTS} products.</span>
             )}
-            {selected.map((p) => (
-              <span className="trend-chip" key={p.id}>
-                {p.name}
-                <button
-                  type="button"
-                  className="trend-x"
-                  aria-label={`Remove ${p.name}`}
-                  onClick={() => removeProduct(p.id)}
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
+            {selected.map((p) => {
+              const note = diagnosticNote(comparison?.diagnostics?.find((d) => d.productId === p.id), mode)
+              return (
+                <span className="trend-chip" key={p.id}>
+                  {p.name}
+                  {note && (
+                    <span className="legend-unit" title="Why this isn’t charting" data-testid="trend-chip-note">
+                      {note}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="trend-x"
+                    aria-label={`Remove ${p.name}`}
+                    onClick={() => removeProduct(p.id)}
+                  >
+                    ✕
+                  </button>
+                </span>
+              )
+            })}
           </div>
-          {presets.filter((s) => s.members.length > 0).length > 0 && (
-            <div className="trend-picker" style={{ marginTop: 6 }} data-testid="trend-presets">
-              <span className="filter-label" style={{ marginRight: 4 }}>Comparison sets:</span>
-              {presets.filter((s) => s.members.length > 0).map((set) => (
-                <button
-                  type="button"
-                  key={set.id}
-                  className="btn btn--text"
-                  style={{ padding: '4px 10px' }}
-                  onClick={() => applyPreset(set)}
-                  data-testid="trend-preset"
-                >
-                  {set.name ?? 'Untitled set'} ({Math.min(set.members.length, MAX_PRODUCTS)})
-                </button>
-              ))}
-            </div>
-          )}
+          <TrendSuggestions
+            selectedIds={ids}
+            countryCode={country}
+            regionCode={region}
+            atMax={atMax}
+            onAdd={add}
+          />
         </div>
 
         <div className="filter-foot">
@@ -284,7 +337,7 @@ export default function ReportsPage() {
                 type="button"
                 className={`trend-mode-btn ${mode === 'own' ? 'is-active' : ''}`}
                 aria-pressed={mode === 'own'}
-                onClick={() => setMode('own')}
+                onClick={() => { pinView(); setMode('own') }}
                 data-testid="trends-mode-own"
               >
                 My prices
@@ -297,7 +350,7 @@ export default function ReportsPage() {
                 // points back at the always-visible upsell card above.
                 disabled={!isPremium}
                 title={isPremium ? undefined : 'Premium — compare against local stores'}
-                onClick={() => isPremium && setMode('market')}
+                onClick={() => { if (isPremium) { pinView(); setMode('market') } }}
                 data-testid="trends-mode-market"
               >
                 {!isPremium && <Lock size={11} />} Local market
@@ -328,6 +381,21 @@ export default function ReportsPage() {
             </span>
           </div>
         </div>
+        {autoNotice && (
+          <div className="trend-unit-caveat" data-testid="trends-auto-notice" role="status">
+            <Clock size={13} />
+            <span>{autoNotice}</span>
+            <button
+              type="button"
+              className="trend-x"
+              style={{ marginLeft: 'auto' }}
+              aria-label="Dismiss notice"
+              onClick={() => setAutoNotice(null)}
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <TrendChartBody
           loading={loading}
           hasProducts={selected.length > 0}
@@ -337,13 +405,65 @@ export default function ReportsPage() {
           series={series}
           labels={labels}
           sizeWarning={sizeWarning}
+          links={links}
+          sizeDismissed={sizeDismissed}
+          onConfirmSize={confirmSameSize}
+          onDismissSize={dismissSizePrompt}
         />
       </Card>
-
-      {/* 09/04 — user-asserted cross-merchant comparability, tenant-scoped. */}
-      <ComparisonSetsPanel countryCode={country} regionCode={region} />
     </div>
   )
+}
+
+// Canonical key for an unordered product pair (matches the backend's a<b storage), used to track
+// locally-dismissed size prompts.
+const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
+
+interface SizePrompt {
+  aId: string
+  bId: string
+  aLabel: string
+  bLabel: string
+}
+
+// Fix 10 — for each accepted link whose BOTH products are plotted, isn't already size-confirmed, and
+// whose sizes aren't known-equal, surface a one-tap "same size?" that promotes the pair to
+// crown/optimizer eligibility. Known-equal sizes are already comparable, so they get no prompt.
+function buildSizePrompts(series: ChartSeries[], links: LinkedPair[], dismissed: Set<string>): SizePrompt[] {
+  const byProduct = new Map(series.map((s) => [s.productId, s]))
+  const prompts: SizePrompt[] = []
+  for (const link of links) {
+    if (link.sizeEquivalent) continue
+    if (dismissed.has(pairKey(link.productAId, link.productBId))) continue
+    const a = byProduct.get(link.productAId)
+    const b = byProduct.get(link.productBId)
+    if (!a || !b) continue // only prompt when both sides are actually plotted
+    if (a.size.sizeText !== null && b.size.sizeText !== null && a.size.sizeText === b.size.sizeText) continue
+    prompts.push({
+      aId: link.productAId,
+      bId: link.productBId,
+      aLabel: `${a.product} · ${a.merchant}`,
+      bLabel: `${b.product} · ${b.merchant}`,
+    })
+  }
+  return prompts
+}
+
+// Fix 10 — a short, honest note on a selected-product chip when it isn't charting in the active
+// mode, so an empty line reads as a specific reason instead of a mysterious gap.
+function diagnosticNote(d: ProductDiagnostic | undefined, mode: CompareMode): string | null {
+  if (!d) return null
+  if (mode === 'own') return d.own === 'NO_PURCHASES_IN_REGION' ? 'no purchases here yet' : null
+  return marketDiagnosticNote(d.market)
+}
+
+function marketDiagnosticNote(market: MarketDiagnostic): string | null {
+  if (market === 'SERVED') return null
+  if (market === 'PREMIUM_REQUIRED') return 'Premium unlocks market view'
+  if (market === 'NO_OBSERVATIONS_IN_REGION') return 'no local prices in this region'
+  if (market === 'OUT_OF_WINDOW') return 'older than 6 months'
+  if (market === 'CURRENCY_MISMATCH') return 'prices in another currency'
+  return `${market.maxObservations} of 3 scans needed`
 }
 
 function TrendChartBody({
@@ -355,6 +475,10 @@ function TrendChartBody({
   series,
   labels,
   sizeWarning,
+  links,
+  sizeDismissed,
+  onConfirmSize,
+  onDismissSize,
 }: {
   loading: boolean
   hasProducts: boolean
@@ -364,6 +488,10 @@ function TrendChartBody({
   series: ChartSeries[]
   labels: string[]
   sizeWarning: boolean
+  links: LinkedPair[]
+  sizeDismissed: Set<string>
+  onConfirmSize: (aId: string, bId: string) => void
+  onDismissSize: (aId: string, bId: string) => void
 }) {
   if (!hasProducts) {
     return (
@@ -404,6 +532,9 @@ function TrendChartBody({
   // View currency (§6.5 honesty) — the whole comparison is single-currency.
   const currency = comparison?.currency ?? null
 
+  // Size-confirm prompts only make sense against the plotted market series (crown/optimizer inputs).
+  const sizePrompts = mode === 'market' ? buildSizePrompts(series, links, sizeDismissed) : []
+
   return (
     <>
       {sizeWarning && (
@@ -414,6 +545,32 @@ function TrendChartBody({
           </span>
         </div>
       )}
+      {sizePrompts.map((p) => (
+        <div key={`size-${p.aId}-${p.bId}`} className="trend-unit-caveat" data-testid="trend-size-confirm" role="note">
+          <Ruler size={13} />
+          <span>
+            Same size? <strong>{p.aLabel}</strong> vs <strong>{p.bLabel}</strong> — confirm to rank them as best price.
+          </span>
+          <button
+            type="button"
+            className="btn btn--text"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => onConfirmSize(p.aId, p.bId)}
+            data-testid="trend-size-confirm-yes"
+            aria-label="Confirm same size"
+          >
+            <Check size={13} /> Same size
+          </button>
+          <button
+            type="button"
+            className="trend-x"
+            onClick={() => onDismissSize(p.aId, p.bId)}
+            aria-label="Dismiss size prompt"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      ))}
       {series.filter((s) => s.ambiguous).map((s) => (
         <div key={`amb-${s.id}`} className="trend-unit-caveat" data-testid="trends-ambiguity-banner" role="note">
           <Clock size={13} />
@@ -539,6 +696,7 @@ function buildChart(
           const product = nameById.get(l.productId) ?? l.productId
           return {
             id: `${l.productId}|${l.merchantId}`,
+            productId: l.productId,
             product,
             merchant: l.merchantName,
             name: `${product} · ${l.merchantName}`,
@@ -562,6 +720,7 @@ function buildChart(
           const product = nameById.get(l.productId) ?? l.productId
           return {
             id: `own|${l.productId}`,
+            productId: l.productId,
             product,
             merchant: OWN_LABEL,
             name: `${product} · ${OWN_LABEL}`,

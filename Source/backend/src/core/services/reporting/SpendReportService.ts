@@ -9,11 +9,11 @@ import {
 import { resolvePeriod, type SpendPeriodPreset } from '@core/domain/reportPeriod';
 import { categoryNameFor } from '@core/domain/categoryTaxonomy';
 import { PremiumRequiredError, InvalidSpendReportQueryError } from '@core/domain/errors';
+import { isUuid } from '@core/domain/uuid';
 
 // merchantId is bound to a ::uuid cast in SQL, so a malformed value must be rejected as a 400
 // here rather than exploding as a Postgres 22P02 (surfacing as an opaque 500). The
 // UNKNOWN_MERCHANT_ID sentinel is the one allowed non-UUID value.
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // The raw request the route parses from the query string. Which drill level runs is
 // inferred from which selection fields are present (see `report`).
@@ -67,7 +67,7 @@ export class SpendReportService {
     if (
       params.merchantId &&
       params.merchantId !== UNKNOWN_MERCHANT_ID &&
-      !UUID_RE.test(params.merchantId)
+      !isUuid(params.merchantId)
     ) {
       throw new InvalidSpendReportQueryError('merchantId must be a valid merchant id');
     }

@@ -23,6 +23,9 @@ const Map<String, InvoiceStatusView> _statusMap = {
   'PARSED': InvoiceStatusView(StatusTone.success, 'Ready'),
   'NEEDS_REVIEW': InvoiceStatusView(StatusTone.success, 'Ready'),
   'FAILED_PROCESSING': InvoiceStatusView(StatusTone.danger, "Couldn't read"),
+  // Fix 11 Layer C: a legible-enough photo we still couldn't parse. Actionable (retake) and
+  // not charged — amber, not red, mirroring the webapp.
+  'RETAKE_SUGGESTED': InvoiceStatusView(StatusTone.warning, 'Retake needed'),
   'SUSPECTED_DUPLICATE':
       InvoiceStatusView(StatusTone.warning, 'Possible duplicate'),
   'DISCARDED': InvoiceStatusView(StatusTone.danger, 'Removed'),

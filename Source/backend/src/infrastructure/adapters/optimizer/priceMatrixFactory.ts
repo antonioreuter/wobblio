@@ -5,7 +5,7 @@ import { MockPriceMatrixAdapter } from './MockPriceMatrixAdapter';
 import { SsmAmbiguityConfigAdapter } from '@infrastructure/adapters/data-intelligence/SsmAmbiguityConfigAdapter';
 
 // Local dev returns a deterministic matrix (no seeded price observations needed);
-// AWS queries the real price-observation store, folding in the caller's comparison sets under the
+// AWS queries the real price-observation store, folding in the caller's product links under the
 // comparability + ambiguity rules (09/05). Same IPriceMatrix port either way.
 export function buildPriceMatrix(client: PoolClient): IPriceMatrix {
   if (process.env.STAGE === 'local') return new MockPriceMatrixAdapter();

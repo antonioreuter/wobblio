@@ -2,11 +2,19 @@
 // strips EXIF/geotags), hash, then presign → multipart POST to S3 → confirm. Runs in
 // the browser only. See webapp CLAUDE.md hard rule #8 + spec §6.6.
 
+import { assessImageQuality, qualityIssueMessage } from './image-quality'
+
 const MAX_BYTES = 1_000_000
 const MAX_DIMENSION = 1600
 const MIN_QUALITY = 0.4
 
-export type UploadErrorCode = 'duplicate' | 'quota' | 'failed'
+export type UploadErrorCode = 'duplicate' | 'quota' | 'failed' | 'low_quality'
+
+export interface UploadOptions {
+  // Bypass the client-side capture-quality gate — set when the user chose "upload anyway"
+  // after a low-quality warning, so a false positive can never hard-block a real receipt.
+  force?: boolean
+}
 
 export class UploadError extends Error {
   constructor(readonly code: UploadErrorCode, message: string) {
@@ -35,7 +43,15 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-export async function prepareImage(file: File): Promise<PreparedImage> {
+// Read the just-drawn canvas and block a low-quality capture unless the user forced it. Fail-open:
+// if pixel access is unavailable (no getImageData), skip silently rather than break the upload.
+function assertCaptureQuality(ctx: CanvasRenderingContext2D, width: number, height: number, force: boolean): void {
+  if (force || typeof ctx.getImageData !== 'function') return
+  const verdict = assessImageQuality(ctx.getImageData(0, 0, width, height))
+  if (!verdict.ok) throw new UploadError('low_quality', qualityIssueMessage(verdict.issues))
+}
+
+export async function prepareImage(file: File, force = false): Promise<PreparedImage> {
   const bitmap = await createImageBitmap(file)
   const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height))
   const canvas = document.createElement('canvas')
@@ -45,6 +61,8 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
   if (!ctx) throw new UploadError('failed', 'Canvas not supported')
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
   bitmap.close()
+
+  assertCaptureQuality(ctx, canvas.width, canvas.height, force)
 
   let quality = 0.9
   let blob = await encodeJpeg(canvas, quality)
@@ -76,18 +94,18 @@ const MAX_PDF_BYTES = 4_500_000 // mirrors the backend /quotas/max_pdf_bytes (§
 
 // A PDF is uploaded as-is (no canvas re-encode): there is no EXIF/geotag to strip and
 // rasterizing would lose the native text. Images still go through prepareImage.
-async function prepareUpload(file: File): Promise<{ blob: Blob; sha256: string; contentType: string }> {
+async function prepareUpload(file: File, force: boolean): Promise<{ blob: Blob; sha256: string; contentType: string }> {
   if (file.type === 'application/pdf') {
     if (file.size > MAX_PDF_BYTES) throw new UploadError('failed', 'This PDF is too large (max 4.5 MB).')
     const sha256 = await sha256Hex(await file.arrayBuffer())
     return { blob: file, sha256, contentType: 'application/pdf' }
   }
-  const { blob, sha256 } = await prepareImage(file)
+  const { blob, sha256 } = await prepareImage(file, force)
   return { blob, sha256, contentType: 'image/jpeg' }
 }
 
-export async function uploadReceipt(file: File): Promise<{ invoiceId: string }> {
-  const { blob, sha256, contentType } = await prepareUpload(file)
+export async function uploadReceipt(file: File, options: UploadOptions = {}): Promise<{ invoiceId: string }> {
+  const { blob, sha256, contentType } = await prepareUpload(file, options.force ?? false)
   const coordinates = await getUploadCoordinates()
 
   const presign = await fetch('/api/invoices/presign', {

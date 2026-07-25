@@ -3,13 +3,13 @@ import type { ComparabilityReason } from '@core/domain/comparability';
 
 export interface PriceMatrixResult {
   matrix: PriceMatrix;
-  // Per requested product: why its comparison-set siblings were (or weren't) folded into its row
+  // Per requested product: why its linked siblings were (or weren't) folded into its row
   // (09/05). Lets OptimizerService annotate each line and pick the degradation rung.
   reasons: Record<string, ComparabilityReason>;
 }
 
 // Builds the product × candidate-merchant price matrix for the user's region, folding in the
-// caller's comparison sets under the comparability + ambiguity rules (09/05). Only serving cells
+// caller's product links under the comparability + ambiguity rules (09/05). Only serving cells
 // (k≥3 observations) are returned; userAverages fills gaps. Scoped to a single country + currency
 // so the matrix and the user's own averages never mix currencies.
 export interface IPriceMatrix {

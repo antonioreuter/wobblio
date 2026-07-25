@@ -22,6 +22,18 @@ class CaptureDocumentRequested extends CaptureEvent {
   const CaptureDocumentRequested();
 }
 
+/// The user chose "upload anyway" after the capture-quality gate flagged the photo
+/// (fix 11 · sub-spec 05). Re-runs the pipeline on the same bytes with the gate forced off,
+/// so no re-capture is needed. Carries the already-picked bytes the gate held back.
+class CaptureUploadAnyway extends CaptureEvent {
+  const CaptureUploadAnyway(this.raw);
+
+  final Uint8List raw;
+
+  @override
+  List<Object?> get props => [raw];
+}
+
 /// Return to idle (e.g. after a failure was shown, before retrying).
 class CaptureReset extends CaptureEvent {
   const CaptureReset();

@@ -24,6 +24,13 @@ export const MODEL_OPTIONS: Record<ModelRole, ModelOption[]> = {
     { id: 'global.anthropic.claude-sonnet-5', label: 'Claude Sonnet 5 — vision' },
     { id: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', label: 'Claude Haiku 4.5 — vision' },
   ],
+  // Deepest escalation tier for the lowest-quality primary parses (fix 11). Opus-class,
+  // must accept image blocks. Swap to Opus 4.8 once its Bedrock access is enabled.
+  vision_fallback_deep: [
+    { id: 'eu.anthropic.claude-opus-4-6-v1', label: 'Claude Opus 4.6 — vision' },
+    { id: 'eu.anthropic.claude-opus-4-8', label: 'Claude Opus 4.8 — vision' },
+    { id: 'eu.anthropic.claude-opus-4-5-20251101-v1:0', label: 'Claude Opus 4.5 — vision' },
+  ],
   // Document-capable models only — PDF invoices ride as a native document block.
   pdf_parser: [
     { id: 'eu.anthropic.claude-sonnet-4-5-20250929-v1:0', label: 'Claude Sonnet 4.5 — document' },

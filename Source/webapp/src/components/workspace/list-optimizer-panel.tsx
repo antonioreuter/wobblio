@@ -250,7 +250,7 @@ function OwnHistoryBasket({ totals }: { totals: OwnHistoryBasketTotal[] }) {
           </div>
         ))}
       </div>
-      <p className="optimizer-hint">Link items across stores (in Reports → Comparison sets) to unlock split suggestions.</p>
+      <p className="optimizer-hint">Compare an item across stores in Reports — tap an “Also sold nearby” suggestion — to unlock split suggestions.</p>
     </div>
   )
 }

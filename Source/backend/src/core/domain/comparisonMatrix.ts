@@ -3,9 +3,9 @@ import { classifyComparability, type ComparabilityReason, type Offer, type Offer
 import { detectAmbiguity, type AmbiguityConfig } from './priceAmbiguity';
 import { median } from './math';
 
-// 09/05 — build the optimizer's price matrix over the user's comparison sets. Per requested item,
+// 09/05 — build the optimizer's price matrix over the user's product links. Per requested item,
 // the row contains the item's own (product, merchant) cell plus ONLY the comparable AND unambiguous
-// sibling cells from its comparison sets, each RE-LABELED to the item's own productId so the pure
+// linked sibling cells, each RE-LABELED to the item's own productId so the pure
 // route optimizer needs no change. Watch-only links (size not known-equal, no confirmation) and
 // price-ambiguous cells never enter the matrix — the optimizer can never recommend switching stores
 // on a 12-pack-vs-2L price. The per-item reason lets the UI explain instead of silently omitting.
@@ -18,7 +18,7 @@ export interface RawCell {
   lastObservedOn: string;
 }
 
-// A tenant comparison-set link from a requested item (self) to a sibling product (other).
+// A tenant product link from a requested item (self) to a sibling product (other).
 export interface ComparisonLink {
   selfId: string;
   otherId: string;

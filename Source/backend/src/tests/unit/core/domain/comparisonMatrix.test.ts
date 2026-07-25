@@ -79,7 +79,7 @@ describe('buildComparisonMatrix', () => {
     expect(matrix.cells).toEqual([]);
   });
 
-  it('reports no_link for an item with no comparison set', () => {
+  it('reports no_link for an item with no linked sibling', () => {
     const sizes = new Map<string, OfferSize>([['P', { packSize: 2, baseUnit: 'L' }]]);
     const { reasons } = buildComparisonMatrix({
       ...base, requestedProductIds: ['P'], sizes, links: [],

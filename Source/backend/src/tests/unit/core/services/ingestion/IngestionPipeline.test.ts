@@ -25,6 +25,7 @@ import type { IRegionReference } from '@core/ports/data-intelligence/IRegionRefe
 import type { IUploadLimitsProvider } from '@core/ports/quota/IUploadLimitsProvider';
 import type { ParsedReceipt } from '@core/domain/ingestion';
 import { OversizeUploadError, TooManyPagesError, UnsupportedUploadTypeError } from '@core/domain/errors';
+import { DEFAULT_ESCALATION_THRESHOLDS } from '@core/domain/visionEscalation';
 
 const MESSAGE = { invoiceId: 'inv-1', tenantId: 'tenant-1', s3Key: 'receipts/tenant-1/abc.jpg' };
 
@@ -70,6 +71,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
   let regionReference: MockedObject<IRegionReference>;
   let uploadLimits: MockedObject<IUploadLimitsProvider>;
   let sut: AgenticIngestionService;
+  let buildSut: (escalationEnabled: boolean) => AgenticIngestionService;
 
   beforeEach(() => {
     tenantContext = { setTenantId: vi.fn() };
@@ -90,6 +92,7 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
       persistParsed: vi.fn(),
       markUnreadable: vi.fn(),
       markFailed: vi.fn(),
+      markRetake: vi.fn(),
       quarantine: vi.fn(),
       confirmLocation: vi.fn(),
       getForReEmission: vi.fn(),
@@ -116,21 +119,28 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
       getMaxPdfPages: vi.fn().mockResolvedValue(10),
     };
     const fxRates = { upsertDaily: vi.fn(), latestOnOrBefore: vi.fn().mockResolvedValue(1) };
-    const preparer = new ExtractionPreparer(
-      tenantContext, ledger, storage, invoiceRepo, contributorContext, regionReference, uploadLimits,
-      new OcrParserTool(visionParser as unknown as IReceiptParser, documentParser as unknown as IReceiptParser),
-    );
-    const coordinator = new InvoiceCoordinator(
-      new MerchantResolverTool(merchantResolver),
-      new ProductNormalizerTool(productNormalizer),
-      new InvoiceClassifierTool(classifier),
-      new SearchTagGeneratorTool(tagGenerator),
-      { recordStageOutcome: vi.fn() },
-    );
-    const finalizer = new InvoiceFinalizer(
-      invoiceRepo, priceObservationStore, ledger, new CurrencyHarmonizationService(fxRates),
-    );
-    sut = new AgenticIngestionService(preparer, coordinator, finalizer);
+    // escalationEnabled defaults true; the Qwen-only case rebuilds with false to prove the Layer C
+    // retake gate is inert without a fallback tier.
+    buildSut = (escalationEnabled: boolean) => {
+      const preparer = new ExtractionPreparer(
+        tenantContext, ledger, storage, invoiceRepo, contributorContext, regionReference, uploadLimits,
+        new OcrParserTool(visionParser as unknown as IReceiptParser, documentParser as unknown as IReceiptParser),
+        DEFAULT_ESCALATION_THRESHOLDS,
+        escalationEnabled,
+      );
+      const coordinator = new InvoiceCoordinator(
+        new MerchantResolverTool(merchantResolver),
+        new ProductNormalizerTool(productNormalizer),
+        new InvoiceClassifierTool(classifier),
+        new SearchTagGeneratorTool(tagGenerator),
+        { recordStageOutcome: vi.fn() },
+      );
+      const finalizer = new InvoiceFinalizer(
+        invoiceRepo, priceObservationStore, ledger, new CurrencyHarmonizationService(fxRates),
+      );
+      return new AgenticIngestionService(preparer, coordinator, finalizer);
+    };
+    sut = buildSut(true);
   });
 
   const arrangeHappyPath = (parseConfidence = 0.9, lowConfidence = false) => {
@@ -174,6 +184,53 @@ describe('Ingestion pipeline (agentic: preparer + coordinator + finalizer)', () 
     expect(invoiceRepo.persistParsed).not.toHaveBeenCalled();
     expect(priceObservationStore.emit).not.toHaveBeenCalled();
     expect(ledger.setStatus).toHaveBeenCalledWith(MESSAGE.s3Key, 'DONE');
+  });
+
+  it('suggests a retake (Layer C) for a GROSSLY broken photo parse, skipping the pipeline', async () => {
+    ledger.claim.mockResolvedValue(true);
+    storage.getObjectBytes.mockResolvedValue(new Uint8Array([1]));
+    // Lines sum to 3.0 but the receipt total is 99.99 → ~97% residual, far beyond correctable.
+    visionParser.parse.mockResolvedValue({ ...receipt(0.9), total: 99.99 });
+
+    const outcome = await sut.process(MESSAGE);
+
+    expect(outcome).toEqual({ handled: true, status: 'RETAKE_SUGGESTED', failureReasonCode: 'RETAKE_LOW_QUALITY' });
+    expect(invoiceRepo.markRetake).toHaveBeenCalledWith('inv-1');
+    // No canonicalization, no persist, no emission — but the ledger is marked DONE.
+    expect(merchantResolver.resolve).not.toHaveBeenCalled();
+    expect(invoiceRepo.persistParsed).not.toHaveBeenCalled();
+    expect(priceObservationStore.emit).not.toHaveBeenCalled();
+    expect(ledger.setStatus).toHaveBeenCalledWith(MESSAGE.s3Key, 'DONE');
+  });
+
+  it('does NOT retake in a Qwen-only deployment (escalation disabled) — flows to the normal path', async () => {
+    sut = buildSut(false); // no fallback tier provisioned → Layer C gate inert (identical to today)
+    arrangeHappyPath();
+    visionParser.parse.mockResolvedValue({ ...receipt(0.9), total: 99.99 }); // grossly broken
+
+    const outcome = await sut.process(MESSAGE);
+
+    expect(invoiceRepo.markRetake).not.toHaveBeenCalled();
+    expect(invoiceRepo.persistParsed).toHaveBeenCalled(); // canonicalized + persisted (→ review), not discarded
+  });
+
+  it('does NOT suggest a retake for a broken PDF parse (retake copy is meaningless for a document)', async () => {
+    ledger.claim.mockResolvedValue(true);
+    storage.getObjectBytes.mockResolvedValue(new Uint8Array([1]));
+    documentParser.parse.mockResolvedValue({ ...receipt(0.9), total: 99.99 });
+    merchantResolver.resolve.mockResolvedValue({ merchantId: 'm1', brandName: 'AH', defaultCategoryId: null, provisional: false, confidence: 0.9 });
+    productNormalizer.normalize.mockResolvedValue({ lines: [normalizedLine(), normalizedLine()], suggestedTags: [] });
+    classifier.classify.mockResolvedValue('groceries');
+    tagGenerator.generate.mockResolvedValue([]);
+    invoiceRepo.findFuzzyDuplicate.mockResolvedValue(false);
+    invoiceRepo.hasEmittedDuplicateByHash.mockResolvedValue(false);
+    invoiceRepo.getById.mockResolvedValue(null);
+    regionReference.resolveReceiptLocation.mockResolvedValue({ countryCode: 'NL', regionCode: 'NL-NB' });
+
+    const outcome = await sut.process({ ...MESSAGE, s3Key: 'receipts/tenant-1/abc.pdf' });
+
+    expect(invoiceRepo.markRetake).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ handled: true }); // flows to the normal persist path
   });
 
   it('persists a PARSED invoice and maps lines (discount + unit price) on the happy path', async () => {

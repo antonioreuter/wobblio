@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { inRange, personalHistory, TREND_PRESETS } from './trend-data'
+import { inRange, personalHistory, resolveAutoMode, widenRangeIfHidden, TREND_PRESETS } from './trend-data'
+import type { TrendComparison, TrendPoint } from './use-price-trends'
 
 // A week is represented by the UTC midnight of its Monday, exactly as the reports page
 // builds the axis (`${weekStart}T00:00:00Z`).
@@ -82,5 +83,52 @@ describe('personalHistory', () => {
   it('returns priceOnly when there is no comparable previous scan despite ≥2 purchases', () => {
     // e.g. one regular scan among discounts — regular-preferred ranking leaves previousPrice null.
     expect(personalHistory({ lastPrice: 1.2, previousPrice: null, purchaseCount: 4 }).kind).toBe('priceOnly')
+  })
+})
+
+const isoDaysAgo = (days: number): string => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
+const point = (weekStart: string, median: number | null = 1.5): TrendPoint => ({ weekStart, median, discountMedian: null })
+const comparison = (over: Partial<TrendComparison> = {}): TrendComparison => ({
+  countryCode: 'NL', regionCode: 'NL-NB', weeks: 26, currency: 'EUR', regionMerchantCount: 0,
+  lines: [], ownHistory: [], diagnostics: [], ...over,
+})
+// resolveAutoMode only inspects array length, so opaque shims stand in for real lines.
+const someLines = [{}] as unknown as TrendComparison['lines']
+const someOwn = [{}] as unknown as TrendComparison['ownHistory']
+
+describe('resolveAutoMode (fix 10)', () => {
+  it('switches to own when the market view is empty but own history has data', () => {
+    expect(resolveAutoMode(comparison({ lines: [], ownHistory: someOwn }), 'market')).toBe('own')
+  })
+
+  it('switches to market when own is empty but the market view has data', () => {
+    expect(resolveAutoMode(comparison({ lines: someLines, ownHistory: [] }), 'own')).toBe('market')
+  })
+
+  it('stays put when the active mode already has data, or when neither does', () => {
+    expect(resolveAutoMode(comparison({ lines: someLines, ownHistory: someOwn }), 'market')).toBeNull()
+    expect(resolveAutoMode(comparison({ lines: [], ownHistory: [] }), 'own')).toBeNull()
+    expect(resolveAutoMode(null, 'own')).toBeNull()
+  })
+})
+
+describe('widenRangeIfHidden (fix 10)', () => {
+  it('widens to 6m when all points fall outside the active preset but within the window', () => {
+    expect(widenRangeIfHidden([[point(isoDaysAgo(60))]], '30d', '', '', false)).toBe('6m')
+  })
+
+  it('does not widen when a point is visible in the active preset', () => {
+    expect(widenRangeIfHidden([[point(isoDaysAgo(2)), point(isoDaysAgo(60))]], '30d', '', '', false)).toBeNull()
+  })
+
+  it('does not widen when there are no real points', () => {
+    expect(widenRangeIfHidden([[]], '30d', '', '', false)).toBeNull()
+    expect(widenRangeIfHidden([[point(isoDaysAgo(60), null)]], '30d', '', '', false)).toBeNull()
+  })
+
+  it('never widens when already at 6m or on a custom range', () => {
+    const pts = [[point(isoDaysAgo(60))]]
+    expect(widenRangeIfHidden(pts, '6m', '', '', false)).toBeNull()
+    expect(widenRangeIfHidden(pts, 'custom', '', '', false)).toBeNull()
   })
 })

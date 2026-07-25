@@ -1,11 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EscalatingReceiptParser } from '@core/services/ingestion/EscalatingReceiptParser';
+import { EscalatingReceiptParser, type EscalationTargets } from '@core/services/ingestion/EscalatingReceiptParser';
 import type { IReceiptParser } from '@core/ports/ingestion/IReceiptParser';
 import type { BedrockImage } from '@core/ports/ai/IBedrockConverse';
 import type { ParsedReceipt, UnreadableVerdict } from '@core/domain/ingestion';
+import { DEFAULT_ESCALATION_THRESHOLDS } from '@core/domain/visionEscalation';
+import type { ReceiptEscalationDecision } from '@core/domain/receiptEscalation';
 
 const image: BedrockImage = { format: 'jpeg', bytes: new Uint8Array([1, 2, 3]) };
 const ctx = { countryCode: 'NL', processedDate: '2026-07-04' };
+const T = DEFAULT_ESCALATION_THRESHOLDS;
 
 const receipt = (over: Partial<ParsedReceipt> = {}): ParsedReceipt => ({
   merchantRaw: 'Jumbo', transactionDate: '2026-07-04', currency: 'EUR', total: 1.25,
@@ -16,85 +19,103 @@ const parserReturning = (value: ParsedReceipt | UnreadableVerdict): IReceiptPars
   parse: vi.fn().mockResolvedValue(value),
 });
 
-describe('EscalatingReceiptParser', () => {
-  it('returns the primary result and never calls the fallback when no escalation is needed', async () => {
-    const primary = parserReturning(receipt());
-    const fallback = parserReturning(receipt({ merchantRaw: 'FROM_FALLBACK' }));
-    const sut = new EscalatingReceiptParser(primary, fallback);
+// A decider that always asks for a given tier — lets target-routing tests pick the tier directly.
+const always = (tier: ReceiptEscalationDecision['tier'], reason?: ReceiptEscalationDecision['reason']) =>
+  (): ReceiptEscalationDecision => ({ tier, reason });
 
-    const result = await sut.parse(image, ctx);
+describe('EscalatingReceiptParser', () => {
+  it('returns the primary result and never escalates a clean parse', async () => {
+    const primary = parserReturning(receipt());
+    const deep = parserReturning(receipt({ merchantRaw: 'FROM_DEEP' }));
+    const result = await new EscalatingReceiptParser(primary, { FALLBACK_DEEP: deep }, T).parse(image, ctx);
 
     expect((result as ParsedReceipt).merchantRaw).toBe('Jumbo');
-    expect(fallback.parse).not.toHaveBeenCalled();
+    expect(deep.parse).not.toHaveBeenCalled();
   });
 
-  it('re-parses with the fallback (same attachment + ctx) and returns its result on escalation', async () => {
-    // Primary parse arithmetically inconsistent → escalate.
+  it('escalates an arithmetically-broken parse to the DEEP tier and returns its result', async () => {
+    // Σ lines 1.25 vs total 99 → reconciliation 0 → blended 0 → FALLBACK_DEEP (real decider).
     const primary = parserReturning(receipt({ total: 99.0 }));
-    const fallback = parserReturning(receipt({ merchantRaw: 'FROM_FALLBACK', total: 1.25 }));
-    const sut = new EscalatingReceiptParser(primary, fallback);
+    const deep = parserReturning(receipt({ merchantRaw: 'FROM_DEEP', total: 1.25 }));
+    const sink = vi.fn();
+    const result = await new EscalatingReceiptParser(primary, { FALLBACK_DEEP: deep }, T, sink).parse(image, ctx);
+
+    expect((result as ParsedReceipt).merchantRaw).toBe('FROM_DEEP');
+    expect(deep.parse).toHaveBeenCalledWith(image, ctx);
+    expect(sink).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tier: 'FALLBACK_DEEP', ranTier: 'FALLBACK_DEEP', reason: 'ARITHMETIC', usedFallback: true, fallbackErrored: false }),
+    );
+  });
+
+  it('degrades a DEEP decision to the mid tier when only the mid tier is provisioned', async () => {
+    const primary = parserReturning(receipt({ total: 99.0 }));
+    const mid = parserReturning(receipt({ merchantRaw: 'FROM_MID', total: 1.25 }));
+    const sink = vi.fn();
+    const result = await new EscalatingReceiptParser(primary, { FALLBACK: mid }, T, sink).parse(image, ctx);
+
+    expect((result as ParsedReceipt).merchantRaw).toBe('FROM_MID');
+    expect(sink).toHaveBeenLastCalledWith(expect.objectContaining({ tier: 'FALLBACK_DEEP', ranTier: 'FALLBACK' }));
+  });
+
+  it('upgrades a MID decision to the deep tier when only the deep tier is provisioned', async () => {
+    const primary = parserReturning(receipt({ total: 99.0 }));
+    const deep = parserReturning(receipt({ merchantRaw: 'FROM_DEEP', total: 1.25 }));
+    const sink = vi.fn();
+    const sut = new EscalatingReceiptParser(primary, { FALLBACK_DEEP: deep }, T, sink, always('FALLBACK', 'LOW_CONFIDENCE'));
 
     const result = await sut.parse(image, ctx);
 
-    expect((result as ParsedReceipt).merchantRaw).toBe('FROM_FALLBACK');
-    expect(fallback.parse).toHaveBeenCalledWith(image, ctx);
+    expect((result as ParsedReceipt).merchantRaw).toBe('FROM_DEEP');
+    expect(sink).toHaveBeenLastCalledWith(expect.objectContaining({ tier: 'FALLBACK', ranTier: 'FALLBACK_DEEP' }));
+  });
+
+  it('behaves as the primary alone when no tier is provisioned', async () => {
+    const primary = parserReturning(receipt({ total: 99.0 }));
+    const sink = vi.fn();
+    const result = await new EscalatingReceiptParser(primary, {}, T, sink).parse(image, ctx);
+
+    expect((result as ParsedReceipt).merchantRaw).toBe('Jumbo');
+    expect(sink).not.toHaveBeenCalled();
   });
 
   it('degrades to the primary result when the fallback model throws (outage/throttle)', async () => {
-    const primary = parserReturning(receipt({ total: 99.0 })); // triggers escalation
-    const fallback: IReceiptParser = { parse: vi.fn().mockRejectedValue(new Error('ThrottlingException')) };
-    const sut = new EscalatingReceiptParser(primary, fallback);
-
-    const result = await sut.parse(image, ctx);
+    const primary = parserReturning(receipt({ total: 99.0 }));
+    const deep: IReceiptParser = { parse: vi.fn().mockRejectedValue(new Error('ThrottlingException')) };
+    const sink = vi.fn();
+    const result = await new EscalatingReceiptParser(primary, { FALLBACK_DEEP: deep }, T, sink).parse(image, ctx);
 
     expect((result as ParsedReceipt).merchantRaw).toBe('Jumbo');
-    expect(fallback.parse).toHaveBeenCalledTimes(1);
+    expect(sink).toHaveBeenLastCalledWith(expect.objectContaining({ usedFallback: false, fallbackErrored: true }));
   });
 
   it('keeps the primary result when the fallback returns unreadable but the primary was readable', async () => {
-    const primary = parserReturning(receipt({ total: 99.0 })); // triggers escalation
-    const fallback = parserReturning({ unreadable: true, reason: 'BLURRY' });
-    const sut = new EscalatingReceiptParser(primary, fallback);
-
-    const result = await sut.parse(image, ctx);
+    const primary = parserReturning(receipt({ total: 99.0 }));
+    const deep = parserReturning({ unreadable: true, reason: 'BLURRY' });
+    const result = await new EscalatingReceiptParser(primary, { FALLBACK_DEEP: deep }, T).parse(image, ctx);
 
     expect((result as ParsedReceipt).merchantRaw).toBe('Jumbo');
   });
 
-  it('reports escalation outcomes to the sink (used-fallback, errored, and no-escalation)', async () => {
-    const sink = vi.fn();
+  it('routes a mid-band decision to the mid tier (injected decider)', async () => {
+    const primary = parserReturning(receipt());
+    const mid = parserReturning(receipt({ merchantRaw: 'FROM_MID' }));
+    const deep = parserReturning(receipt({ merchantRaw: 'FROM_DEEP' }));
+    const targets: EscalationTargets = { FALLBACK: mid, FALLBACK_DEEP: deep };
+    const sut = new EscalatingReceiptParser(primary, targets, T, undefined, always('FALLBACK', 'LOW_CONFIDENCE'));
 
-    // No escalation → sink not called.
-    await new EscalatingReceiptParser(parserReturning(receipt()), parserReturning(receipt()), undefined, sink).parse(image, ctx);
-    expect(sink).not.toHaveBeenCalled();
+    const result = await sut.parse(image, ctx);
 
-    // Escalate (arithmetic) + fallback ok → used the fallback.
-    await new EscalatingReceiptParser(parserReturning(receipt({ total: 99.0 })), parserReturning(receipt()), undefined, sink).parse(image, ctx);
-    expect(sink).toHaveBeenLastCalledWith({ reason: 'ARITHMETIC', usedFallback: true, fallbackErrored: false });
-
-    // Escalate + fallback throws → degraded, flagged as errored.
-    const throwing: IReceiptParser = { parse: vi.fn().mockRejectedValue(new Error('throttle')) };
-    await new EscalatingReceiptParser(parserReturning(receipt({ total: 99.0 })), throwing, undefined, sink).parse(image, ctx);
-    expect(sink).toHaveBeenLastCalledWith({ reason: 'ARITHMETIC', usedFallback: false, fallbackErrored: true });
+    expect((result as ParsedReceipt).merchantRaw).toBe('FROM_MID');
+    expect(deep.parse).not.toHaveBeenCalled();
   });
 
   it('never lets a throwing sink affect the parse outcome', async () => {
     const primary = parserReturning(receipt({ total: 99.0 }));
-    const fallback = parserReturning(receipt({ merchantRaw: 'FROM_FALLBACK', total: 1.25 }));
-    const sut = new EscalatingReceiptParser(primary, fallback, undefined, () => { throw new Error('sink boom'); });
+    const deep = parserReturning(receipt({ merchantRaw: 'FROM_DEEP', total: 1.25 }));
+    const sut = new EscalatingReceiptParser(primary, { FALLBACK_DEEP: deep }, T, () => { throw new Error('sink boom'); });
 
     const result = await sut.parse(image, ctx);
 
-    expect((result as ParsedReceipt).merchantRaw).toBe('FROM_FALLBACK');
-  });
-
-  it('uses an injected decision function when provided', async () => {
-    const primary = parserReturning(receipt());
-    const fallback = parserReturning(receipt({ merchantRaw: 'FROM_FALLBACK' }));
-    const sut = new EscalatingReceiptParser(primary, fallback, () => ({ escalate: true }));
-
-    const result = await sut.parse(image, ctx);
-
-    expect((result as ParsedReceipt).merchantRaw).toBe('FROM_FALLBACK');
+    expect((result as ParsedReceipt).merchantRaw).toBe('FROM_DEEP');
   });
 });

@@ -45,3 +45,16 @@ class CaptureFailure extends CaptureState {
   @override
   List<Object?> get props => [code, message];
 }
+
+/// The capture-quality gate (fix 11 · sub-spec 05) judged the photo too poor to read. Not a
+/// hard block: the UI offers retake or "upload anyway" — the latter re-runs the pipeline on
+/// [raw] with the gate forced off. Nothing has left the device yet (no presign, no credit).
+class CaptureLowQuality extends CaptureState {
+  const CaptureLowQuality(this.message, this.raw);
+
+  final String message;
+  final Uint8List raw;
+
+  @override
+  List<Object?> get props => [message, raw];
+}

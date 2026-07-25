@@ -49,6 +49,15 @@ function isNonRetryable(err: unknown): boolean {
   return typeof code === 'string' && code.startsWith(PG_CONSTRAINT_VIOLATION_CLASS);
 }
 
+// A run "escalated" when a fallback vision stage (Sonnet/Opus) actually spent tokens. The charge
+// gate uses this to bill an escalated retake — a run that only used the cheap primary is free,
+// but one that reached a premium model is not (fix 11 review ①).
+function didEscalate(meter: TokenMeter): boolean {
+  return meter
+    .stageBreakdown()
+    .some((s) => s.stage.startsWith('VISION_PARSE_FALLBACK') && s.inputTokens + s.outputTokens > 0);
+}
+
 export interface RecordContext {
   record: SQSRecord;
   client: PoolClient;
@@ -79,7 +88,7 @@ export async function runIngestionRecord(
     // Charge the actual tokens consumed, only when a model actually ran (charge-by-timing,
     // §6/§03.1). Inside the still-open tenant transaction, so it commits atomically with the
     // ledger claim + invoice rows — a redelivery short-circuits on the ledger, never double-charges.
-    if (shouldChargeIngestion(outcome.handled, meter.total)) {
+    if (shouldChargeIngestion(outcome.handled, meter.total, outcome.status, didEscalate(meter))) {
       await chargeIngestion(client, message, meter.total, log);
     }
 

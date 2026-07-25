@@ -46,6 +46,24 @@ export interface OwnPurchaseLine {
   size: SeriesSize
 }
 
+// Fix 10 — why a selected product did (or didn't) plot in the market view. BELOW_QUORUM carries how
+// close it is; the rest are plain reasons. Mirrors the backend MarketDiagnostic union.
+export type MarketDiagnostic =
+  | 'SERVED'
+  | 'PREMIUM_REQUIRED'
+  | 'NO_OBSERVATIONS_IN_REGION'
+  | 'OUT_OF_WINDOW'
+  | 'CURRENCY_MISMATCH'
+  | { kind: 'BELOW_QUORUM'; merchantCount: number; maxObservations: number }
+
+export type OwnDiagnostic = 'SERVED' | 'NO_PURCHASES_IN_REGION'
+
+export interface ProductDiagnostic {
+  productId: string
+  market: MarketDiagnostic
+  own: OwnDiagnostic
+}
+
 export interface TrendComparison {
   countryCode: string
   regionCode: string
@@ -58,6 +76,9 @@ export interface TrendComparison {
   regionMerchantCount: number
   lines: TrendLine[] // public market trend — empty for non-Premium callers
   ownHistory: OwnPurchaseLine[] // the caller's own purchases — always present
+  // Per requested product: why it did (or didn't) plot in each mode (fix 10). Drives the per-product
+  // notes and the auto mode/range fallbacks.
+  diagnostics: ProductDiagnostic[]
 }
 
 export interface PriceTrends {
@@ -103,7 +124,11 @@ export function usePriceTrends(
           setForbidden(true)
           return null
         }
-        return r.ok ? ((await r.json()) as TrendComparison) : null
+        if (!r.ok) return null
+        // Default diagnostics so an older/cached backend response (deploy window) can't leave the
+        // field undefined and crash consumers that read comparison.diagnostics.
+        const data = (await r.json()) as TrendComparison
+        return { ...data, diagnostics: data.diagnostics ?? [] }
       })
       .then((data) => setComparison(data))
       .catch(() => undefined)

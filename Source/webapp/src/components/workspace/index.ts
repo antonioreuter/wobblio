@@ -16,6 +16,9 @@ export {
   type TrendPoint,
   type SeriesSize,
   type SizeSource,
+  type ProductDiagnostic,
+  type MarketDiagnostic,
+  type OwnDiagnostic,
 } from './use-price-trends'
 export { ConfirmDialog } from './confirm-dialog'
 export { BudgetList } from './budget-list'
@@ -31,5 +34,5 @@ export * from './list-data'
 export { ShoppingLists } from './shopping-lists'
 export * from './invoice-data'
 export * from './trend-data'
-export * from './comparison-sets-data'
-export { ComparisonSetsPanel } from './comparison-sets-panel'
+export * from './product-links-data'
+export { TrendSuggestions } from './trend-suggestions'

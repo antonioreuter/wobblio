@@ -341,25 +341,12 @@ export class ListItemNotFoundError extends Error {
   }
 }
 
-// Comparison sets (09/04) — user-asserted cross-merchant comparability, tenant-scoped.
-export class InvalidComparisonSetError extends Error {
+// Product links (fix 10) — user-asserted cross-merchant comparability, tenant-scoped. Written from
+// the trend report's suggestion chips; a malformed pair or a size-confirm on a never-linked pair.
+export class InvalidProductLinkError extends Error {
   constructor(readonly reason: string) {
-    super(`Invalid comparison set: ${reason}`);
-    this.name = 'InvalidComparisonSetError';
-  }
-}
-
-export class ComparisonSetLimitError extends Error {
-  constructor(readonly limit: number) {
-    super(`Comparison set member limit reached (max ${limit})`);
-    this.name = 'ComparisonSetLimitError';
-  }
-}
-
-export class ComparisonSetNotFoundError extends Error {
-  constructor(readonly setId: string) {
-    super(`Comparison set not found: ${setId}`);
-    this.name = 'ComparisonSetNotFoundError';
+    super(`Invalid product link: ${reason}`);
+    this.name = 'InvalidProductLinkError';
   }
 }
 

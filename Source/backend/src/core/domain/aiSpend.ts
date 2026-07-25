@@ -10,6 +10,7 @@ export const AI_COST_METRIC = 'ai_cost';
 const STAGE_ROLE: Record<string, ModelRole> = {
   VISION_PARSE: 'vision_parser',
   VISION_PARSE_FALLBACK: 'vision_fallback',
+  VISION_PARSE_FALLBACK_DEEP: 'vision_fallback_deep',
   EMBEDDING: 'embedder',
   MERCHANT_FALLBACK: 'auxiliary',
   PRODUCT_EXPANSION: 'auxiliary',
@@ -22,6 +23,7 @@ const STAGE_ROLE: Record<string, ModelRole> = {
 const RATE_PER_1K: Record<ModelRole, { input: number; output: number }> = {
   vision_parser: { input: 0.0008, output: 0.0008 },
   vision_fallback: { input: 0.003, output: 0.015 },
+  vision_fallback_deep: { input: 0.015, output: 0.075 }, // Opus-class — the deepest escalation tier
   pdf_parser: { input: 0.003, output: 0.015 },
   auxiliary: { input: 0.0008, output: 0.004 },
   insight: { input: 0.003, output: 0.015 },

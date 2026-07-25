@@ -60,11 +60,22 @@ class _FakeDocuments implements IDocumentPicker {
 }
 
 class _FakePreparer implements IUploadPreparer {
+  _FakePreparer({this.lowQualityUntilForced = false});
+
+  // When set, the gate rejects until the caller forces it — simulates a photo the quality
+  // gate flags that the user then overrides via "upload anyway".
+  final bool lowQualityUntilForced;
   int imageCalls = 0;
   int pdfCalls = 0;
+  bool lastForce = false;
+
   @override
-  Future<PreparedUpload> prepareImage(Uint8List raw) async {
+  Future<PreparedUpload> prepareImage(Uint8List raw, {bool force = false}) async {
     imageCalls++;
+    lastForce = force;
+    if (lowQualityUntilForced && !force) {
+      throw const UploadException(UploadErrorCode.lowQuality, _lowQualityMessage);
+    }
     return _imageUpload;
   }
 
@@ -74,6 +85,8 @@ class _FakePreparer implements IUploadPreparer {
     return _pdfUpload;
   }
 }
+
+const _lowQualityMessage = 'This photo may not read well: too dark. Retake, or upload it anyway.';
 
 class _FakeUploader implements IS3Uploader {
   _FakeUploader({this.error});
@@ -294,5 +307,57 @@ void main() {
       skip: 1,
       expect: () => const [CaptureIdle()],
     );
+
+    // ── Capture-quality gate (fix 11 · sub-spec 05) ──────────────────────────
+    blocTest<CaptureBloc, CaptureState>(
+      'a flagged photo stops at CaptureLowQuality instead of failing or presigning',
+      build: () => _build(preparer: _FakePreparer(lowQualityUntilForced: true)),
+      act: (bloc) => bloc.add(const CaptureFromCameraRequested()),
+      expect: () => [
+        const CaptureInProgress(CapturePhase.preparing),
+        CaptureLowQuality(_lowQualityMessage, _rawBytes),
+      ],
+    );
+
+    test('a flagged photo never reaches presign (no credit spent)', () async {
+      final ingestion = _FakeIngestion();
+      final bloc = _build(
+        preparer: _FakePreparer(lowQualityUntilForced: true),
+        ingestion: ingestion,
+      );
+      bloc.add(const CaptureFromCameraRequested());
+      await bloc.stream.firstWhere((s) => s is CaptureLowQuality);
+      expect(ingestion.presignCalls, 0);
+      await bloc.close();
+    });
+
+    blocTest<CaptureBloc, CaptureState>(
+      'upload-anyway re-runs the pipeline with the gate forced off and succeeds',
+      build: () => _build(preparer: _FakePreparer(lowQualityUntilForced: true)),
+      // Await the gate stop before overriding — the two events run on distinct picks, so
+      // serialize them (bloc's default transformer is concurrent).
+      act: (bloc) async {
+        bloc.add(const CaptureFromCameraRequested());
+        await bloc.stream.firstWhere((s) => s is CaptureLowQuality);
+        bloc.add(CaptureUploadAnyway(_rawBytes));
+      },
+      expect: () => [
+        const CaptureInProgress(CapturePhase.preparing),
+        CaptureLowQuality(_lowQualityMessage, _rawBytes),
+        ..._progress,
+        const CaptureSuccess('inv-1'),
+      ],
+    );
+
+    test('upload-anyway passes force=true to the preparer', () async {
+      final preparer = _FakePreparer(lowQualityUntilForced: true);
+      final bloc = _build(preparer: preparer);
+      bloc.add(const CaptureFromCameraRequested());
+      await bloc.stream.firstWhere((s) => s is CaptureLowQuality);
+      bloc.add(CaptureUploadAnyway(_rawBytes));
+      await bloc.stream.firstWhere((s) => s is CaptureSuccess);
+      expect(preparer.lastForce, isTrue);
+      await bloc.close();
+    });
   });
 }

@@ -14,6 +14,7 @@ import { fmtMoney, type Invoice } from './invoice-data'
 import { type Budget } from './budget-data'
 import { InvoiceDrawer } from './invoice-drawer'
 import { ConfirmDialog } from './confirm-dialog'
+import { RetakeDialog } from './retake-dialog'
 import { ShareDialog } from './share-dialog'
 import { BillSplitDialog } from './bill-split-dialog'
 import { WorkspaceToast, type ToastState, type ToastTone } from './workspace-toast'
@@ -170,6 +171,8 @@ export function WorkspaceProvider({
   const [confirmDelete, setConfirmDelete] = useState<Invoice | null>(null)
   const [shareTarget, setShareTarget] = useState<Invoice | null>(null)
   const [splitTarget, setSplitTarget] = useState<Invoice | null>(null)
+  // A capture-gate stop awaiting the user's retake / upload-anyway choice (fix 11 · sub-spec 05).
+  const [lowQualityUpload, setLowQualityUpload] = useState<{ file: File; message: string } | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -316,6 +319,30 @@ export function WorkspaceProvider({
     showToast('Link copied — paste it anywhere to share.', 'success')
   }, [showToast])
 
+  const runUpload = useCallback(
+    async (file: File, force: boolean) => {
+      showToast('Uploading your receipt…', 'processing')
+      try {
+        await uploadReceipt(file, { force })
+        showToast('Receipt uploaded — reading it usually takes about 20 seconds.', 'processing')
+        // Land the PROCESSING row + charged credits right away; the
+        // poll-until-terminal effect takes over from there.
+        void loadInvoices().catch(() => undefined)
+        void loadUsage().catch(() => undefined)
+      } catch (err) {
+        // Client-side capture gate: never hard-block — open the designed retake dialog so the
+        // user can retake or upload anyway (fix 11 · sub-spec 05).
+        if (err instanceof UploadError && err.code === 'low_quality') {
+          setLowQualityUpload({ file, message: err.message })
+          return
+        }
+        const msg = err instanceof UploadError ? err.message : 'Upload failed — please try again.'
+        showToast(msg, 'danger')
+      }
+    },
+    [showToast, loadInvoices, loadUsage],
+  )
+
   const scanReceipt = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -329,21 +356,10 @@ export function WorkspaceProvider({
         showToast('PDF uploads are a Premium feature — upgrade to scan PDF invoices.', 'danger')
         return
       }
-      showToast('Uploading your receipt…', 'processing')
-      try {
-        await uploadReceipt(file)
-        showToast('Receipt uploaded — reading it usually takes about 20 seconds.', 'processing')
-        // Land the PROCESSING row + charged credits right away; the
-        // poll-until-terminal effect takes over from there.
-        void loadInvoices().catch(() => undefined)
-        void loadUsage().catch(() => undefined)
-      } catch (err) {
-        const msg = err instanceof UploadError ? err.message : 'Upload failed — please try again.'
-        showToast(msg, 'danger')
-      }
+      await runUpload(file, false)
     }
     input.click()
-  }, [showToast, loadInvoices, loadUsage, pdfUploadEnabled])
+  }, [showToast, pdfUploadEnabled, runUpload])
 
   const value: WorkspaceContextValue = {
     invoices,
@@ -410,6 +426,20 @@ export function WorkspaceProvider({
           invoice={confirmDelete}
           onConfirm={doDelete}
           onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+      {lowQualityUpload && (
+        <RetakeDialog
+          message={lowQualityUpload.message}
+          onRetake={() => {
+            setLowQualityUpload(null)
+            showToast('Upload cancelled — retake the photo and try again.', 'danger')
+          }}
+          onUploadAnyway={() => {
+            const { file } = lowQualityUpload
+            setLowQualityUpload(null)
+            void runUpload(file, true)
+          }}
         />
       )}
     </WorkspaceContext.Provider>
