@@ -37,6 +37,8 @@ export function TrendSuggestions({
   const key = `${selectedIds.join(',')}|${countryCode}|${regionCode}`
 
   useEffect(() => {
+    // No region means nothing is scoped yet; the chart panel carries the "choose a region" prompt,
+    // so staying quiet here avoids duplicating that message on the picker.
     if (atMax || selectedIds.length === 0 || !countryCode || !regionCode) {
       setItems([])
       return

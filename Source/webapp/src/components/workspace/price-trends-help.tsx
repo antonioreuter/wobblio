@@ -34,6 +34,10 @@ const TREND_HELP_POINTS: { title: string; body: string }[] = [
     body: 'The dashed line is the price you paid, charted from your own receipts. It shows even for items only you have bought.',
   },
   {
+    title: 'Gaps in the line',
+    body: 'A dot marks every week we have a price for. Consecutive weeks are joined by a solid line; a dotted stretch means we have no price for those weeks — we never invent one in between.',
+  },
+  {
     title: 'Local-store comparison',
     body: 'Solid lines compare local stores. A store appears only once at least 3 confirmed scans of the item exist nearby, so prices stay reliable and anonymous.',
   },

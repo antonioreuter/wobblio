@@ -14,16 +14,35 @@ interface RegionPickerProps {
   countryCode: string
   regionCode: string
   onChange: (countryCode: string, regionCode: string) => void
+  // Optional controlled open state, so a caller can open the editor from elsewhere (the reports
+  // "Choose a region" prompt). Omit both to keep the self-contained behaviour.
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 // §6.5 serves the caller's own region by default; the region stays collapsed behind a
 // label + "Modify" until the user expands it to compare another region. Country/region
 // options come from the same ISO 3166 reference lists as onboarding.
-export function RegionPicker({ countryCode, regionCode, onChange }: RegionPickerProps) {
-  const [open, setOpen] = useState(false)
+export function RegionPicker({
+  countryCode,
+  regionCode,
+  onChange,
+  open: openProp,
+  onOpenChange,
+}: RegionPickerProps) {
+  const [selfOpen, setSelfOpen] = useState(false)
+  const open = openProp ?? selfOpen
+  const setOpen = (next: boolean) => (onOpenChange ? onOpenChange(next) : setSelfOpen(next))
   const [draftCountry, setDraftCountry] = useState(countryCode)
   const [draftRegion, setDraftRegion] = useState(regionCode)
   const [regions, setRegions] = useState<Region[]>([])
+
+  // Start every edit from the applied values, whoever opened the editor.
+  useEffect(() => {
+    if (!open) return
+    setDraftCountry(countryCode)
+    setDraftRegion(regionCode)
+  }, [open, countryCode, regionCode])
 
   useEffect(() => {
     let active = true
@@ -43,11 +62,6 @@ export function RegionPicker({ countryCode, regionCode, onChange }: RegionPicker
   const regionName = regions.find((r) => r.code === regionCode)?.name
   const label = regionName ? `${regionName}, ${countryName}` : (regionCode || countryName)
 
-  const expand = () => {
-    setDraftCountry(countryCode)
-    setDraftRegion(regionCode)
-    setOpen(true)
-  }
   const apply = () => {
     onChange(draftCountry, draftRegion)
     setOpen(false)
@@ -58,7 +72,7 @@ export function RegionPicker({ countryCode, regionCode, onChange }: RegionPicker
       <div className="region-label" data-testid="trend-region-label">
         <MapPin size={14} />
         <span>{label}</span>
-        <button type="button" className="btn btn--text region-modify" onClick={expand} data-testid="trend-region-modify">
+        <button type="button" className="btn btn--text region-modify" onClick={() => setOpen(true)} data-testid="trend-region-modify">
           <Pencil size={12} /> Modify
         </button>
       </div>

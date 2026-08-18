@@ -1085,6 +1085,18 @@
   fill: var(--text-muted); font-size: 11px;
   font-family: var(--font-body); text-anchor: middle;
 }
+/* One marker per observed week — a lone observation must never render as a speck. */
+.chart-point { pointer-events: none; }
+/* The value of a series that has exactly one observation, spelled out beside its marker. */
+.chart-point-label {
+  fill: var(--text-primary); font-size: 11.5px; font-weight: 700;
+  font-family: var(--font-display); font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+/* Weeks nobody observed: the connector follows the series but is visibly not a measurement. */
+.chart-gap { stroke-width: 1.5; stroke-dasharray: 2 5; opacity: 0.45; }
+/* §6.5.1 promo prices stay a distinct signal — their own faint track, never blended. */
+.chart-promo-link { opacity: 0.55; stroke-dasharray: 3 3; }
 .chart-weekend {
   fill: rgba(99, 102, 241, 0.04);
   pointer-events: none;

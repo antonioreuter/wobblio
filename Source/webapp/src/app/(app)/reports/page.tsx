@@ -1,73 +1,41 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Calendar, Check, Clock, Crown, LineChart as LineChartIcon, Lock, Ruler, Table2, Trash2, TrendingUp, X } from 'lucide-react'
+import { Calendar, Check, Clock, Crown, LineChart as LineChartIcon, Lock, MapPin, Ruler, Table2, Trash2, TrendingUp, X } from 'lucide-react'
 import { Card } from '@/components/ds'
+import { Button } from '@/components/ds/Button'
 import { formatDelta, formatViewMoney } from '@/lib/currency'
 import {
+  buildSizePrompts,
+  buildTrendChart,
+  diagnosticNote,
   fetchProductLinks,
   FilterSelect,
   fmtDate,
-  inRange,
   LineChart,
   MAX_PRODUCTS,
-  MONTHS,
+  pairKey,
   personalHistory,
   PriceTrendsHelpButton,
   ProductSearch,
   RegionPicker,
   resolveAutoMode,
-  SERIES_COLORS,
   setLinkSizeEquivalent,
+  sizeChip,
   TREND_PRESETS,
   TrendSuggestions,
   TrendTable,
   usePriceTrends,
   widenRangeIfHidden,
+  type ChartSeries,
+  type CompareMode,
+  type HiddenReason,
   type LinkedPair,
-  type MarketDiagnostic,
-  type ProductDiagnostic,
   type TrendComparison,
   type TrendPreset,
   type TrendProduct,
-  type SeriesSize,
 } from '@/components/workspace'
-
-interface ChartSeries {
-  id: string
-  productId: string
-  name: string
-  product: string
-  merchant: string
-  color: string
-  data: (number | null)[]
-  discounts: (number | null)[]
-  stale: boolean
-  staleDays: number
-  own: boolean // the caller's own purchases — dashed line, "Your purchases" legend
-  size: SeriesSize // descriptive pack size chip; prices are always the pack price paid (fix 09/01)
-  ambiguous: boolean // 09/05: name may cover different SKUs at this store — shown as a warning
-  // Own-mode only (§6.5.5 personal history); null/0 for market series.
-  purchaseCount: number
-  lastPurchasedOn: string | null
-  lastPrice: number | null
-  previousPrice: number | null
-}
-
-const OWN_LABEL = 'Your purchases'
-
-// Comparison basis: the caller's own paid prices vs the crowdsourced local-market trend.
-// Market is Premium-only — STANDARD is pinned to 'own'.
-type CompareMode = 'own' | 'market'
-
-// Descriptive size chip (fix 09/01). Prices are always the pack price paid — never per unit —
-// so the chip only describes the pack: the receipt/annotated size ("2L", "2L · set by you") or
-// "size not stated" when unknown. Never a €/unit label.
-function sizeChip(size: SeriesSize): string {
-  if (size.sizeText === null) return 'size not stated'
-  return size.sizeSource === 'USER' ? `${size.sizeText} · set by you` : size.sizeText
-}
 
 export default function ReportsPage() {
   const { data: session } = useSession()
@@ -80,6 +48,7 @@ export default function ReportsPage() {
   const [selected, setSelected] = useState<TrendProduct[]>([])
   const [country, setCountry] = useState('')
   const [region, setRegion] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [preset, setPreset] = useState<TrendPreset>('90d')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -97,6 +66,10 @@ export default function ReportsPage() {
       })
       .catch(() => undefined)
   }, [])
+
+  // Trends are served per region; without one there is nothing to query and the user must be told
+  // so, rather than shown an empty chart that blames their scanning.
+  const regionMissing = !country || !region
 
   const ids = selected.map((p) => p.id)
   // Every tier fetches: the backend serves the caller's own purchases to all, and gates the
@@ -175,12 +148,15 @@ export default function ReportsPage() {
       setPreset(widened)
       setAutoNotice('Widened to 6 months to show the available data.')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [comparison, viewPinned, mode, preset, from, to, rangeInvalid, isPremium])
 
-  const { series, labels, sizeWarning } = useMemo(
-    () => buildChart(comparison, selected, mode, preset, from, to, rangeInvalid),
+  const chart = useMemo(
+    () => buildTrendChart({ comparison, products: selected, mode, preset, from, to, rangeInvalid }),
     [comparison, selected, mode, preset, from, to, rangeInvalid],
+  )
+  const hiddenReasons = useMemo(
+    () => new Map<string, HiddenReason>(chart.hidden.map((h) => [h.productId, h.reason])),
+    [chart.hidden],
   )
   const rangeLabel = TREND_PRESETS.find(([v]) => v === preset)?.[1] ?? 'Last 3 months'
 
@@ -196,6 +172,8 @@ export default function ReportsPage() {
         <RegionPicker
           countryCode={country}
           regionCode={region}
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
           onChange={(c, r) => { setCountry(c); setRegion(r) }}
         />
       </div>
@@ -280,7 +258,11 @@ export default function ReportsPage() {
               <span className="trend-empty-hint">Search above to add up to {MAX_PRODUCTS} products.</span>
             )}
             {selected.map((p) => {
-              const note = diagnosticNote(comparison?.diagnostics?.find((d) => d.productId === p.id), mode)
+              const note = diagnosticNote(
+                comparison?.diagnostics?.find((d) => d.productId === p.id),
+                hiddenReasons.get(p.id),
+                mode,
+              )
               return (
                 <span className="trend-chip" key={p.id}>
                   {p.name}
@@ -313,7 +295,7 @@ export default function ReportsPage() {
         <div className="filter-foot">
           <span className={`filter-hint ${rangeInvalid ? 'invalid' : ''}`}>
             <Clock size={13} />
-            {rangeInvalid ? 'Range can’t exceed 6 months.' : `${series.length} lines · max range 6 months`}
+            {rangeInvalid ? 'Range can’t exceed 6 months.' : `${chart.series.length} lines · max range 6 months`}
           </span>
           <div className="filter-actions">
             <button
@@ -399,12 +381,14 @@ export default function ReportsPage() {
         <TrendChartBody
           loading={loading}
           hasProducts={selected.length > 0}
+          regionMissing={regionMissing}
+          onPickRegion={() => setPickerOpen(true)}
           comparison={comparison}
           mode={mode}
           view={view}
-          series={series}
-          labels={labels}
-          sizeWarning={sizeWarning}
+          series={chart.series}
+          labels={chart.labels}
+          sizeWarning={chart.sizeWarning}
           links={links}
           sizeDismissed={sizeDismissed}
           onConfirmSize={confirmSameSize}
@@ -415,60 +399,11 @@ export default function ReportsPage() {
   )
 }
 
-// Canonical key for an unordered product pair (matches the backend's a<b storage), used to track
-// locally-dismissed size prompts.
-const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
-
-interface SizePrompt {
-  aId: string
-  bId: string
-  aLabel: string
-  bLabel: string
-}
-
-// Fix 10 — for each accepted link whose BOTH products are plotted, isn't already size-confirmed, and
-// whose sizes aren't known-equal, surface a one-tap "same size?" that promotes the pair to
-// crown/optimizer eligibility. Known-equal sizes are already comparable, so they get no prompt.
-function buildSizePrompts(series: ChartSeries[], links: LinkedPair[], dismissed: Set<string>): SizePrompt[] {
-  const byProduct = new Map(series.map((s) => [s.productId, s]))
-  const prompts: SizePrompt[] = []
-  for (const link of links) {
-    if (link.sizeEquivalent) continue
-    if (dismissed.has(pairKey(link.productAId, link.productBId))) continue
-    const a = byProduct.get(link.productAId)
-    const b = byProduct.get(link.productBId)
-    if (!a || !b) continue // only prompt when both sides are actually plotted
-    if (a.size.sizeText !== null && b.size.sizeText !== null && a.size.sizeText === b.size.sizeText) continue
-    prompts.push({
-      aId: link.productAId,
-      bId: link.productBId,
-      aLabel: `${a.product} · ${a.merchant}`,
-      bLabel: `${b.product} · ${b.merchant}`,
-    })
-  }
-  return prompts
-}
-
-// Fix 10 — a short, honest note on a selected-product chip when it isn't charting in the active
-// mode, so an empty line reads as a specific reason instead of a mysterious gap.
-function diagnosticNote(d: ProductDiagnostic | undefined, mode: CompareMode): string | null {
-  if (!d) return null
-  if (mode === 'own') return d.own === 'NO_PURCHASES_IN_REGION' ? 'no purchases here yet' : null
-  return marketDiagnosticNote(d.market)
-}
-
-function marketDiagnosticNote(market: MarketDiagnostic): string | null {
-  if (market === 'SERVED') return null
-  if (market === 'PREMIUM_REQUIRED') return 'Premium unlocks market view'
-  if (market === 'NO_OBSERVATIONS_IN_REGION') return 'no local prices in this region'
-  if (market === 'OUT_OF_WINDOW') return 'older than 6 months'
-  if (market === 'CURRENCY_MISMATCH') return 'prices in another currency'
-  return `${market.maxObservations} of 3 scans needed`
-}
-
 function TrendChartBody({
   loading,
   hasProducts,
+  regionMissing,
+  onPickRegion,
   comparison,
   mode,
   view,
@@ -482,6 +417,8 @@ function TrendChartBody({
 }: {
   loading: boolean
   hasProducts: boolean
+  regionMissing: boolean
+  onPickRegion: () => void
   comparison: TrendComparison | null
   mode: CompareMode
   view: 'chart' | 'table'
@@ -498,6 +435,22 @@ function TrendChartBody({
       <div className="table-empty">
         <TrendingUp size={26} />
         <span>Add a product above to start comparing prices across stores.</span>
+      </div>
+    )
+  }
+  // Without a region nothing is ever requested, so this must be said out loud — an empty chart here
+  // would blame the user's scanning for a setting they haven't made.
+  if (regionMissing) {
+    return (
+      <div className="table-empty" data-testid="trends-region-required">
+        <MapPin size={26} />
+        <span>
+          <strong>Choose a region to see prices.</strong> Price trends are served per region — pick
+          yours to chart your purchases and compare local stores.
+        </span>
+        <Button variant="primary" onClick={onPickRegion} style={{ padding: '8px 16px', fontSize: 13 }}>
+          Choose a region
+        </Button>
       </div>
     )
   }
@@ -614,7 +567,9 @@ function LegendItem({
     vals.length > 1 && vals[0] !== 0 ? ((vals[vals.length - 1] - vals[0]) / vals[0]) * 100 : null
   const own = mode === 'own'
   const history = own ? personalHistory(s) : null
-  const headline = own ? s.lastPrice ?? rangeMedian : rangeMedian
+  // Own mode's headline is the last price PAID (window-wide, disclosed by "last bought"); market's
+  // is the latest median in range. Never silently substitute one for the other.
+  const headline = own ? s.lastPrice : rangeMedian
 
   return (
     <div className="legend-item">
@@ -625,14 +580,19 @@ function LegendItem({
           <span className="legend-unit" title={s.size.sizeText ? 'pack size' : 'size not stated'}>
             {sizeChip(s.size)}
           </span>
-          {s.stale && (
+          {!own && s.stale && (
             <span className="legend-stale" title={`No data for ${s.staleDays} days`}>
               <Clock size={11} /> stale · {s.staleDays}d
             </span>
           )}
+          {/* Own series carry their freshness in the purchase date itself — one honest chip rather
+              than a date and a redundant "stale · Nd" beside it. */}
           {own && s.lastPurchasedOn && (
-            <span className="legend-stale" title="Your most recent purchase">
-              <Clock size={11} /> last bought {fmtDate(s.lastPurchasedOn)}
+            <span
+              className="legend-stale"
+              title={s.stale ? `No purchase in ${s.staleDays} days` : 'Your most recent purchase'}
+            >
+              <Clock size={11} /> last bought {fmtDate(s.lastPurchasedOn)}{s.stale ? ' · stale' : ''}
             </span>
           )}
         </span>
@@ -655,97 +615,4 @@ function LegendItem({
       </div>
     </div>
   )
-}
-
-// Aligns every served line onto a shared week axis (union of observed weeks, filtered
-// by the active preset) so the chart breaks on missing weeks instead of interpolating.
-function buildChart(
-  comparison: TrendComparison | null,
-  products: TrendProduct[],
-  mode: CompareMode,
-  preset: TrendPreset,
-  from: string,
-  to: string,
-  rangeInvalid: boolean,
-): { series: ChartSeries[]; labels: string[]; sizeWarning: boolean } {
-  // Only the active mode's source feeds the chart — own purchases or the market trend, never both.
-  const sourceLines = mode === 'market' ? comparison?.lines ?? [] : comparison?.ownHistory ?? []
-  if (!comparison || sourceLines.length === 0) {
-    return { series: [], labels: [], sizeWarning: false }
-  }
-
-  const nameById = new Map(products.map((p) => [p.id, p.name]))
-  const weekSet = new Set<string>()
-  sourceLines.forEach((l) => l.points.forEach((pt) => weekSet.add(pt.weekStart)))
-  const weeks = [...weekSet]
-    .sort()
-    .filter((w) => inRange(new Date(`${w}T00:00:00Z`), preset, from, to, rangeInvalid))
-
-  const labels = weeks.map((w) => {
-    const d = new Date(`${w}T00:00:00Z`)
-    return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`
-  })
-
-  // Own vs market are never blended, so the comparison stays honest (§6.5.2). Market emits
-  // one solid line per store; own emits one dashed line per product.
-  const modeSeries: ChartSeries[] =
-    mode === 'market'
-      ? comparison.lines.map((l, i) => {
-          const median = new Map(l.points.map((pt) => [pt.weekStart, pt.median]))
-          const discount = new Map(l.points.map((pt) => [pt.weekStart, pt.discountMedian]))
-          const product = nameById.get(l.productId) ?? l.productId
-          return {
-            id: `${l.productId}|${l.merchantId}`,
-            productId: l.productId,
-            product,
-            merchant: l.merchantName,
-            name: `${product} · ${l.merchantName}`,
-            color: SERIES_COLORS[i % SERIES_COLORS.length],
-            data: weeks.map((w) => median.get(w) ?? null),
-            discounts: weeks.map((w) => discount.get(w) ?? null),
-            stale: l.stale,
-            staleDays: l.staleDays,
-            own: false,
-            size: l.size,
-            ambiguous: l.ambiguous,
-            purchaseCount: 0,
-            lastPurchasedOn: null,
-            lastPrice: null,
-            previousPrice: null,
-          }
-        })
-      : comparison.ownHistory.map((l, i) => {
-          const median = new Map(l.points.map((pt) => [pt.weekStart, pt.median]))
-          const discount = new Map(l.points.map((pt) => [pt.weekStart, pt.discountMedian]))
-          const product = nameById.get(l.productId) ?? l.productId
-          return {
-            id: `own|${l.productId}`,
-            productId: l.productId,
-            product,
-            merchant: OWN_LABEL,
-            name: `${product} · ${OWN_LABEL}`,
-            color: SERIES_COLORS[i % SERIES_COLORS.length],
-            data: weeks.map((w) => median.get(w) ?? null),
-            discounts: weeks.map((w) => discount.get(w) ?? null),
-            stale: false,
-            staleDays: 0,
-            own: true,
-            size: l.size,
-            ambiguous: false,
-            purchaseCount: l.purchaseCount,
-            lastPurchasedOn: l.lastPurchasedOn,
-            lastPrice: l.lastPrice,
-            previousPrice: l.previousPrice,
-          }
-        })
-
-  // A line with no points in the visible range adds only noise to the legend.
-  const visible = modeSeries.filter(
-    (s) => s.data.some((v) => v !== null) || s.discounts.some((v) => v !== null),
-  )
-  // Honesty guard (fix 09/01): note when a plotted comparison mixes differing or unknown sizes —
-  // prices are shown as paid, never per unit. A single series is always self-consistent.
-  const sizeTexts = new Set(visible.map((s) => s.size.sizeText))
-  const sizeWarning = visible.length > 1 && (sizeTexts.has(null) || sizeTexts.size > 1)
-  return { series: visible, labels, sizeWarning }
 }

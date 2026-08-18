@@ -37,13 +37,19 @@ export interface TrendLine {
 export interface OwnPurchaseLine {
   productId: string
   points: TrendPoint[]
-  purchaseCount: number
+  purchaseCount: number // distinct own invoices carrying the product in the window
   lastPurchasedOn: string
+  // Bought before the 26-week window — disqualifies the "First purchase" copy for a product last
+  // bought a year ago (it would otherwise read as first, since the window count is 1).
+  priorPurchaseExists: boolean
   // The two most recent regular-price purchase events (§6.5.5) — drive the "last paid · ▲/▼ N% vs
   // previous scan" legend copy. previousPrice is null when the product was bought only once.
   lastPrice: number | null
   previousPrice: number | null
   size: SeriesSize
+  // §6.5.2 freshness honesty: own series grey with their age, same as stale market cells.
+  stale: boolean
+  staleDays: number
 }
 
 // Fix 10 — why a selected product did (or didn't) plot in the market view. BELOW_QUORUM carries how

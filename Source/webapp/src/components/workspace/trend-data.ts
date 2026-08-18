@@ -27,8 +27,62 @@ export const TREND_PRESETS: Array<[TrendPreset, string]> = [
   ['custom', 'Custom range'],
 ]
 
-export function daysBack(n: number): Date {
-  return new Date(Date.now() - n * 86_400_000)
+// A range of whole weeks, each identified by the UTC-midnight Monday that starts it — the same key
+// the backend emits as `weekStart`, so range maths never mixes a timestamp with a date.
+export interface WeekRange {
+  startWeek: string
+  endWeek: string
+}
+
+const DAY_MS = 86_400_000
+
+// Midnight UTC of the calendar day a Date falls on. Dropping the time-of-day is what makes
+// "last 30 days" mean 30 whole days rather than 29 days plus however far into today it is.
+function utcMidnight(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+}
+
+// The Monday that starts the week containing `date`, as an ISO date.
+export function mondayOf(date: Date): string {
+  const day = utcMidnight(date)
+  const backToMonday = (new Date(day).getUTCDay() + 6) % 7 // getUTCDay: 0 = Sunday
+  return new Date(day - backToMonday * DAY_MS).toISOString().slice(0, 10)
+}
+
+// The whole weeks a preset covers. Both bounds are snapped to their week's Monday, which gives the
+// range OVERLAP semantics: a week whose Monday predates the range start is still included when it
+// holds in-range days. Filtering on the Monday alone would drop such a week entirely.
+export function resolveWeekRange(
+  preset: TrendPreset,
+  from: string,
+  to: string,
+  rangeInvalid: boolean,
+  today: Date = new Date(),
+): WeekRange {
+  const end = utcMidnight(today)
+  if (preset === 'custom' && !rangeInvalid && from && to) {
+    return { startWeek: mondayOf(new Date(`${from}T00:00:00Z`)), endWeek: mondayOf(new Date(`${to}T00:00:00Z`)) }
+  }
+  if (preset === 'month') {
+    const firstOfMonth = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)
+    return { startWeek: mondayOf(new Date(firstOfMonth)), endWeek: mondayOf(new Date(end)) }
+  }
+  const span = preset === '30d' ? 30 : preset === '6m' ? 183 : 90
+  return { startWeek: mondayOf(new Date(end - span * DAY_MS)), endWeek: mondayOf(new Date(end)) }
+}
+
+export function weekInRange(weekStart: string, range: WeekRange): boolean {
+  return weekStart >= range.startWeek && weekStart <= range.endWeek
+}
+
+// Every Monday from `startWeek` to `endWeek` inclusive — the continuous axis. Weeks with no
+// observation must exist on it, otherwise a five-month gap renders as two adjacent points.
+export function buildWeekAxis(startWeek: string, endWeek: string): string[] {
+  const weeks: string[] = []
+  for (let t = Date.parse(`${startWeek}T00:00:00Z`); t <= Date.parse(`${endWeek}T00:00:00Z`); t += 7 * DAY_MS) {
+    weeks.push(new Date(t).toISOString().slice(0, 10))
+  }
+  return weeks
 }
 
 // §6.5.5 own-mode personal-history affordance for a product's legend row, from its last two
@@ -44,32 +98,15 @@ export function personalHistory(input: {
   lastPrice: number | null
   previousPrice: number | null
   purchaseCount: number
+  priorPurchaseExists?: boolean
 }): PersonalHistory {
-  if (input.purchaseCount <= 1) return { kind: 'first' }
+  // A product bought before the window is never a first purchase, however few times it appears
+  // inside it.
+  if (!input.priorPurchaseExists && input.purchaseCount <= 1) return { kind: 'first' }
   if (input.lastPrice !== null && input.previousPrice !== null && input.previousPrice !== 0) {
     return { kind: 'delta', pct: ((input.lastPrice - input.previousPrice) / input.previousPrice) * 100 }
   }
   return { kind: 'priceOnly' }
-}
-
-// Filters a week (UTC midnight of its Monday) to the active preset. All comparisons are UTC:
-// the caller builds the week axis from `${weekStart}T00:00:00Z`, so mixing in local-time month
-// math would mis-include or drop a week near a month boundary.
-export function inRange(
-  d: Date,
-  preset: TrendPreset,
-  from: string,
-  to: string,
-  rangeInvalid: boolean,
-): boolean {
-  const today = new Date()
-  if (preset === '30d') return d >= daysBack(30)
-  if (preset === '6m') return d >= daysBack(183)
-  if (preset === 'month')
-    return d.getUTCMonth() === today.getUTCMonth() && d.getUTCFullYear() === today.getUTCFullYear()
-  if (preset === 'custom' && !rangeInvalid && from && to)
-    return d >= new Date(from) && d <= new Date(to)
-  return d >= daysBack(90)
 }
 
 // Fix 10 auto-fallbacks — be opinionated so a selection never lands on a blank chart when data
@@ -98,13 +135,14 @@ export function widenRangeIfHidden(
   rangeInvalid: boolean,
 ): TrendPreset | null {
   if (preset === '6m' || preset === 'custom') return null
+  const range = resolveWeekRange(preset, from, to, rangeInvalid)
   let anyInWindow = false
   let anyInPreset = false
   for (const points of pointsSets) {
     for (const pt of points) {
       if (pt.median === null && pt.discountMedian === null) continue
       anyInWindow = true
-      if (inRange(new Date(`${pt.weekStart}T00:00:00Z`), preset, from, to, rangeInvalid)) anyInPreset = true
+      if (weekInRange(pt.weekStart, range)) anyInPreset = true
     }
   }
   return anyInWindow && !anyInPreset ? '6m' : null
