@@ -1,20 +1,64 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Injected into every artifact generation. CLAUDE.md and .claude/rules/ are
+# already in context — this file only carries what is specific to spec writing.
+context: |
+  Wobblio turns receipt photos into structured financial data via multimodal AI,
+  and feeds anonymized price points into a crowdsourced regional price index.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Status: the MVP is BUILT and deployed to the `dev` stage (backend, webapp,
+  admin console, Flutter client). Assume code exists and read it before
+  proposing. CLAUDE.md still claims "implementation starting" — that is stale.
+
+  Sources of truth, in precedence order:
+  - `openspec/specs/<capability>/spec.md` — AUTHORITATIVE for system behavior.
+    Seeded: ingestion, data-intelligence, quota, admin. A capability with no
+    spec yet is unspecified: the first change touching it authors its baseline
+    from the CODE, never from the frozen documents below.
+  - `CLAUDE.md` — the 14 hard invariants and validation gates. Binding on every
+    proposal; do not restate them in artifacts, and never plan around one
+    without an explicit spec amendment.
+  - `.claude/rules/*.md` — engineering policy (hexagonal, GDPR, IaC, prompts).
+  - `docs/wobblio_v2.4_specification_final.md` — authoritative for PRODUCT only
+    (definition, business model, financials, decisions, design briefs). Cite §
+    numbers for rationale. Where it describes behavior, the OpenSpec spec wins.
+  - `docs/runbook.md`, `docs/runbooks/` — operations, not specification.
+  - `specs/` — FROZEN and historical as of 2026-08-18. Read for rationale only.
+    Known to have diverged from the code; never plan from it.
+  The `projects-rag` MCP server indexes `docs/` and `specs/`; treat what it
+  returns from `specs/` as historical.
+
+  Capability paths under `openspec/specs/` mirror the core service domains in
+  `Source/backend/src/core/services/`: identity, waitlist, billing, quota,
+  ingestion, ai, data-intelligence, households, budgets, lists, optimizer,
+  comparison, splitting, fx, reporting, notifications, gdpr, admin,
+  observability, maintenance. Nest when useful (`ingestion/vision-parse`).
+  Reuse an existing path exactly rather than inventing a near-duplicate.
+
+  Capacity is a design constraint, not an aspiration: ~4k MAU and ~3k
+  ingestions/day on a db.t3.micro, one DB connection per request. AI token cost
+  and connection count belong in the trade-off discussion.
+
+rules:
+  proposal:
+    - 'Cite the governing spec section (§) and the matching specs/mvp or specs/fixes file. If neither exists, say so explicitly.'
+    - 'State which hard invariants the change touches, and whether it stays within them or needs a spec amendment.'
+    - 'Include a "Non-goals" section.'
+    - 'Call out cost and capacity impact when adding AI model calls, hot-path queries, or cron jobs.'
+  specs:
+    - 'Requirements describe observable behavior. No table, class, or AWS service names in requirement text.'
+    - 'Every requirement needs a scenario for the failure and permission-denied paths, not just the happy path.'
+    - 'Tenant-scoped data needs a cross-tenant isolation scenario; PREMIUM-only capability needs a STANDARD-denial scenario.'
+    - 'Quantify thresholds (k>=3, <=300s, 30 days) instead of saying "quickly" or "enough".'
+  design:
+    - 'Lead with the hexagonal decomposition: owning core service, required ports, implementing adapters.'
+    - 'List each DB migration with its RLS policy, tenant column, and index.'
+    - 'For AI work: model role, SSM parameter, XML-tagged prompt, output schema, retry-then-DLQ path.'
+    - 'Record alternatives considered and why they lost, especially where the spec allowed more than one reading.'
+    - 'Note manual deployment steps (SSM parameters, SNS platform apps, seed pinning) so they are not discovered in production.'
+  tasks:
+    - 'Order migrations and ports before adapters, adapters before handlers and clients.'
+    - 'Each task is at most ~2 hours with a verifiable outcome.'
+    - 'Pair each core-logic task with its unit test task; no trailing "write tests" task.'
+    - 'End with a validation task naming the gates to run.'
+    - 'Never include a task touching production AWS or the production database.'
