@@ -2,7 +2,7 @@
 
 Cloud-native personal fiscal management utility. Photographs of receipts become structured financial data via multimodal AI; anonymized price points feed a crowdsourced regional price index that powers the differentiating features (Anti-Inflation Price Engine, Split-Route Shopping Optimizer, proactive budget protection).
 
-**Status:** spec-complete (v2.4), implementation starting. `Source/backend/` and `Source/webapp/` are empty placeholders.
+**Status:** MVP built and deployed to the `dev` stage — backend, webapp, admin console, and Flutter client all exist. Work is now incremental features, fixes, and hardening. Read the code before assuming anything is unbuilt.
 
 ## NON NEGOTIABLE
 - Under any circumstance connect to the Production environments in AWS neither execute scripts in this environment. The same is also valid for the database in prod or any db schema related to production environment. 
@@ -15,11 +15,27 @@ Cloud-native personal fiscal management utility. Photographs of receipts become 
 
 ## Source of truth (read these before non-trivial work)
 
-- `docs/wobblio_v2.4_specification_final.md` — the authoritative spec. Section numbers below reference it.
-- `specs/mvp/` — implementation-ready spec per epic, numbered by build order (00 → 15). Start at `specs/mvp/README.md`.
-- **MCP RAG Server (`projects-rag`):** You have access to the `projects-rag` MCP server, which runs a RAG solution indexing all specifications and documentation. For semantic searches, cross-document queries, or quick lookups across `docs/` and `specs/`, you can use `search_project_knowledge` or `ask_project_knowledge` as an alternative to reading files directly.
+**All specification work goes through OpenSpec.** New behavior is proposed as an OpenSpec change and lands in `openspec/specs/`; nothing else is edited as a spec.
 
-When the spec and any other doc disagree, the spec wins. When two spec sections appear to disagree, Appendix A (catalog promotion) is canonical for that subsystem.
+Precedence, highest first:
+
+1. `openspec/specs/<capability>/spec.md` — **authoritative for system behavior.** Capability paths mirror `Source/backend/src/core/services/`. Seeded so far: `ingestion`, `data-intelligence`, `quota`, `admin`. A capability with no spec yet is unspecified — the first change that touches it authors its baseline **from the code**, never from the frozen documents below.
+2. This file — the hard invariants and validation gates.
+3. `.claude/rules/*.md` — engineering policy.
+4. `docs/wobblio_v2.4_specification_final.md` — **authoritative for product only**: definition, business model, financial model, decisions log, feature set, design briefs. Section numbers (§) referenced throughout resolve here. Where it describes *behavior*, the OpenSpec capability spec wins.
+5. `docs/runbook.md`, `docs/runbooks/`, `docs/database-setup.md` — operations, not specification.
+6. `specs/` — **FROZEN and historical** as of 2026-08-18. See `specs/README.md`. Known to have diverged from the code; read for rationale, never plan from it.
+
+**MCP RAG Server (`projects-rag`):** semantic search over a **June 2026 snapshot** of `docs/` and `specs/`. Verified 2026-08-18: it does **not** index `openspec/specs/`, and its `specs/` copy stops at `mvp/00-15` — no `fixes/`, no `price-trends-*`, no mobile `16-19`. It is therefore *staler than the frozen tree on disk*. Use it for orientation and rationale only; never for current behavior, and never as a substitute for reading `openspec/specs/` or the code.
+
+### Working with OpenSpec
+
+- `/opsx:propose` — create a change with proposal, delta specs, design, and tasks
+- `/opsx:apply` — implement the tasks of an approved change
+- `/opsx:archive` — fold a completed change's deltas into `openspec/specs/`
+- `openspec/config.yaml` carries the project context and the per-artifact rules
+
+Planning and implementation are separate steps: a propose run produces artifacts and stops.
 
 ## Stack
 

@@ -1,3 +1,7 @@
+> **FROZEN / HISTORICAL — not authoritative as of 2026-08-18.**
+> Behavioral requirements live in `openspec/specs/`. See `specs/README.md`.
+> These epics record what was planned, not what the system does today.
+
 # Wobblio MVP Specifications
 
 Based on the v2.4 engineering & product specification. Files are numbered by build order — each phase depends on the previous.

@@ -2,6 +2,14 @@
 
 **Status:** Implementation-ready. This document supersedes all prior versions (v1–v2.3). It incorporates the full review of the original specification: business model corrections, resolved inconsistencies, the previously missing data-intelligence layer (merchant canonicalization, product normalization, classification, price comparison), the corrected architecture, a revised epic backlog, and UI layout guidelines.
 
+**Scope note (2026-08-18):** this document remains the authoritative **product**
+source of truth — product definition, business model, financial model, decisions log,
+feature set, and design briefs. It is *no longer* the source of truth for **system
+behavior**: behavioral requirements now live in `openspec/specs/<capability>/spec.md`.
+Where this document and an OpenSpec capability spec describe the same behavior, the
+OpenSpec spec wins. Section numbers (§) referenced from code and specs still resolve here.
+
+
 ---
 
 ## SECTION 0 — REVIEW SUMMARY & DECISIONS LOG

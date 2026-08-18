@@ -25,8 +25,9 @@ context: |
   - `docs/runbook.md`, `docs/runbooks/` — operations, not specification.
   - `specs/` — FROZEN and historical as of 2026-08-18. Read for rationale only.
     Known to have diverged from the code; never plan from it.
-  The `projects-rag` MCP server indexes `docs/` and `specs/`; treat what it
-  returns from `specs/` as historical.
+  The `projects-rag` MCP server searches a June-2026 snapshot of `docs/` and
+  `specs/` only — it does not index `openspec/specs/`, and its `specs/` copy is
+  staler than the frozen tree on disk. Orientation and rationale only.
 
   Capability paths under `openspec/specs/` mirror the core service domains in
   `Source/backend/src/core/services/`: identity, waitlist, billing, quota,
