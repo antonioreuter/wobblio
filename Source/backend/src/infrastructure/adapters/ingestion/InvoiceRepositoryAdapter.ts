@@ -209,6 +209,20 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
       ],
     );
 
+    // Replace, don't append: §03.7 reprocess-on-behalf re-runs the whole pipeline against an
+    // invoice row that may already carry a committed set of lines (a PARSED invoice can be
+    // quarantined by a post-COMMIT fault, then reprocessed). Without this the drawer would show
+    // every item twice and findFuzzyDuplicate's line-count fingerprint would be wrong. Runs in
+    // the caller's transaction, so the delete + re-insert commit atomically with the UPDATE above.
+    // bill_split_line FKs invoice_line(id) with no ON DELETE CASCADE, so its allocations go
+    // first — they point at line ids the reparse is about to replace and cannot survive it.
+    await this.client.query(
+      `DELETE FROM bill_split_line
+       WHERE line_id IN (SELECT id FROM invoice_line WHERE invoice_id = $1)`,
+      [input.invoiceId],
+    );
+    await this.client.query(`DELETE FROM invoice_line WHERE invoice_id = $1`, [input.invoiceId]);
+
     for (const line of input.lines) {
       await this.client.query(
         `INSERT INTO invoice_line

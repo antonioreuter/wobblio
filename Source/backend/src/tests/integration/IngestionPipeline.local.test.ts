@@ -166,6 +166,101 @@ describe('Ingestion pipeline — Postgres end-to-end', () => {
     expect(detail?.imageS3Key).toContain(sha);
   });
 
+  // §03.7 reprocess-on-behalf re-runs the whole pipeline against an invoice that already
+  // carries a committed set of lines, so persistParsed must REPLACE them, not append. Appending
+  // showed every item twice in the drawer and skewed findFuzzyDuplicate's line-count fingerprint.
+  it('replaces the existing lines when the same invoice is persisted twice', async () => {
+    const tenantId = await provisionTenant();
+    const sha = hashOf(randomUUID());
+
+    const parsed = (invoiceId: string) => ({
+      invoiceId, merchantId: null, merchantProvisional: false,
+      transactionDate: '2026-06-10',
+      currency: 'EUR', total: 7.5, totalHomeCurrency: 7.5, fxRateUsed: 1,
+      categoryId: null, searchTags: ['weekly-groceries'], searchCity: null,
+      status: 'PARSED' as const, priceEmissionBlocked: false,
+      location: { countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED' as const, source: 'PROFILE' as const },
+      lines: [
+        {
+          rawText: 'Melk', lineIndex: 0, productId: null, productProvisional: false, categoryId: null,
+          quantity: 1, packQuantity: null, baseUnit: null, sizeSource: null,
+          unitPrice: 2.5, lineTotal: 2.5, isDiscount: false, isDepositOrFee: false, confidence: 0.9,
+        },
+        {
+          rawText: 'Brood', lineIndex: 1, productId: null, productProvisional: false, categoryId: null,
+          quantity: 1, packQuantity: null, baseUnit: null, sizeSource: null,
+          unitPrice: 5.0, lineTotal: 5.0, isDiscount: false, isDepositOrFee: false, confidence: 0.9,
+        },
+      ],
+    });
+
+    const detail = await withTenant(tenantId, async (db) => {
+      const repo = new InvoiceRepositoryAdapter(db);
+      const invoiceId = await repo.createPending({
+        tenantId, uploadedByUserId: tenantId, householdId: null, quotaPooled: false,
+        imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
+      });
+      await repo.persistParsed(parsed(invoiceId));
+      await repo.persistParsed(parsed(invoiceId)); // the reprocess run
+      return repo.getDetail(invoiceId);
+    });
+
+    expect(detail?.lines).toHaveLength(2);
+    expect(detail?.lines.map(l => l.rawText)).toEqual(['Melk', 'Brood']);
+  });
+
+  // bill_split_line FKs invoice_line(id) with no ON DELETE CASCADE. Without clearing the
+  // allocations first the reprocess delete raises 23503, which the worker treats as a
+  // non-retryable constraint violation and re-quarantines the invoice.
+  it('clears bill-split allocations pointing at the replaced lines', async () => {
+    const tenantId = await provisionTenant();
+    const sha = hashOf(randomUUID());
+
+    const line = {
+      rawText: 'Melk', lineIndex: 0, productId: null, productProvisional: false, categoryId: null,
+      quantity: 1, packQuantity: null, baseUnit: null, sizeSource: null,
+      unitPrice: 2.5, lineTotal: 2.5, isDiscount: false, isDepositOrFee: false, confidence: 0.9,
+    };
+    const parsed = (invoiceId: string) => ({
+      invoiceId, merchantId: null, merchantProvisional: false,
+      transactionDate: '2026-06-10',
+      currency: 'EUR', total: 2.5, totalHomeCurrency: 2.5, fxRateUsed: 1,
+      categoryId: null, searchTags: ['weekly-groceries'], searchCity: null,
+      status: 'PARSED' as const, priceEmissionBlocked: false,
+      location: { countryCode: 'NL', regionCode: 'NL-NB', status: 'RESOLVED' as const, source: 'PROFILE' as const },
+      lines: [line],
+    });
+
+    const result = await withTenant(tenantId, async (db) => {
+      const repo = new InvoiceRepositoryAdapter(db);
+      const invoiceId = await repo.createPending({
+        tenantId, uploadedByUserId: tenantId, householdId: null, quotaPooled: false,
+        imageS3Key: `receipts/${tenantId}/${sha}.jpg`, imageSha256: sha,
+      });
+      await repo.persistParsed(parsed(invoiceId));
+
+      const lineId = (await db.query<{ id: string }>(
+        `SELECT id FROM invoice_line WHERE invoice_id = $1`, [invoiceId],
+      )).rows[0].id;
+      const splitId = (await db.query<{ id: string }>(
+        `INSERT INTO bill_split (invoice_id) VALUES ($1) RETURNING id`, [invoiceId],
+      )).rows[0].id;
+      await db.query(
+        `INSERT INTO bill_split_line (split_id, line_id, participant_name_enc, units)
+         VALUES ($1, $2, 'enc', 1)`,
+        [splitId, lineId],
+      );
+
+      await repo.persistParsed(parsed(invoiceId)); // the reprocess run — must not raise 23503
+
+      const allocations = await db.query(`SELECT 1 FROM bill_split_line WHERE split_id = $1`, [splitId]);
+      return { detail: await repo.getDetail(invoiceId), allocations: allocations.rowCount };
+    });
+
+    expect(result.detail?.lines).toHaveLength(1);
+    expect(result.allocations).toBe(0);
+  });
+
   // §11 FX end-to-end: a non-EUR receipt for a EUR-home user must persist a harmonized
   // total_home_currency + fx_rate_used, crossed via the transaction-date ECB rate. This
   // exercises the real FxRateRepositoryAdapter + CurrencyHarmonizationService that both
