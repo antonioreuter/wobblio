@@ -12,6 +12,8 @@ import type {
 } from '@core/ports/data-intelligence/IOwnPurchaseHistoryQuery';
 import { InvalidTrendQueryError } from '@core/domain/errors';
 
+const noSize = { sizeText: null, sizeSource: null };
+
 const line = (over: Partial<PriceTrendLine> = {}): PriceTrendLine => ({
   productId: 'milk',
   merchantId: 'm1',
@@ -19,6 +21,8 @@ const line = (over: Partial<PriceTrendLine> = {}): PriceTrendLine => ({
   points: [{ weekStart: '2026-06-15', median: 1.29, discountMedian: null }],
   observationCount: 5,
   lastObservedOn: '2026-06-18',
+  size: noSize,
+  ambiguous: false,
   ...over,
 });
 
@@ -27,9 +31,10 @@ const ownLine = (over: Partial<OwnPurchaseLine> = {}): OwnPurchaseLine => ({
   points: [{ weekStart: '2026-06-15', median: 1.19, discountMedian: null }],
   purchaseCount: 1,
   lastPurchasedOn: '2026-06-17',
+  priorPurchaseExists: false,
   lastPrice: 1.19,
   previousPrice: null,
-  unit: null,
+  size: noSize,
   ...over,
 });
 
@@ -130,7 +135,7 @@ describe('PriceTrendService', () => {
     const result = await sut.comparison(['milk'], 'NL', 'NL-NB', false);
     expect(trends.comparison).not.toHaveBeenCalled();
     expect(result.lines).toEqual([]);
-    expect(result.ownHistory).toEqual([ownLine()]);
+    expect(result.ownHistory).toEqual([{ ...ownLine(), stale: false, staleDays: 4 }]);
     // Cold-start count is a market signal — 0 for STANDARD (no market view), no query fired.
     expect(trends.regionMerchantCount).not.toHaveBeenCalled();
     expect(result.regionMerchantCount).toBe(0);
@@ -147,7 +152,7 @@ describe('PriceTrendService', () => {
     trends.comparison.mockResolvedValue([]);
     const result = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
     expect(result.lines).toEqual([]);
-    expect(result.ownHistory).toEqual([ownLine()]);
+    expect(result.ownHistory).toEqual([{ ...ownLine(), stale: false, staleDays: 4 }]);
   });
 
   it('marks a line stale when its last observation is older than 60 days', async () => {
@@ -161,6 +166,27 @@ describe('PriceTrendService', () => {
     const { lines } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
     expect(lines[0].stale).toBe(false);
     expect(lines[0].staleDays).toBe(3);
+  });
+
+  // §6.5.2 freshness honesty applies to the caller's own series too — it used to be served
+  // undecorated, so a product last bought five months ago never greyed.
+  it('marks an own series stale when the last purchase is older than 60 days', async () => {
+    ownHistory.history.mockResolvedValue([ownLine({ lastPurchasedOn: '2026-04-10' })]);
+    const { ownHistory: served } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+    expect(served[0].stale).toBe(true);
+    expect(served[0].staleDays).toBe(72);
+  });
+
+  it('keeps a recently bought own series fresh', async () => {
+    const { ownHistory: served } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+    expect(served[0].stale).toBe(false);
+    expect(served[0].staleDays).toBe(4);
+  });
+
+  it('passes the prior-purchase flag through untouched', async () => {
+    ownHistory.history.mockResolvedValue([ownLine({ priorPurchaseExists: true })]);
+    const { ownHistory: served } = await sut.comparison(['milk'], 'NL', 'NL-NB', true);
+    expect(served[0].priorPurchaseExists).toBe(true);
   });
 
   it('defaults the clock to the wall time when none is injected', async () => {

@@ -18,6 +18,7 @@ interface WeeklyRow {
   last_purchased_on: string;
   last_price: string | null;
   previous_price: string | null;
+  prior_purchase_exists: boolean;
   pack_quantity: string | null;
   base_unit: BaseUnit | null;
   size_source: SizeSource | null;
@@ -31,9 +32,10 @@ interface WeeklyRow {
 // NULL) is also served when its country is unknown or matches the picker — full access to
 // your own uploads regardless of review state, without dumping a foreign receipt into an
 // unrelated country's view. Invoices in a currency other than the view currency are excluded so a
-// foreign-currency pending receipt can't leak in. Deposit/fee lines are excluded; each line's
-// price is the per-unit price when a pack size is known, otherwise the pack price (line_total /
-// quantity). Weekly medians split discounted from regular purchases, mirroring the public trend.
+// foreign-currency pending receipt can't leak in. Deposit/fee lines are excluded; every line's
+// price is the pack price paid (line_total ÷ quantity) — receipt arithmetic, never a per-unit
+// inference (fix 09/01). Weekly medians split discounted from regular purchases, mirroring the
+// public trend.
 export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery {
   constructor(private readonly db: Pool | PoolClient) {}
 
@@ -75,16 +77,24 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
                 AND (i.location_country_code = $3 OR i.location_country_code IS NULL))
            )
        ),
+       -- Descriptive pack size for the chip, taken from ONE line: the most recent line that carries
+       -- a size, ties broken by line_id so the ordering is TOTAL. Two independent array_agg()s over
+       -- a partial ordering could resolve the amount and the unit from different rows on a date tie
+       -- and print an impossible pair like "500 L".
+       size_pick AS (
+         SELECT DISTINCT ON (product_id) product_id, pack_quantity, base_unit
+         FROM lines
+         WHERE pack_quantity IS NOT NULL
+         ORDER BY product_id, transaction_date DESC, line_id DESC
+       ),
        totals AS (
-         -- Every median is the pack price paid (fix 09/01) — no per-unit price. Descriptive pack
-         -- size for the chip: strongest evidence (USER > RECEIPT > unknown), and a representative
-         -- (pack_quantity, base_unit) taken from ONE line — the most recent line that carries a size
-         -- — so the amount and unit always come from the same purchase (never a mismatched pair).
+         -- Every median is the pack price paid (fix 09/01) — no per-unit price. purchase_count is
+         -- distinct INVOICES: one receipt listing the product twice is one purchase, and it is what
+         -- the "First purchase" copy keys off. size_source is the strongest evidence across the
+         -- user's lines (USER > RECEIPT > unknown).
          SELECT product_id,
-                COUNT(*) AS purchase_count,
+                COUNT(DISTINCT invoice_id) AS purchase_count,
                 MAX(transaction_date) AS last_purchased_on,
-                (array_agg(pack_quantity ORDER BY (pack_quantity IS NOT NULL) DESC, transaction_date DESC))[1] AS pack_quantity,
-                (array_agg(base_unit ORDER BY (pack_quantity IS NOT NULL) DESC, transaction_date DESC))[1] AS base_unit,
                 CASE
                   WHEN bool_or(size_source = 'USER') THEN 'USER'
                   WHEN bool_or(pack_quantity IS NOT NULL) THEN 'RECEIPT'
@@ -92,6 +102,19 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
                 END AS size_source
          FROM lines
          GROUP BY product_id
+       ),
+       -- Was this product bought BEFORE the window? Region- and currency-agnostic on purpose: the
+       -- first-purchase affordance answers "have you ever bought this", not "in this view".
+       prior AS (
+         SELECT l.product_id
+         FROM invoice_line l
+         JOIN invoice i ON i.id = l.invoice_id
+         WHERE l.product_id = ANY($1::uuid[])
+           AND i.status IN ('PARSED', 'NEEDS_REVIEW')
+           AND i.transaction_date IS NOT NULL
+           AND i.transaction_date < CURRENT_DATE - ($2::int * 7)
+           AND l.is_deposit_or_fee = false
+         GROUP BY l.product_id
        ),
        weekly AS (
          SELECT l.product_id, l.week_start,
@@ -138,12 +161,15 @@ export class OwnPurchaseHistoryQueryAdapter implements IOwnPurchaseHistoryQuery 
               t.last_purchased_on::text AS last_purchased_on,
               r.last_price::text AS last_price,
               r.previous_price::text AS previous_price,
-              t.pack_quantity::text AS pack_quantity,
-              t.base_unit AS base_unit,
+              (pr.product_id IS NOT NULL) AS prior_purchase_exists,
+              sp.pack_quantity::text AS pack_quantity,
+              sp.base_unit AS base_unit,
               t.size_source AS size_source
        FROM weekly w
        JOIN totals t ON t.product_id = w.product_id
        LEFT JOIN recent r ON r.product_id = w.product_id
+       LEFT JOIN prior pr ON pr.product_id = w.product_id
+       LEFT JOIN size_pick sp ON sp.product_id = w.product_id
        ORDER BY w.product_id, w.week_start`,
       params,
     );
@@ -197,6 +223,7 @@ function groupIntoLines(rows: WeeklyRow[]): OwnPurchaseLine[] {
         lastPurchasedOn: row.last_purchased_on,
         lastPrice: row.last_price === null ? null : parseFloat(row.last_price),
         previousPrice: row.previous_price === null ? null : parseFloat(row.previous_price),
+        priorPurchaseExists: row.prior_purchase_exists,
         size: { sizeText, sizeSource: sizeText === null ? null : row.size_source },
       };
       lines.set(row.product_id, line);

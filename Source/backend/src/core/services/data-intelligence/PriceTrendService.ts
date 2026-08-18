@@ -14,6 +14,13 @@ export interface ServedPriceTrendLine extends PriceTrendLine {
   staleDays: number; // age of the most recent observation, in days
 }
 
+// §6.5.2 freshness honesty applies to the caller's own series too — a product last bought five
+// months ago must grey with its age, exactly like a stale market cell.
+export interface ServedOwnPurchaseLine extends OwnPurchaseLine {
+  stale: boolean;
+  staleDays: number;
+}
+
 // Fix 10 — why a selected product produced no MARKET line, so the webapp shows a specific note on
 // the product chip instead of a silently empty chart.
 //   SERVED                    — a line rendered; nothing to explain
@@ -51,7 +58,7 @@ export interface PriceTrendComparison {
   // "N stores tracked in your area" motivator. 0 for non-Premium (no market view) or nothing yet.
   regionMerchantCount: number;
   lines: ServedPriceTrendLine[]; // public market trend — Premium only; [] otherwise
-  ownHistory: OwnPurchaseLine[]; // the caller's own purchases — always served, no quorum gate
+  ownHistory: ServedOwnPurchaseLine[]; // the caller's own purchases — always served, no quorum gate
   // Per requested product: why it did (or didn't) plot in each mode (fix 10). Lets the webapp show a
   // specific note per product and auto-fall-back between modes instead of a blank chart.
   diagnostics: ProductDiagnostic[];
@@ -112,7 +119,7 @@ export class PriceTrendService {
       currency,
       regionMerchantCount,
       lines: lines.map((l) => this.decorate(l)),
-      ownHistory,
+      ownHistory: ownHistory.map((o) => this.decorateOwn(o)),
       diagnostics,
     };
   }
@@ -175,6 +182,11 @@ export class PriceTrendService {
 
   private decorate(line: PriceTrendLine): ServedPriceTrendLine {
     const staleDays = daysSince(line.lastObservedOn, this.now());
+    return { ...line, staleDays, stale: staleDays > TREND_STALE_DAYS };
+  }
+
+  private decorateOwn(line: OwnPurchaseLine): ServedOwnPurchaseLine {
+    const staleDays = daysSince(line.lastPurchasedOn, this.now());
     return { ...line, staleDays, stale: staleDays > TREND_STALE_DAYS };
   }
 }

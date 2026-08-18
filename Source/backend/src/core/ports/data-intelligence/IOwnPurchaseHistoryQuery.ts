@@ -24,8 +24,12 @@ export interface OwnPurchaseQueryInput {
 export interface OwnPurchaseLine {
   productId: string;
   points: WeeklyMedianPoint[];
-  purchaseCount: number; // total own purchase lines in the window
+  purchaseCount: number; // distinct own invoices carrying the product in the window
   lastPurchasedOn: string; // ISO date of the most recent own purchase
+  // Did the caller buy this product BEFORE the window? Deliberately region- and currency-agnostic:
+  // the question is "is this genuinely your first time buying it" (§6.5.5 first-purchase copy), not
+  // "in this view". Without it, a product bought five times last year reads as a first purchase.
+  priorPurchaseExists: boolean;
   // The two most recent *regular-price* purchase events (§6.5.5 "% change vs last scan"). Both
   // are pack prices paid (line_total ÷ quantity) — never per-unit (fix 09/01). `lastPrice` is the
   // most recent; `previousPrice` the one before it, null when the product was bought only once.

@@ -25,6 +25,8 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
   let nicheId: string; // bought once — below public quorum, must still be served
   let pendingId: string; // bought only on receipts still pending location review
   let promoOnlyId: string; // only ever bought on promo — "last paid" falls back to the discount
+  let sizedId: string; // two same-day lines with different (pack_quantity, base_unit) pairs
+  let priorId: string; // bought once in the window and once long before it
 
   const insertInvoice = async (
     tenantId: string,
@@ -53,13 +55,24 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     invoiceId: string,
     productId: string | null,
     price: number | null,
-    over: { isDiscount?: boolean; isDepositOrFee?: boolean } = {},
+    over: {
+      isDiscount?: boolean;
+      isDepositOrFee?: boolean;
+      id?: string;
+      packQuantity?: number;
+      baseUnit?: 'KG' | 'L' | 'PIECE';
+      sizeSource?: 'RECEIPT' | 'USER';
+    } = {},
   ): Promise<unknown> =>
     pool.query(
       `INSERT INTO invoice_line
-         (invoice_id, raw_text, product_id, line_total, is_discount, is_deposit_or_fee)
-       VALUES ($1, 'line', $2, $3, $4, $5)`,
-      [invoiceId, productId, price ?? 0, over.isDiscount ?? false, over.isDepositOrFee ?? false],
+         (id, invoice_id, raw_text, product_id, line_total, is_discount, is_deposit_or_fee,
+          pack_quantity, base_unit, size_source)
+       VALUES (COALESCE($6::uuid, uuid_generate_v4()), $1, 'line', $2, $3, $4, $5, $7, $8, $9)`,
+      [
+        invoiceId, productId, price ?? 0, over.isDiscount ?? false, over.isDepositOrFee ?? false,
+        over.id ?? null, over.packQuantity ?? null, over.baseUnit ?? null, over.sizeSource ?? null,
+      ],
     );
 
   beforeAll(async () => {
@@ -103,6 +116,14 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     });
     promoOnlyId = await products.createProvisionalProduct({
       displayName: `Own Promo ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
+      merchantId: null, baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+    });
+    sizedId = await products.createProvisionalProduct({
+      displayName: `Own Sized ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
+      merchantId: null, baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
+    });
+    priorId = await products.createProvisionalProduct({
+      displayName: `Own Prior ${randomUUID().slice(0, 8)}`, brand: null, categoryId: 'cat-dairy',
       merchantId: null, baseUnit: 'L', packSizeBaseUnits: 1, embedding: uniqueEmbedding(),
     });
 
@@ -154,13 +175,32 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     await insertLine(promoOld, promoOnlyId, 1.1, { isDiscount: true });
     const promoNew = await insertInvoice(tenantA, isoDay(0), region);
     await insertLine(promoNew, promoOnlyId, 0.9, { isDiscount: true });
+
+    // tenantA, SAME receipt (so same transaction_date) with two differently-sized lines. The size
+    // chip must take pack_quantity AND base_unit from ONE row — the tiebreak is line_id DESC, so
+    // the explicit ids below make the winner deterministic. Two independent array_agg()s over a
+    // partial ordering could pair 500 with L and print an impossible "500L".
+    const sizedInv = await insertInvoice(tenantA, isoDay(0), region);
+    await insertLine(sizedInv, sizedId, 2.2, {
+      id: '11111111-1111-4111-8111-111111111111', packQuantity: 2, baseUnit: 'L', sizeSource: 'RECEIPT',
+    });
+    await insertLine(sizedInv, sizedId, 3.3, {
+      id: '22222222-2222-4222-8222-222222222222', packQuantity: 500, baseUnit: 'KG', sizeSource: 'USER',
+    });
+
+    // tenantA, bought once inside the window and once long before it: the in-window count is 1, but
+    // it is emphatically not a first purchase (§6.5.5).
+    const priorRecent = await insertInvoice(tenantA, isoDay(3), region);
+    await insertLine(priorRecent, priorId, 4.0);
+    const priorOld = await insertInvoice(tenantA, isoDay(220), region);
+    await insertLine(priorOld, priorId, 3.5);
   });
 
   afterAll(async () => {
     await pool.query(`DELETE FROM invoice_line WHERE invoice_id IN (SELECT id FROM invoice WHERE tenant_id = ANY($1))`, [[tenantA, tenantB]]);
     await pool.query(`DELETE FROM invoice WHERE tenant_id = ANY($1)`, [[tenantA, tenantB]]);
-    await pool.query(`DELETE FROM price_observation WHERE product_id = ANY($1)`, [[milkId, nicheId, pendingId, promoOnlyId]]);
-    await pool.query(`DELETE FROM product WHERE id = ANY($1)`, [[milkId, nicheId, pendingId, promoOnlyId]]);
+    await pool.query(`DELETE FROM price_observation WHERE product_id = ANY($1)`, [[milkId, nicheId, pendingId, promoOnlyId, sizedId, priorId]]);
+    await pool.query(`DELETE FROM product WHERE id = ANY($1)`, [[milkId, nicheId, pendingId, promoOnlyId, sizedId, priorId]]);
     await pool.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[tenantA, tenantB]]);
     await pool.query(`DROP OWNED BY ${RLS_ROLE}; DROP ROLE ${RLS_ROLE};`);
     await pool.end();
@@ -185,7 +225,9 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     );
 
     const milk = lines.find((l) => l.productId === milkId)!;
-    expect(milk.purchaseCount).toBe(4); // 1.00 + 1.40 + 0.80 + 1.50; deposit/null/other-region/GBP excluded
+    // Distinct INVOICES, not lines: w1 carries 1.00/1.40/0.80 and w2 carries 1.50, so buying it
+    // three times on one receipt is one purchase. deposit/null/other-region/GBP rows are excluded.
+    expect(milk.purchaseCount).toBe(2);
     const w1 = milk.points.find((p) => p.median !== null && Math.abs(p.median - 1.2) < 0.001)!;
     expect(w1.median).toBeCloseTo(1.2, 4);
     expect(w1.discountMedian).toBeCloseTo(0.8, 4); // promo is a distinct signal
@@ -214,6 +256,33 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     expect(promo.previousPrice).toBeCloseTo(1.1, 4); // the one before it
   });
 
+  it('takes the size chip amount and unit from one and the same line', async () => {
+    const lines = await asTenant(tenantA, (a) =>
+      a.history({ productIds: [sizedId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'EUR' }),
+    );
+    const sized = lines[0];
+    // line_id DESC wins the tie → the (500, 'KG') row. Never a cross-row pair like "500L" or "2kg".
+    expect(sized.size.sizeText).toBe('500kg');
+    // sizeSource is the strongest evidence across the user's lines, independent of which row the
+    // amount came from — one of them was user-annotated.
+    expect(sized.size.sizeSource).toBe('USER');
+  });
+
+  it('flags a product bought before the window so it never reads as a first purchase', async () => {
+    const lines = await asTenant(tenantA, (a) =>
+      a.history({ productIds: [priorId, nicheId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'EUR' }),
+    );
+
+    const prior = lines.find((l) => l.productId === priorId)!;
+    expect(prior.purchaseCount).toBe(1); // only the in-window receipt counts toward the series
+    expect(prior.priorPurchaseExists).toBe(true);
+
+    // The genuinely-once-bought product keeps the first-purchase affordance.
+    const niche = lines.find((l) => l.productId === nicheId)!;
+    expect(niche.purchaseCount).toBe(1);
+    expect(niche.priorPurchaseExists).toBe(false);
+  });
+
   it('serves own purchases from receipts still pending location review, country-scoped', async () => {
     const lines = await asTenant(tenantA, (a) =>
       a.history({ productIds: [pendingId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'EUR' }),
@@ -231,7 +300,7 @@ describe('OwnPurchaseHistoryQueryAdapter — RLS-scoped own price history (Postg
     const eur = await asTenant(tenantA, (a) =>
       a.history({ productIds: [milkId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'EUR' }),
     );
-    expect(eur.find((l) => l.productId === milkId)!.purchaseCount).toBe(4); // GBP 5.55 excluded
+    expect(eur.find((l) => l.productId === milkId)!.purchaseCount).toBe(2); // GBP 5.55 excluded
 
     const gbp = await asTenant(tenantA, (a) =>
       a.history({ productIds: [milkId], countryCode: 'NL', regionCode: region, weeks: 26, currency: 'GBP' }),
