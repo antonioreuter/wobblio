@@ -93,6 +93,53 @@ export async function setRole(email: string, role: string): Promise<void> {
   await pool.query('UPDATE app_user SET role = $2 WHERE email = $1', [email, role])
 }
 
+// Pin the profile region the reports page defaults to, so a trends spec never depends on what
+// the onboarding form happened to leave in country_code/region_code.
+export async function setRegion(email: string, countryCode: string, regionCode: string): Promise<void> {
+  await pool.query('UPDATE app_user SET country_code = $2, region_code = $3 WHERE email = $1', [
+    email,
+    countryCode,
+    regionCode,
+  ])
+}
+
+// Seeds ONE own purchase of a brand-new product in a location-RESOLVED invoice, which is the
+// minimum the price-trends report needs to draw a series (own history has no quorum gate). The
+// single week is deliberate: it is the case that used to render as an invisible speck.
+export async function seedOwnPurchase(
+  email: string,
+  opts: { displayName: string; price: number; countryCode: string; regionCode: string },
+): Promise<{ productId: string; invoiceId: string }> {
+  const userRes = await pool.query<{ id: string }>('SELECT id FROM app_user WHERE email = $1', [email])
+  const tenantId = userRes.rows[0].id
+  const productRes = await pool.query<{ id: string }>(
+    `INSERT INTO product (category_id, brand, display_name, base_unit, status)
+     VALUES ('cat-groceries', NULL, $1, 'PIECE', 'ACTIVE') RETURNING id`,
+    [opts.displayName],
+  )
+  const productId = productRes.rows[0].id
+  const invoiceRes = await pool.query<{ id: string }>(
+    `INSERT INTO invoice
+       (tenant_id, uploaded_by_user_id, status, transaction_date, currency, total, category_id,
+        image_s3_key, image_sha256, location_country_code, location_region_code, location_status)
+     VALUES ($1, $1, 'PARSED', CURRENT_DATE, 'EUR', $2, 'cat-groceries', $3, $4, $5, $6, 'RESOLVED')
+     RETURNING id`,
+    [tenantId, opts.price, `e2e/${tenantId}-trend.jpg`, `e2e-trend-${tenantId}-${Date.now()}`, opts.countryCode, opts.regionCode],
+  )
+  const invoiceId = invoiceRes.rows[0].id
+  await pool.query(
+    `INSERT INTO invoice_line (invoice_id, line_index, raw_text, product_id, quantity, line_total)
+     VALUES ($1, 0, $2, $3, 1, $4)`,
+    [invoiceId, opts.displayName, productId, opts.price],
+  )
+  return { productId, invoiceId }
+}
+
+export async function deleteProduct(productId: string): Promise<void> {
+  await pool.query('DELETE FROM price_observation WHERE product_id = $1', [productId])
+  await pool.query('DELETE FROM product WHERE id = $1', [productId])
+}
+
 export async function closeDb(): Promise<void> {
   await pool.end()
 }
