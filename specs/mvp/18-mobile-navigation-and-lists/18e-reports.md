@@ -1,5 +1,13 @@
 # 18e — Reports
 
+> **HISTORICAL — superseded, do not read as current state.** Epic 19 replaced this screen with the
+> personal-inflation CPI view and **deleted** the mobile price-trends client outright:
+> `price_trend_comparison.dart`, `IPriceTrendRepository`/`HttpPriceTrendRepository`,
+> `line_chart.dart` (`TrendLineChart`) and the `report_bloc` trio are gone. See
+> `specs/mvp/19-mobile-2a-full/19-00-handoff.md`. The ticked checkboxes below describe code that no
+> longer exists. Mobile does **not** consume `GET /price-trends/comparison`; the webapp keeps its
+> trend chart (`specs/price-trends-rebuild/`). Kept for the contract record only.
+
 **Mobile epic | Parent: [18](../18-mobile-navigation-and-lists.md) · Tracker: [18-00](./18-00-handoff.md)**
 
 New port/adapter/bloc/screen triad + the `AppShell` nav change that finally fills the 5th bottom-nav

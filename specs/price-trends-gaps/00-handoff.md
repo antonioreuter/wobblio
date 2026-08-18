@@ -84,7 +84,8 @@ added the compare-mode toggle). That series is complete; this one is orthogonal.
   region/currency, computed even when no cell clears k≥3, Premium-only) drives
   "{N} store(s) tracked in your area — scan more receipts to unlock comparisons"; plain "every scan
   makes it smarter" copy at zero.
-- [ ] amendment — own-history window all tiers (G6) — docs
+- [x] amendment — own-history window all tiers (G6) — docs. **Done 2026-07-05**, filed as
+  `docs/amendments/2026-07-05-own-history-window-all-tiers.md` (box ticked retroactively 2026-07-24).
 
 Order: 01 → 02 → 03 → 04. Each is independently shippable. 03 and 04 both touch the trends
 response, so if shipped out of order, re-verify the response type in `use-price-trends.ts`.
