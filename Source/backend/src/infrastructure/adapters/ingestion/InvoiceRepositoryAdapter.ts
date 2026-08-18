@@ -456,6 +456,7 @@ export class InvoiceRepositoryAdapter implements IInvoiceRepository {
               u.home_currency
        FROM invoice i
        LEFT JOIN merchant m ON m.id = i.merchant_id
+       ${PROGRESS_JOIN}
        LEFT JOIN invoice_feedback f ON f.invoice_id = i.id
        LEFT JOIN app_user u ON u.id = (current_setting('app.current_tenant_id', true))::uuid
        WHERE i.id = $1`,
