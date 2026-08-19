@@ -6,13 +6,17 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(npm run test*)",
             "command": "jq -r '.tool_response | \"\\(if .exitCode == 0 then \"✓ Tests passed\" else \"✗ Tests failed (exit \" + (.exitCode | tostring) + \")\" end)\\n\\nStdout:\\n\" + (.stdout // \"(no output)\") + \"\\n\\nStderr:\\n\" + (.stderr // \"(no errors)\")' 2>/dev/null | head -100",
-            "statusMessage": "Summarizing test results...",
-            "timeout": 5
+            "if": "Bash(npm run test*)",
+            "timeout": 5,
+            "statusMessage": "Summarizing test results..."
           }
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "linear@claude-plugins-official": true,
+    "mattpocock-skills@claude-plugins-official": true
   }
 }

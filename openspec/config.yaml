@@ -1,35 +1,48 @@
 schema: spec-driven
 
-# Injected into every artifact generation. CLAUDE.md and .claude/rules/ are
-# already in context — this file only carries what is specific to spec writing.
+# How this file is consumed:
+#   context                      -> injected into EVERY artifact generation
+#   rules.<artifact>             -> injected only into that artifact
+#   operations.<op>.guidance     -> injected only into apply / archive
+# Root CLAUDE.md, Source/*/CLAUDE.md and .claude/rules/ are already in a Claude
+# Code session. This file carries what is specific to spec-driven work, plus the
+# pointers an agent that does not load them would still need.
+
 context: |
   Wobblio turns receipt photos into structured financial data via multimodal AI,
   and feeds anonymized price points into a crowdsourced regional price index.
 
   Status: the MVP is BUILT and deployed to the `dev` stage (backend, webapp,
-  admin console, Flutter client). Assume code exists and read it before
-  proposing. CLAUDE.md still claims "implementation starting" — that is stale.
+  admin console, Flutter client). Assume the behavior already exists somewhere
+  in `Source/` and read that code before describing anything as new.
+
+  NON NEGOTIABLE: never propose, design, or task anything that touches the
+  PRODUCTION AWS account or the production database (`wobblio`, no `_dev`).
 
   Sources of truth, in precedence order:
-  - `openspec/specs/<capability>/spec.md` — AUTHORITATIVE for system behavior.
+  - `openspec/specs/<capability>/spec.md` - AUTHORITATIVE for system behavior.
     Seeded: ingestion, data-intelligence, quota, admin. A capability with no
     spec yet is unspecified: the first change touching it authors its baseline
     from the CODE, never from the frozen documents below.
-  - `CLAUDE.md` — the 14 hard invariants and validation gates. Binding on every
-    proposal; do not restate them in artifacts, and never plan around one
+  - `CLAUDE.md` - the 12 hard invariants and the validation gates. Binding on
+    every proposal; do not restate them in artifacts, and never plan around one
     without an explicit spec amendment.
-  - `.claude/rules/*.md` — engineering policy (hexagonal, GDPR, IaC, prompts).
-  - `docs/wobblio_v2.4_specification_final.md` — authoritative for PRODUCT only
+  - `Source/backend/CLAUDE.md`, `Source/webapp/CLAUDE.md` - layer conventions,
+    the RLS-exempt global table list, connection budget, design tokens.
+  - `.claude/rules/*.md` - engineering policy (hexagonal, GDPR, IaC, prompts,
+    Flutter, E2E).
+  - `docs/wobblio_v2.4_specification_final.md` - authoritative for PRODUCT only
     (definition, business model, financials, decisions, design briefs). Cite §
     numbers for rationale. Where it describes behavior, the OpenSpec spec wins.
-  - `docs/runbook.md`, `docs/runbooks/` — operations, not specification.
-  - `specs/` — FROZEN and historical as of 2026-08-18. Read for rationale only.
+  - `docs/runbook.md`, `docs/runbooks/`, `docs/adr/`, `docs/amendments/` -
+    operations and decision history, not specification.
+  - `specs/` - FROZEN and historical as of 2026-08-18. Read for rationale only.
     Known to have diverged from the code; never plan from it.
   The `projects-rag` MCP server searches a June-2026 snapshot of `docs/` and
-  `specs/` only — it does not index `openspec/specs/`, and its `specs/` copy is
+  `specs/` only - it does not index `openspec/specs/`, and its `specs/` copy is
   staler than the frozen tree on disk. Orientation and rationale only.
 
-  Capability paths under `openspec/specs/` mirror the core service domains in
+  Capability paths under `openspec/specs/` mirror the core service families in
   `Source/backend/src/core/services/`: identity, waitlist, billing, quota,
   ingestion, ai, data-intelligence, households, budgets, lists, optimizer,
   comparison, splitting, fx, reporting, notifications, gdpr, admin,
@@ -37,29 +50,59 @@ context: |
   Reuse an existing path exactly rather than inventing a near-duplicate.
 
   Capacity is a design constraint, not an aspiration: ~4k MAU and ~3k
-  ingestions/day on a db.t3.micro, one DB connection per request. AI token cost
+  ingestions/day on a db.t3.micro with a ~85 connection ceiling. Reserved
+  concurrency is already spent: api-handlers <= 25, ingestion-worker <= 5,
+  crons <= 2, one connection per warm container. The scaling ladder is
+  pre-decided in §7.3.1 - do not raise a cap before RDS Proxy. AI token cost
   and connection count belong in the trade-off discussion.
 
 rules:
   proposal:
-    - 'Cite the governing spec section (§) and the matching specs/mvp or specs/fixes file. If neither exists, say so explicitly.'
+    - 'Read the implementing code under `Source/` before writing. Use the Explore/scout agent for recon rather than assuming a capability is unbuilt.'
+    - 'Cite the governing source: the `openspec/specs/` requirement if one exists, otherwise the product spec § it derives from. If neither exists, say so explicitly and note that this change authors the capability baseline from the code.'
     - 'State which hard invariants the change touches, and whether it stays within them or needs a spec amendment.'
     - 'Include a "Non-goals" section.'
-    - 'Call out cost and capacity impact when adding AI model calls, hot-path queries, or cron jobs.'
+    - 'Call out cost and capacity impact when adding AI model calls, hot-path queries, cron jobs, or Lambda concurrency.'
   specs:
-    - 'Requirements describe observable behavior. No table, class, or AWS service names in requirement text.'
+    - 'Requirements describe observable behavior. No table, class, port, or AWS service names in requirement text.'
     - 'Every requirement needs a scenario for the failure and permission-denied paths, not just the happy path.'
     - 'Tenant-scoped data needs a cross-tenant isolation scenario; PREMIUM-only capability needs a STANDARD-denial scenario.'
     - 'Quantify thresholds (k>=3, <=300s, 30 days) instead of saying "quickly" or "enough".'
+    - 'User-visible capability specifies its empty, loading, and stale states - data freshness is stated honestly, never hidden.'
+    - 'Write each WHEN/THEN scenario so it can be lifted verbatim into a test; the write-unit-test and write-acceptance-test skills consume them at apply time.'
   design:
-    - 'Lead with the hexagonal decomposition: owning core service, required ports, implementing adapters.'
-    - 'List each DB migration with its RLS policy, tenant column, and index.'
-    - 'For AI work: model role, SSM parameter, XML-tagged prompt, output schema, retry-then-DLQ path.'
+    - 'Lead with the hexagonal decomposition: owning core service family under `src/core/services/<family>/`, required ports, implementing adapters - all three mirrored in the same family folder.'
+    - 'List each DB migration with its RLS policy, tenant column, and index. Follow the database-design-and-security skill for schema and isolation, and the database-migrations skill for file conventions; never edit a migration that has shipped.'
+    - 'State the change in DB connections and Lambda concurrency against the budget in the context above.'
+    - 'For AI work: model role, SSM parameter, XML-tagged prompt, output schema, retry-then-DLQ path. Use the aws-core:amazon-bedrock skill for Converse/model-selection specifics.'
+    - 'For new stacks, IAM policies, or event sources: use the aws-core:aws-cdk, aws-core:aws-iam, and aws-serverless:aws-lambda skills; the design must survive cdk-nag.'
     - 'Record alternatives considered and why they lost, especially where the spec allowed more than one reading.'
     - 'Note manual deployment steps (SSM parameters, SNS platform apps, seed pinning) so they are not discovered in production.'
   tasks:
-    - 'Order migrations and ports before adapters, adapters before handlers and clients.'
+    - 'Order migrations and ports before core services, core services before adapters, adapters before handlers and clients.'
     - 'Each task is at most ~2 hours with a verifiable outcome.'
-    - 'Pair each core-logic task with its unit test task; no trailing "write tests" task.'
-    - 'End with a validation task naming the gates to run.'
+    - 'Pair each core-logic task with a mocked unit-test task (write-unit-test skill). Any task writing raw SQL or a DB/AWS adapter also gets a real-Postgres integration-test task (write-integration-test skill) - mocked tests never parse adapter SQL.'
+    - 'Give each user-visible flow an acceptance-test task (write-acceptance-test skill, Playwright, data-testid selectors, polling over sleeps).'
+    - 'No trailing "write tests" task.'
+    - 'End with a validation task naming the gates that actually apply: hexagonal-architecture-validator, test:unit, validate:security (DDL or adapter changes), cdk synth + cdk-nag, exif-data-validator (capture/upload), prompt-injection-scanner (prompt changes).'
     - 'Never include a task touching production AWS or the production database.'
+
+operations:
+  apply:
+    guidance:
+      - 'tasks.md is the plan. Do not invoke the dev, po, or handoff skills here - each starts its own scouting/PRD flow and duplicates the change artifacts. Use the Explore/scout agent for codebase recon instead.'
+      - 'Use the automatic-test-runner skill before any npm install/test/lint/typecheck/cdk synth run: cd into the owning workspace, send full logs to a file, keep only summaries and actionable errors in context.'
+      - 'Use the local-aws-simulator skill (LocalStack, Postgres, Cognito-local) for integration work rather than pointing tests at deployed AWS. Never at production.'
+      - 'Use the database-migrations skill to create, run, or roll back migrations; the database-design-and-security skill when adding tables or RLS policies.'
+      - 'Write tests with the matching tier skill: write-unit-test (mocked ports, Vitest), write-integration-test (real Postgres + LocalStack adapters), write-acceptance-test (Playwright, Source/webapp/playwright.config.ts). The Playwright MCP server is available for driving the browser directly.'
+      - 'Run the gate that matches what changed, not all of them: hexagonal-architecture-validator on any backend code (exit 0 is non-negotiable), gdpr-security-auditor / `npm run validate:security` on DDL or DB adapter changes, exif-data-validator on capture/upload paths, prompt-injection-scanner on Bedrock prompt changes, cdk synth + cdk-nag on IaC changes.'
+      - 'Before marking the final task complete, run the qa skill to smoke-test the change and report gaps; it does not commit.'
+      - 'Trunk-based: commit directly to main, no feature branches, no PRs - and only when the user explicitly asks. Use a git worktree when another session is working concurrently.'
+      - 'Never run scripts, migrations, or deploys against the production AWS account or the production database.'
+  archive:
+    guidance:
+      - 'Do not archive until every task in tasks.md is checked and the validation gates that applied came back green.'
+      - 'Deltas fold into `openspec/specs/<capability>/spec.md` only. `specs/` is frozen - never write to it.'
+      - 'For a new capability, confirm the archived main spec has a real Purpose section, not the TBD placeholder.'
+      - 'Move manual deployment steps discovered during apply into `docs/runbooks/`, and record architectural decisions in `docs/adr/` or `docs/amendments/`.'
+      - 'If the change established a durable convention or landmine worth carrying forward, update the relevant CLAUDE.md (the claude-md-management:revise-claude-md skill does this) rather than leaving it in the archived change.'
